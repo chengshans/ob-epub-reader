@@ -2,6 +2,7 @@ import { Notice, Plugin, TFile } from "obsidian";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { ExcerptManager } from "./ExcerptManager";
 import { ProgressStore } from "./ProgressStore";
+import { AnnotationStore } from "./AnnotationStore";
 import { AIService } from "./AIService";
 import { BookshelfModal } from "./BookshelfModal";
 import { EpubSettingsTab } from "./SettingsTab";
@@ -10,6 +11,7 @@ import { DEFAULT_SETTINGS, EpubPluginSettings } from "./types";
 export default class ObEpubPlugin extends Plugin {
   settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
   progressStore!: ProgressStore;
+  annotationStore!: AnnotationStore;
   excerptManager!: ExcerptManager;
   aiService!: AIService;
 
@@ -18,6 +20,9 @@ export default class ObEpubPlugin extends Plugin {
 
     this.progressStore = new ProgressStore(this);
     await this.progressStore.load();
+
+    this.annotationStore = new AnnotationStore(this);
+    await this.annotationStore.load();
 
     this.excerptManager = new ExcerptManager(this.app, this.settings);
     this.aiService = new AIService(this.settings);
@@ -28,6 +33,7 @@ export default class ObEpubPlugin extends Plugin {
         leaf,
         this.excerptManager,
         this.progressStore,
+        this.annotationStore,
         this.aiService,
         this.settings
       );

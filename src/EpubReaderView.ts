@@ -1,11 +1,21 @@
-import { FileView, Notice, TFile } from "obsidian";
+import { FileView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { ExcerptManager } from "./ExcerptManager";
 import { ProgressStore } from "./ProgressStore";
+import { AnnotationStore } from "./AnnotationStore";
 import { AIService } from "./AIService";
-import { EpubPluginSettings } from "./types";
+import {
+  EpubPluginSettings,
+  Annotation,
+  HighlightColor,
+  HIGHLIGHT_COLORS,
+  colorHex,
+} from "./types";
+import { NoteInputModal } from "./NoteInputModal";
 
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
+
+const UNDERLINE_CLASS = "epub-user-underline";
 
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
@@ -19,30 +29,40 @@ export class EpubReaderView extends FileView {
   private selectedText: string = "";
   private selectedCfi: string = "";
   private resizeObserver: ResizeObserver | null = null;
+  private accentColor: string = "#7b68ee";
 
   private excerptManager: ExcerptManager;
   private progressStore: ProgressStore;
+  private annotationStore: AnnotationStore;
   private aiService: AIService;
   private settings: EpubPluginSettings;
 
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
+  private sidebarEl: HTMLElement | null = null;
   private tocEl: HTMLElement | null = null;
+  private notesEl: HTMLElement | null = null;
   private readerEl: HTMLElement | null = null;
   private progressEl: HTMLElement | null = null;
   private tocToggleBtn: HTMLElement | null = null;
   private tocVisible: boolean = true;
+  private sidebarMode: "toc" | "notes" = "toc";
+  private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private wheelAccum: number = 0;
+  private wheelCooldown: boolean = false;
 
   constructor(
     leaf: WorkspaceLeaf,
     excerptManager: ExcerptManager,
     progressStore: ProgressStore,
+    annotationStore: AnnotationStore,
     aiService: AIService,
     settings: EpubPluginSettings
   ) {
     super(leaf);
     this.excerptManager = excerptManager;
     this.progressStore = progressStore;
+    this.annotationStore = annotationStore;
     this.aiService = aiService;
     this.settings = settings;
     this.flow = settings.defaultFlow;
@@ -95,12 +115,23 @@ export class EpubReaderView extends FileView {
     this.toolbarEl = container.createDiv({ cls: "epub-toolbar" });
     this.buildToolbar(this.toolbarEl);
 
-    // Body: TOC + Reader
+    // Body: Sidebar (TOC / Notes) + Reader
     const bodyEl = container.createDiv({ cls: "epub-body" });
 
-    // TOC sidebar
-    this.tocEl = bodyEl.createDiv({ cls: "epub-toc" });
-    this.tocEl.createEl("div", { cls: "epub-toc-header", text: "目录" });
+    // Sidebar with tab switcher
+    this.sidebarEl = bodyEl.createDiv({ cls: "epub-sidebar" });
+    const tabs = this.sidebarEl.createDiv({ cls: "epub-sidebar-tabs" });
+    const tocTab = tabs.createEl("button", { cls: "epub-sidebar-tab is-active", text: "目录" });
+    const notesTab = tabs.createEl("button", { cls: "epub-sidebar-tab", text: "标注" });
+    tocTab.addEventListener("click", () => this.setSidebarMode("toc"));
+    notesTab.addEventListener("click", () => this.setSidebarMode("notes"));
+
+    // TOC panel
+    this.tocEl = this.sidebarEl.createDiv({ cls: "epub-toc" });
+
+    // Notes panel
+    this.notesEl = this.sidebarEl.createDiv({ cls: "epub-notes" });
+    this.notesEl.style.display = "none";
 
     // Reader area
     this.readerEl = bodyEl.createDiv({ cls: "epub-reader-area" });
@@ -176,9 +207,21 @@ export class EpubReaderView extends FileView {
 
   private toggleToc() {
     this.tocVisible = !this.tocVisible;
-    if (this.tocEl) {
-      this.tocEl.style.display = this.tocVisible ? "" : "none";
+    if (this.sidebarEl) {
+      this.sidebarEl.style.display = this.tocVisible ? "" : "none";
     }
+  }
+
+  private setSidebarMode(mode: "toc" | "notes") {
+    this.sidebarMode = mode;
+    if (this.tocEl) this.tocEl.style.display = mode === "toc" ? "" : "none";
+    if (this.notesEl) this.notesEl.style.display = mode === "notes" ? "" : "none";
+    const tabs = this.sidebarEl?.querySelectorAll(".epub-sidebar-tab");
+    tabs?.forEach((t, i) => {
+      const active = (i === 0 && mode === "toc") || (i === 1 && mode === "notes");
+      t.toggleClass("is-active", active);
+    });
+    if (mode === "notes") this.renderNotesPanel();
   }
 
   private changeFontSize(delta: number) {
@@ -203,6 +246,10 @@ export class EpubReaderView extends FileView {
   private destroyBook() {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    if (this.keydownHandler) {
+      this.containerEl.removeEventListener("keydown", this.keydownHandler);
+      this.keydownHandler = null;
+    }
     if (this.rendition) {
       this.rendition.destroy();
       this.rendition = null;
@@ -262,6 +309,18 @@ export class EpubReaderView extends FileView {
         }
       });
 
+      // Click on an existing drawn line / note → edit menu
+      this.rendition.on("markClicked", (cfiRange: string) => {
+        if (!this.file) return;
+        const ann = this.annotationStore.getByCfi(this.file.path, cfiRange);
+        if (ann) this.showAnnotationMenu(ann);
+      });
+
+      // Mouse wheel + keyboard navigation (bound inside each iframe document)
+      this.rendition.hooks.content.register((contents: any) => {
+        this.attachContentNavigation(contents);
+      });
+
       // Track location changes
       this.rendition.on("relocated", (location: any) => {
         this.currentCfi = location?.start?.cfi ?? "";
@@ -286,31 +345,133 @@ export class EpubReaderView extends FileView {
         await this.rendition.display();
       }
 
+      // Restore saved annotations (drawn lines + notes)
+      this.restoreAnnotations();
+
+      // Keyboard navigation at the host level (works even when focus is outside iframe)
+      this.registerKeyboardNavigation();
+
       // Load TOC
       await this.loadToc();
+
+      // Refresh notes panel if currently shown
+      if (this.sidebarMode === "notes") this.renderNotesPanel();
     } catch (err) {
       loadingEl.textContent = `加载失败: ${err}`;
       console.error("EPUB load error:", err);
     }
   }
 
+  // ---------- Navigation: wheel + keyboard ----------
+
+  private attachContentNavigation(contents: any) {
+    const doc: Document | undefined = contents?.document;
+    if (!doc) return;
+
+    // Wheel: in paginated mode map vertical wheel to page turns; in scrolled
+    // mode keep native scrolling.
+    doc.addEventListener(
+      "wheel",
+      (e: WheelEvent) => {
+        if (this.flow !== "paginated" || !this.rendition) return;
+        e.preventDefault();
+        if (this.wheelCooldown) return;
+        this.wheelAccum += e.deltaY;
+        const threshold = 30;
+        if (this.wheelAccum > threshold) {
+          this.wheelAccum = 0;
+          this.turnPage("next");
+        } else if (this.wheelAccum < -threshold) {
+          this.wheelAccum = 0;
+          this.turnPage("prev");
+        }
+      },
+      { passive: false }
+    );
+
+    // Arrow keys inside the iframe document
+    doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
+  }
+
+  private turnPage(dir: "next" | "prev") {
+    if (!this.rendition) return;
+    this.wheelCooldown = true;
+    const p = dir === "next" ? this.rendition.next() : this.rendition.prev();
+    Promise.resolve(p).finally(() => {
+      window.setTimeout(() => {
+        this.wheelCooldown = false;
+      }, 180);
+    });
+  }
+
+  private handleNavKey(e: KeyboardEvent) {
+    if (e.key === "ArrowRight" || e.key === "PageDown") {
+      e.preventDefault();
+      this.rendition?.next();
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      e.preventDefault();
+      this.rendition?.prev();
+    }
+  }
+
+  private registerKeyboardNavigation() {
+    if (this.keydownHandler) return;
+    this.keydownHandler = (e: KeyboardEvent) => {
+      // Only act when this view is the active leaf and no input is focused
+      const active = document.activeElement;
+      const tag = active?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      if (!this.containerEl.isShown()) return;
+      this.handleNavKey(e);
+    };
+    this.containerEl.addEventListener("keydown", this.keydownHandler);
+  }
+
+  private cssVar(name: string, fallback: string): string {
+    const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
   private applyTheme() {
     if (!this.rendition) return;
     const isDark = document.body.hasClass("theme-dark");
 
+    // Obsidian CSS variables only exist on the host document, NOT inside the
+    // EPUB iframe. Resolve them to concrete values before injecting so that
+    // text, links and the selection highlight render correctly.
+    const background = this.cssVar("--background-primary", isDark ? "#1e1e1e" : "#ffffff");
+    const textColor = this.cssVar("--text-normal", isDark ? "#dcddde" : "#1a1a1a");
+    const linkColor = this.cssVar("--link-color", "#5b8def");
+    const fontFamily = this.cssVar(
+      "--font-text",
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
+    );
+    const accent = this.cssVar("--interactive-accent", "#7b68ee");
+    const selectionBg = this.cssVar("--text-selection", isDark ? "rgba(123,104,238,0.4)" : "rgba(123,104,238,0.25)");
+
     this.rendition.themes.register("custom", {
+      "html, body": {
+        background: `${background} !important`,
+        color: `${textColor} !important`,
+      },
       body: {
-        background: isDark ? "var(--background-primary)" : "var(--background-primary)",
-        color: isDark ? "var(--text-normal)" : "var(--text-normal)",
-        "font-family": "var(--font-text)",
+        "font-family": fontFamily,
         "line-height": "1.8",
         padding: "2em 3em",
       },
-      "a": { color: "var(--link-color)" },
-      "::selection": { background: "var(--text-selection)" },
+      // Make sure text inside the iframe is always selectable.
+      "*": {
+        "-webkit-user-select": "text !important",
+        "user-select": "text !important",
+      },
+      "a": { color: `${linkColor} !important` },
+      "::selection": { background: `${selectionBg}`, color: `${textColor}` },
+      "::-moz-selection": { background: `${selectionBg}`, color: `${textColor}` },
     });
     this.rendition.themes.select("custom");
     this.rendition.themes.fontSize(`${this.fontSize}px`);
+    // Expose accent for any later use (e.g. default note marker color).
+    this.accentColor = accent;
   }
 
   private async loadToc() {
@@ -366,13 +527,31 @@ export class EpubReaderView extends FileView {
 
     const menu = document.createElement("div");
     menu.className = "epub-context-menu";
+    // Keep the menu interactive: stop mousedown from reaching the outside
+    // dismiss handler before the button click fires.
+    menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
-    const highlightBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "🖊 高亮" });
-    highlightBtn.addEventListener("click", () => {
-      if (this.rendition && this.selectedCfi) {
-        this.rendition.annotations.highlight(this.selectedCfi, {}, (e: Event) => {});
-      }
+    // Color row: five drawing-line colors
+    const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
+    for (const c of HIGHLIGHT_COLORS) {
+      const dot = colorRow.createDiv({ cls: "epub-color-dot" });
+      dot.style.background = c.hex;
+      dot.title = `画线 · ${c.label}`;
+      dot.addEventListener("click", async () => {
+        this.dismissContextMenu();
+        await this.addUnderline(c.id);
+      });
+    }
+
+    const divider = menu.createDiv({ cls: "epub-ctx-divider" });
+    void divider;
+
+    // Note (写想法)
+    const noteBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📝 标注" });
+    noteBtn.title = "写下自己的想法";
+    noteBtn.addEventListener("click", () => {
       this.dismissContextMenu();
+      this.openNoteModal();
     });
 
     const excerptBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 摘录" });
@@ -387,29 +566,39 @@ export class EpubReaderView extends FileView {
       await this.runAI();
     });
 
-    // Position near selection
+    document.body.appendChild(menu);
+    this.contextMenu = menu;
+    this.positionMenu(menu, contents);
+
+    // Dismiss on click / scroll outside
+    setTimeout(() => {
+      document.addEventListener("mousedown", this.dismissContextMenuBound, { once: true });
+    }, 100);
+  }
+
+  private positionMenu(menu: HTMLElement, contents: any) {
     const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
-    const sel = contents?.window?.getSelection();
+    const sel = contents?.window?.getSelection?.();
+    menu.style.position = "fixed";
     if (sel && sel.rangeCount > 0 && iframe) {
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const iframeRect = iframe.getBoundingClientRect();
-      menu.style.position = "fixed";
-      menu.style.top = `${iframeRect.top + rect.bottom + 5}px`;
-      menu.style.left = `${iframeRect.left + rect.left}px`;
+      const menuRect = menu.getBoundingClientRect();
+      let top = iframeRect.top + rect.bottom + 6;
+      let left = iframeRect.left + rect.left;
+      // Keep on-screen
+      const maxLeft = window.innerWidth - menuRect.width - 8;
+      if (left > maxLeft) left = Math.max(8, maxLeft);
+      const maxTop = window.innerHeight - menuRect.height - 8;
+      if (top > maxTop) top = iframeRect.top + rect.top - menuRect.height - 6;
+      menu.style.top = `${Math.max(8, top)}px`;
+      menu.style.left = `${Math.max(8, left)}px`;
     } else {
-      menu.style.position = "fixed";
       menu.style.top = "50%";
       menu.style.left = "50%";
+      menu.style.transform = "translate(-50%, -50%)";
     }
-
-    document.body.appendChild(menu);
-    this.contextMenu = menu;
-
-    // Dismiss on click outside
-    setTimeout(() => {
-      document.addEventListener("mousedown", this.dismissContextMenuBound, { once: true });
-    }, 100);
   }
 
   private dismissContextMenuBound = () => this.dismissContextMenu();
@@ -420,6 +609,249 @@ export class EpubReaderView extends FileView {
       this.contextMenu = null;
     }
     document.removeEventListener("mousedown", this.dismissContextMenuBound);
+  }
+
+  // ---------- Annotations: draw / note / restore / manage ----------
+
+  private drawLine(annotation: Annotation) {
+    if (!this.rendition) return;
+    const hex = colorHex(annotation.color);
+    const className = annotation.note
+      ? `${UNDERLINE_CLASS} has-note`
+      : UNDERLINE_CLASS;
+    this.rendition.annotations.add(
+      "underline",
+      annotation.cfiRange,
+      { id: annotation.id },
+      undefined,
+      className,
+      {
+        stroke: hex,
+        "stroke-opacity": "0.9",
+        "stroke-width": "2",
+      }
+    );
+  }
+
+  private redrawLine(annotation: Annotation) {
+    if (!this.rendition) return;
+    try {
+      this.rendition.annotations.remove(annotation.cfiRange, "underline");
+    } catch (e) {
+      /* ignore */
+    }
+    this.drawLine(annotation);
+  }
+
+  private async addUnderline(color: HighlightColor) {
+    if (!this.file || !this.selectedCfi || !this.selectedText) return;
+    const existing = this.annotationStore.getByCfi(this.file.path, this.selectedCfi);
+    if (existing) {
+      // Update color of existing line on the same range
+      await this.annotationStore.update(this.file.path, existing.id, { color });
+      const updated = this.annotationStore.get(this.file.path, existing.id);
+      if (updated) this.redrawLine(updated);
+    } else {
+      const ann: Annotation = {
+        id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
+        cfiRange: this.selectedCfi,
+        text: this.selectedText,
+        color,
+        chapter: this.currentChapter || "未知章节",
+        created: new Date().toISOString(),
+      };
+      await this.annotationStore.add(this.file.path, ann);
+      this.drawLine(ann);
+    }
+    this.clearSelection();
+    if (this.sidebarMode === "notes") this.renderNotesPanel();
+    new Notice("✅ 已画线");
+  }
+
+  private openNoteModal() {
+    if (!this.file || !this.selectedCfi || !this.selectedText) return;
+    const filePath = this.file.path;
+    const cfiRange = this.selectedCfi;
+    const text = this.selectedText;
+    const chapter = this.currentChapter || "未知章节";
+
+    new NoteInputModal(
+      this.app,
+      text,
+      { color: "yellow" },
+      async ({ note, color }) => {
+        const ann: Annotation = {
+          id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
+          cfiRange,
+          text,
+          color,
+          note: note || undefined,
+          chapter,
+          created: new Date().toISOString(),
+        };
+        await this.annotationStore.add(filePath, ann);
+        this.drawLine(ann);
+        this.clearSelection();
+        if (this.sidebarMode === "notes") this.renderNotesPanel();
+        new Notice(note ? "✅ 标注已保存" : "✅ 已画线");
+      }
+    ).open();
+    this.clearSelection();
+  }
+
+  private clearSelection() {
+    try {
+      const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
+      iframe?.contentWindow?.getSelection?.()?.removeAllRanges();
+    } catch (e) {
+      /* ignore */
+    }
+    this.selectedText = "";
+    this.selectedCfi = "";
+  }
+
+  private restoreAnnotations() {
+    if (!this.file || !this.rendition) return;
+    const list = this.annotationStore.getByFile(this.file.path);
+    for (const ann of list) {
+      try {
+        this.drawLine(ann);
+      } catch (e) {
+        console.error("restore annotation failed", e);
+      }
+    }
+  }
+
+  private showAnnotationMenu(ann: Annotation) {
+    this.dismissContextMenu();
+    if (!this.file) return;
+    const filePath = this.file.path;
+
+    const menu = document.createElement("div");
+    menu.className = "epub-context-menu epub-ann-menu";
+    menu.addEventListener("mousedown", (e) => e.stopPropagation());
+
+    // Recolor row
+    const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
+    for (const c of HIGHLIGHT_COLORS) {
+      const dot = colorRow.createDiv({ cls: "epub-color-dot" });
+      dot.style.background = c.hex;
+      if (c.id === ann.color) dot.addClass("is-active");
+      dot.title = `改为${c.label}`;
+      dot.addEventListener("click", async () => {
+        this.dismissContextMenu();
+        await this.annotationStore.update(filePath, ann.id, { color: c.id });
+        const updated = this.annotationStore.get(filePath, ann.id);
+        if (updated) this.redrawLine(updated);
+        if (this.sidebarMode === "notes") this.renderNotesPanel();
+      });
+    }
+
+    menu.createDiv({ cls: "epub-ctx-divider" });
+
+    const editBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: ann.note ? "📝 编辑想法" : "📝 添加想法" });
+    editBtn.addEventListener("click", () => {
+      this.dismissContextMenu();
+      new NoteInputModal(
+        this.app,
+        ann.text,
+        { note: ann.note, color: ann.color },
+        async ({ note, color }) => {
+          await this.annotationStore.update(filePath, ann.id, { note: note || undefined, color });
+          const updated = this.annotationStore.get(filePath, ann.id);
+          if (updated) this.redrawLine(updated);
+          if (this.sidebarMode === "notes") this.renderNotesPanel();
+          new Notice("✅ 已更新");
+        },
+        "编辑标注"
+      ).open();
+    });
+
+    const delBtn = menu.createEl("button", { cls: "epub-ctx-btn is-danger", text: "🗑 删除" });
+    delBtn.addEventListener("click", async () => {
+      this.dismissContextMenu();
+      await this.removeAnnotation(ann.id, ann.cfiRange);
+    });
+
+    document.body.appendChild(menu);
+    this.contextMenu = menu;
+
+    // Position near the clicked mark using current selection range if any,
+    // otherwise center.
+    const contents = (this.rendition as any)?.getContents?.()?.[0];
+    this.positionMenu(menu, contents);
+
+    setTimeout(() => {
+      document.addEventListener("mousedown", this.dismissContextMenuBound, { once: true });
+    }, 100);
+  }
+
+  private async removeAnnotation(id: string, cfiRange: string) {
+    if (!this.file) return;
+    if (this.rendition) {
+      try {
+        this.rendition.annotations.remove(cfiRange, "underline");
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    await this.annotationStore.remove(this.file.path, id);
+    if (this.sidebarMode === "notes") this.renderNotesPanel();
+    new Notice("🗑 标注已删除");
+  }
+
+  private renderNotesPanel() {
+    if (!this.notesEl) return;
+    this.notesEl.empty();
+
+    const list = this.file ? this.annotationStore.getByFile(this.file.path) : [];
+    if (list.length === 0) {
+      this.notesEl.createDiv({ cls: "epub-notes-empty", text: "暂无标注。选中文字后点击颜色画线或写想法。" });
+      return;
+    }
+
+    const ul = this.notesEl.createEl("ul", { cls: "epub-notes-list" });
+    // Newest first
+    const sorted = [...list].sort((a, b) => b.created.localeCompare(a.created));
+    for (const ann of sorted) {
+      const li = ul.createEl("li", { cls: "epub-note-item" });
+
+      const head = li.createDiv({ cls: "epub-note-item-head" });
+      const dot = head.createDiv({ cls: "epub-color-dot is-static" });
+      dot.style.background = colorHex(ann.color);
+      head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
+
+      const quote = li.createDiv({ cls: "epub-note-item-text" });
+      quote.setText(ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text);
+
+      if (ann.note) {
+        const note = li.createDiv({ cls: "epub-note-item-note" });
+        note.setText(ann.note);
+      }
+
+      const actions = li.createDiv({ cls: "epub-note-item-actions" });
+      const jump = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
+      jump.addEventListener("click", () => this.rendition?.display(ann.cfiRange));
+      const edit = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
+      edit.addEventListener("click", () => {
+        if (!this.file) return;
+        const filePath = this.file.path;
+        new NoteInputModal(
+          this.app,
+          ann.text,
+          { note: ann.note, color: ann.color },
+          async ({ note, color }) => {
+            await this.annotationStore.update(filePath, ann.id, { note: note || undefined, color });
+            const updated = this.annotationStore.get(filePath, ann.id);
+            if (updated) this.redrawLine(updated);
+            this.renderNotesPanel();
+          },
+          "编辑标注"
+        ).open();
+      });
+      const del = actions.createEl("button", { cls: "epub-note-action is-danger", text: "删除" });
+      del.addEventListener("click", () => this.removeAnnotation(ann.id, ann.cfiRange));
+    }
   }
 
   private async saveExcerpt() {
