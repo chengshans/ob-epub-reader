@@ -24,12 +24,12 @@ export class ExcerptManager {
   }
 
   /** Build a markdown link back to the EPUB source position. */
-  private buildSourceLink(epubSourcePath: string, cfi: string, vaultName: string): string {
+  private buildSourceLink(epubSourcePath: string, cfi: string): string {
     const params = new URLSearchParams();
-    if (vaultName) params.set("vault", vaultName);
     params.set("file", epubSourcePath);
     if (cfi) params.set("cfi", cfi);
-    const url = `obsidian://open?${params.toString()}`;
+    // Plugin-registered handler: obsidian://ob-epub-goto
+    const url = `obsidian://ob-epub-goto?${params.toString()}`;
     // Angle brackets prevent ')' inside the CFI from breaking the markdown link.
     return `[回到原文](<${url}>)`;
   }
@@ -52,7 +52,7 @@ export class ExcerptManager {
       ...text.split("\n").map((line) => `> ${line}`),
       `> ^${excerptId}`,
       ``,
-      `${this.buildSourceLink(epubSourcePath, cfi, vaultName)} · ${dateStr}`,
+      `${this.buildSourceLink(epubSourcePath, cfi)} · ${dateStr}`,
       ``,
       `---`,
       ``,

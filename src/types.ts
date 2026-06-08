@@ -65,3 +65,8 @@ export interface Annotation {
 export interface AnnotationData {
   annotations: Record<string, Annotation[]>;
 }
+
+/** Bridge from EpubReaderView back to the plugin for deep-link jumps. */
+export interface EpubOpenBridge {
+  consumePendingCfi(filePath: string): string;
+}

@@ -6,6 +6,7 @@ import { AnnotationStore } from "./AnnotationStore";
 import { AIService } from "./AIService";
 import {
   EpubPluginSettings,
+  EpubOpenBridge,
   Annotation,
   HighlightColor,
   HIGHLIGHT_COLORS,
@@ -31,11 +32,13 @@ export class EpubReaderView extends FileView {
   private resizeObserver: ResizeObserver | null = null;
   private accentColor: string = "#7b68ee";
 
+  private openBridge: EpubOpenBridge;
   private excerptManager: ExcerptManager;
   private progressStore: ProgressStore;
   private annotationStore: AnnotationStore;
   private aiService: AIService;
   private settings: EpubPluginSettings;
+  private pendingCfi: string = "";
 
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
@@ -53,6 +56,7 @@ export class EpubReaderView extends FileView {
 
   constructor(
     leaf: WorkspaceLeaf,
+    openBridge: EpubOpenBridge,
     excerptManager: ExcerptManager,
     progressStore: ProgressStore,
     annotationStore: AnnotationStore,
@@ -60,6 +64,7 @@ export class EpubReaderView extends FileView {
     settings: EpubPluginSettings
   ) {
     super(leaf);
+    this.openBridge = openBridge;
     this.excerptManager = excerptManager;
     this.progressStore = progressStore;
     this.annotationStore = annotationStore;
@@ -97,8 +102,25 @@ export class EpubReaderView extends FileView {
   async onLoadFile(file: TFile): Promise<void> {
     const titleEl = this.toolbarEl?.querySelector("#epub-toolbar-title") as HTMLElement | null;
     if (titleEl) titleEl.textContent = file.basename;
+    const jumpCfi = this.pendingCfi || this.openBridge.consumePendingCfi(file.path);
+    this.pendingCfi = "";
     const savedProgress = this.progressStore.getProgress(file.path);
-    await this.loadBook(file, savedProgress?.cfi ?? "");
+    await this.loadBook(file, jumpCfi || savedProgress?.cfi || "");
+  }
+
+  /** Jump to a CFI position (used by deep-link "回到原文"). */
+  async navigateToCfi(cfi: string): Promise<void> {
+    if (!cfi) return;
+    if (this.rendition) {
+      try {
+        await this.rendition.display(cfi);
+      } catch (err) {
+        console.error("CFI navigation failed:", err);
+        new Notice("无法跳转到原文位置");
+      }
+    } else {
+      this.pendingCfi = cfi;
+    }
   }
 
   // FileView lifecycle: called when switching away from this file

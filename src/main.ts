@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile, normalizePath } from "obsidian";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { ExcerptManager } from "./ExcerptManager";
 import { ProgressStore } from "./ProgressStore";
@@ -14,6 +14,7 @@ export default class ObEpubPlugin extends Plugin {
   annotationStore!: AnnotationStore;
   excerptManager!: ExcerptManager;
   aiService!: AIService;
+  private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -31,6 +32,7 @@ export default class ObEpubPlugin extends Plugin {
     this.registerView(EPUB_READER_VIEW_TYPE, (leaf) => {
       return new EpubReaderView(
         leaf,
+        this,
         this.excerptManager,
         this.progressStore,
         this.annotationStore,
@@ -77,13 +79,68 @@ export default class ObEpubPlugin extends Plugin {
       }).open();
     });
 
+    // Deep-link: obsidian://ob-epub-goto?file=...&cfi=...
+    // NOTE: Cannot register "open" — Obsidian core already owns that action.
+    this.registerObsidianProtocolHandler("ob-epub-goto", async (params) => {
+      const filePath = params.file;
+      const cfi = params.cfi ?? "";
+      if (!filePath || typeof filePath !== "string") return;
+      await this.openEpubAtCfi(filePath, typeof cfi === "string" ? cfi : "");
+    });
+
     console.log("ob-epub-reader loaded");
+  }
+
+  /** Consumed by EpubReaderView.onLoadFile to honour a pending deep-link jump. */
+  consumePendingCfi(filePath: string): string {
+    if (this.pendingCfiForNextOpen?.filePath === filePath) {
+      const cfi = this.pendingCfiForNextOpen.cfi;
+      this.pendingCfiForNextOpen = null;
+      return cfi;
+    }
+    return "";
   }
 
   async openEpubFile(file: TFile) {
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.openFile(file);
     this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openEpubAtCfi(filePath: string, cfi: string) {
+    const normalized = normalizePath(filePath);
+    const file =
+      this.app.vault.getFileByPath(normalized) ??
+      this.app.vault.getAbstractFileByPath(normalized);
+
+    if (!(file instanceof TFile) || file.extension !== "epub") {
+      new Notice(`找不到 EPUB 文件: ${filePath}`);
+      return;
+    }
+
+    const existingLeaf = this.app.workspace
+      .getLeavesOfType(EPUB_READER_VIEW_TYPE)
+      .find((leaf) => (leaf.view as EpubReaderView).file?.path === file.path);
+
+    if (existingLeaf) {
+      await this.app.workspace.revealLeaf(existingLeaf);
+      if (cfi) {
+        await (existingLeaf.view as EpubReaderView).navigateToCfi(cfi);
+      }
+      return;
+    }
+
+    if (cfi) {
+      this.pendingCfiForNextOpen = { filePath: file.path, cfi };
+    }
+
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.openFile(file);
+    await this.app.workspace.revealLeaf(leaf);
+
+    if (leaf.view.getViewType() === EPUB_READER_VIEW_TYPE && cfi) {
+      await (leaf.view as EpubReaderView).navigateToCfi(cfi);
+    }
   }
 
   async loadSettings() {
