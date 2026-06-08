@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { ExcerptManager } from "./ExcerptManager";
 import { ProgressStore } from "./ProgressStore";
@@ -71,38 +71,13 @@ export default class ObEpubPlugin extends Plugin {
       }).open();
     });
 
-    // Handle file open: if .epub is activated, load it in the view
-    this.registerEvent(
-      this.app.workspace.on("file-open", async (file) => {
-        if (file?.extension === "epub") {
-          await this.openEpubFile(file);
-        }
-      })
-    );
-
     console.log("ob-epub-reader loaded");
   }
 
   async openEpubFile(file: TFile) {
-    let leaf: WorkspaceLeaf | null = null;
-
-    // Reuse existing epub reader leaf if open
-    const existing = this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE);
-    if (existing.length > 0) {
-      leaf = existing[0];
-    } else {
-      leaf = this.app.workspace.getLeaf(true);
-    }
-
-    await leaf.setViewState({
-      type: EPUB_READER_VIEW_TYPE,
-      active: true,
-    });
-
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.openFile(file);
     this.app.workspace.revealLeaf(leaf);
-
-    const view = leaf.view as EpubReaderView;
-    await view.loadFile(file);
   }
 
   async loadSettings() {

@@ -1,4 +1,4 @@
-import { ItemView, Notice, TFile, WorkspaceLeaf } from "obsidian";
+import { FileView, Notice, TFile } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { ExcerptManager } from "./ExcerptManager";
 import { ProgressStore } from "./ProgressStore";
@@ -7,10 +7,9 @@ import { EpubPluginSettings } from "./types";
 
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
 
-export class EpubReaderView extends ItemView {
+export class EpubReaderView extends FileView {
   private book: Book | null = null;
   private rendition: Rendition | null = null;
-  private currentFile: TFile | null = null;
   private currentCfi: string = "";
   private currentChapter: string = "";
   private tocItems: NavItem[] = [];
@@ -19,6 +18,7 @@ export class EpubReaderView extends ItemView {
   private contextMenu: HTMLElement | null = null;
   private selectedText: string = "";
   private selectedCfi: string = "";
+  private resizeObserver: ResizeObserver | null = null;
 
   private excerptManager: ExcerptManager;
   private progressStore: ProgressStore;
@@ -53,8 +53,12 @@ export class EpubReaderView extends ItemView {
     return EPUB_READER_VIEW_TYPE;
   }
 
+  canAcceptExtension(extension: string): boolean {
+    return extension === "epub";
+  }
+
   getDisplayText(): string {
-    return this.currentFile?.basename ?? "EPUB Reader";
+    return this.file?.basename ?? "EPUB Reader";
   }
 
   getIcon(): string {
@@ -69,8 +73,21 @@ export class EpubReaderView extends ItemView {
     this.destroyBook();
   }
 
+  // FileView lifecycle: called by Obsidian when a file is opened in this view
+  async onLoadFile(file: TFile): Promise<void> {
+    const titleEl = this.toolbarEl?.querySelector("#epub-toolbar-title") as HTMLElement | null;
+    if (titleEl) titleEl.textContent = file.basename;
+    const savedProgress = this.progressStore.getProgress(file.path);
+    await this.loadBook(file, savedProgress?.cfi ?? "");
+  }
+
+  // FileView lifecycle: called when switching away from this file
+  async onUnloadFile(_file: TFile): Promise<void> {
+    this.destroyBook();
+  }
+
   private buildLayout() {
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.contentEl;
     container.empty();
     container.addClass("ob-epub-container");
 
@@ -93,6 +110,17 @@ export class EpubReaderView extends ItemView {
     const progressInner = this.progressEl.createDiv({ cls: "epub-progress-inner" });
     progressInner.createDiv({ cls: "epub-progress-fill", attr: { id: "epub-progress-fill" } });
     this.progressEl.createEl("span", { cls: "epub-progress-text", attr: { id: "epub-progress-text" }, text: "0%" });
+
+    // ResizeObserver: 通知 epub.js 重绘
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.rendition && this.readerEl) {
+        const r = this.readerEl.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          this.rendition.resize(r.width, r.height);
+        }
+      }
+    });
+    this.resizeObserver.observe(this.readerEl!);
   }
 
   private buildToolbar(toolbar: HTMLElement) {
@@ -104,7 +132,7 @@ export class EpubReaderView extends ItemView {
     this.tocToggleBtn.addEventListener("click", () => this.toggleToc());
 
     // Book title
-    const titleEl = toolbar.createEl("span", { cls: "epub-toolbar-title", text: this.currentFile?.basename ?? "EPUB Reader" });
+    const titleEl = toolbar.createEl("span", { cls: "epub-toolbar-title", text: this.file?.basename ?? "EPUB Reader" });
     titleEl.id = "epub-toolbar-title";
 
     // Spacer
@@ -165,14 +193,16 @@ export class EpubReaderView extends ItemView {
     const btn = this.toolbarEl?.querySelector("#epub-flow-btn") as HTMLElement | null;
     if (btn) btn.textContent = this.flow === "paginated" ? "📄 分页" : "📜 滚动";
 
-    if (this.currentFile) {
+    if (this.file) {
       const savedCfi = this.currentCfi;
       this.destroyBook();
-      this.loadBook(this.currentFile, savedCfi);
+      this.loadBook(this.file, savedCfi);
     }
   }
 
   private destroyBook() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     if (this.rendition) {
       this.rendition.destroy();
       this.rendition = null;
@@ -184,17 +214,6 @@ export class EpubReaderView extends ItemView {
     if (this.readerEl) {
       this.readerEl.empty();
     }
-  }
-
-  async loadFile(file: TFile) {
-    this.currentFile = file;
-    // Update toolbar title
-    const titleEl = this.toolbarEl?.querySelector("#epub-toolbar-title") as HTMLElement | null;
-    if (titleEl) titleEl.textContent = file.basename;
-
-    const savedProgress = this.progressStore.getProgress(file.path);
-    const startCfi = savedProgress?.cfi ?? "";
-    await this.loadBook(file, startCfi);
   }
 
   private async loadBook(file: TFile, startCfi: string = "") {
@@ -211,11 +230,18 @@ export class EpubReaderView extends ItemView {
       await this.book.ready;
       loadingEl.remove();
 
+      // 等一帧确保 readerEl 已有真实布局尺寸
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+
+      const rect = this.readerEl.getBoundingClientRect();
+      const w = Math.max(rect.width || 600, 300);
+      const h = Math.max(rect.height || 500, 200);
+
       // Render
       this.rendition = this.book.renderTo(this.readerEl, {
         flow: this.flow,
-        width: "100%",
-        height: "100%",
+        width: w,
+        height: h,
         allowScriptedContent: false,
       });
 
@@ -243,9 +269,9 @@ export class EpubReaderView extends ItemView {
         this.updateProgressBar(percentage);
 
         // Save progress
-        if (this.currentFile) {
+        if (this.file) {
           this.progressStore.saveProgress(
-            this.currentFile.path,
+            this.file.path,
             this.currentCfi,
             this.currentChapter,
             percentage
@@ -397,12 +423,12 @@ export class EpubReaderView extends ItemView {
   }
 
   private async saveExcerpt() {
-    if (!this.currentFile || !this.selectedText) return;
+    if (!this.file || !this.selectedText) return;
     const vaultName = (this.app.vault as any).getName?.() ?? "";
     try {
       const filePath = await this.excerptManager.appendExcerpt(
-        this.currentFile.basename,
-        this.currentFile.path,
+        this.file.basename,
+        this.file.path,
         this.currentChapter || "未知章节",
         this.selectedText,
         this.selectedCfi,
@@ -415,7 +441,7 @@ export class EpubReaderView extends ItemView {
   }
 
   private async runAI() {
-    if (!this.currentFile || !this.selectedText) return;
+    if (!this.file || !this.selectedText) return;
     if (!this.aiService.isConfigured()) {
       new Notice("请先在设置中配置 AI API Key");
       return;
@@ -427,8 +453,8 @@ export class EpubReaderView extends ItemView {
       notice.hide();
       const vaultName = (this.app.vault as any).getName?.() ?? "";
       const filePath = await this.excerptManager.appendAIResponse(
-        this.currentFile.basename,
-        this.currentFile.path,
+        this.file.basename,
+        this.file.path,
         this.selectedText,
         result,
         this.selectedCfi
