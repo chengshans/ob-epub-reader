@@ -23,6 +23,17 @@ export class ExcerptManager {
     return date.toISOString().replace("T", " ").slice(0, 16);
   }
 
+  /** Build a markdown link back to the EPUB source position. */
+  private buildSourceLink(epubSourcePath: string, cfi: string, vaultName: string): string {
+    const params = new URLSearchParams();
+    if (vaultName) params.set("vault", vaultName);
+    params.set("file", epubSourcePath);
+    if (cfi) params.set("cfi", cfi);
+    const url = `obsidian://open?${params.toString()}`;
+    // Angle brackets prevent ')' inside the CFI from breaking the markdown link.
+    return `[回到原文](<${url}>)`;
+  }
+
   async appendExcerpt(
     bookTitle: string,
     epubSourcePath: string,
@@ -41,7 +52,7 @@ export class ExcerptManager {
       ...text.split("\n").map((line) => `> ${line}`),
       `> ^${excerptId}`,
       ``,
-      `[回到原文](obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(epubSourcePath)}&cfi=${encodeURIComponent(cfi)}) · ${dateStr}`,
+      `${this.buildSourceLink(epubSourcePath, cfi, vaultName)} · ${dateStr}`,
       ``,
       `---`,
       ``,
