@@ -1,8 +1,7 @@
 import { FileView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
-import { ExcerptManager } from "./ExcerptManager";
+import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
-import { AnnotationStore } from "./AnnotationStore";
 import { AIService } from "./AIService";
 import {
   EpubPluginSettings,
@@ -33,12 +32,12 @@ export class EpubReaderView extends FileView {
   private accentColor: string = "#7b68ee";
 
   private openBridge: EpubOpenBridge;
-  private excerptManager: ExcerptManager;
+  private annotationVaultStore: AnnotationVaultStore;
   private progressStore: ProgressStore;
-  private annotationStore: AnnotationStore;
   private aiService: AIService;
   private settings: EpubPluginSettings;
   private pendingCfi: string = "";
+  private annotationWatcherCleanup: (() => void) | null = null;
 
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
@@ -57,17 +56,15 @@ export class EpubReaderView extends FileView {
   constructor(
     leaf: WorkspaceLeaf,
     openBridge: EpubOpenBridge,
-    excerptManager: ExcerptManager,
+    annotationVaultStore: AnnotationVaultStore,
     progressStore: ProgressStore,
-    annotationStore: AnnotationStore,
     aiService: AIService,
     settings: EpubPluginSettings
   ) {
     super(leaf);
     this.openBridge = openBridge;
-    this.excerptManager = excerptManager;
+    this.annotationVaultStore = annotationVaultStore;
     this.progressStore = progressStore;
-    this.annotationStore = annotationStore;
     this.aiService = aiService;
     this.settings = settings;
     this.flow = settings.defaultFlow;
@@ -222,7 +219,6 @@ export class EpubReaderView extends FileView {
     const shelfBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "📚" });
     shelfBtn.title = "书架";
     shelfBtn.addEventListener("click", () => {
-      // Trigger bookshelf via custom event
       this.containerEl.dispatchEvent(new CustomEvent("epub-open-bookshelf"));
     });
   }
@@ -266,6 +262,10 @@ export class EpubReaderView extends FileView {
   }
 
   private destroyBook() {
+    // Clean up vault file watcher
+    this.annotationWatcherCleanup?.();
+    this.annotationWatcherCleanup = null;
+
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.keydownHandler) {
@@ -332,9 +332,9 @@ export class EpubReaderView extends FileView {
       });
 
       // Click on an existing drawn line / note → edit menu
-      this.rendition.on("markClicked", (cfiRange: string) => {
+      this.rendition.on("markClicked", async (cfiRange: string) => {
         if (!this.file) return;
-        const ann = this.annotationStore.getByCfi(this.file.path, cfiRange);
+        const ann = await this.annotationVaultStore.getByCfi(this.file.path, cfiRange);
         if (ann) this.showAnnotationMenu(ann);
       });
 
@@ -349,7 +349,6 @@ export class EpubReaderView extends FileView {
         const percentage = location?.start?.percentage ?? 0;
         this.updateProgressBar(percentage);
 
-        // Save progress
         if (this.file) {
           this.progressStore.saveProgress(
             this.file.path,
@@ -360,6 +359,11 @@ export class EpubReaderView extends FileView {
         }
       });
 
+      // Re-draw highlights when epub.js re-renders a page (e.g. page turn)
+      this.rendition.on("rendered", () => {
+        this.redrawAllHighlights();
+      });
+
       // Navigate to saved position or start
       if (startCfi) {
         await this.rendition.display(startCfi);
@@ -367,10 +371,16 @@ export class EpubReaderView extends FileView {
         await this.rendition.display();
       }
 
-      // Restore saved annotations (drawn lines + notes)
-      this.restoreAnnotations();
+      // Load annotations from vault file and draw them
+      await this.refreshHighlights();
 
-      // Keyboard navigation at the host level (works even when focus is outside iframe)
+      // Register vault file watcher for external edits
+      this.annotationWatcherCleanup = this.annotationVaultStore.watchFile(
+        file.path,
+        () => this.refreshHighlights()
+      );
+
+      // Keyboard navigation at the host level
       this.registerKeyboardNavigation();
 
       // Load TOC
@@ -390,8 +400,6 @@ export class EpubReaderView extends FileView {
     const doc: Document | undefined = contents?.document;
     if (!doc) return;
 
-    // Wheel: in paginated mode map vertical wheel to page turns; in scrolled
-    // mode keep native scrolling.
     doc.addEventListener(
       "wheel",
       (e: WheelEvent) => {
@@ -411,7 +419,6 @@ export class EpubReaderView extends FileView {
       { passive: false }
     );
 
-    // Arrow keys inside the iframe document
     doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
   }
 
@@ -439,7 +446,6 @@ export class EpubReaderView extends FileView {
   private registerKeyboardNavigation() {
     if (this.keydownHandler) return;
     this.keydownHandler = (e: KeyboardEvent) => {
-      // Only act when this view is the active leaf and no input is focused
       const active = document.activeElement;
       const tag = active?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
@@ -458,9 +464,6 @@ export class EpubReaderView extends FileView {
     if (!this.rendition) return;
     const isDark = document.body.hasClass("theme-dark");
 
-    // Obsidian CSS variables only exist on the host document, NOT inside the
-    // EPUB iframe. Resolve them to concrete values before injecting so that
-    // text, links and the selection highlight render correctly.
     const background = this.cssVar("--background-primary", isDark ? "#1e1e1e" : "#ffffff");
     const textColor = this.cssVar("--text-normal", isDark ? "#dcddde" : "#1a1a1a");
     const linkColor = this.cssVar("--link-color", "#5b8def");
@@ -481,7 +484,6 @@ export class EpubReaderView extends FileView {
         "line-height": "1.8",
         padding: "2em 3em",
       },
-      // Make sure text inside the iframe is always selectable.
       "*": {
         "-webkit-user-select": "text !important",
         "user-select": "text !important",
@@ -492,7 +494,6 @@ export class EpubReaderView extends FileView {
     });
     this.rendition.themes.select("custom");
     this.rendition.themes.fontSize(`${this.fontSize}px`);
-    // Expose accent for any later use (e.g. default note marker color).
     this.accentColor = accent;
   }
 
@@ -549,8 +550,6 @@ export class EpubReaderView extends FileView {
 
     const menu = document.createElement("div");
     menu.className = "epub-context-menu";
-    // Keep the menu interactive: stop mousedown from reaching the outside
-    // dismiss handler before the button click fires.
     menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
     // Color row: five drawing-line colors
@@ -568,18 +567,12 @@ export class EpubReaderView extends FileView {
     const divider = menu.createDiv({ cls: "epub-ctx-divider" });
     void divider;
 
-    // Note (写想法)
+    // 标注 (画线 + 可选想法)
     const noteBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📝 标注" });
     noteBtn.title = "写下自己的想法";
     noteBtn.addEventListener("click", () => {
       this.dismissContextMenu();
       this.openNoteModal();
-    });
-
-    const excerptBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 摘录" });
-    excerptBtn.addEventListener("click", async () => {
-      this.dismissContextMenu();
-      await this.saveExcerpt();
     });
 
     const aiBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "🤖 AI" });
@@ -592,7 +585,6 @@ export class EpubReaderView extends FileView {
     this.contextMenu = menu;
     this.positionMenu(menu, contents);
 
-    // Dismiss on click / scroll outside
     setTimeout(() => {
       document.addEventListener("mousedown", this.dismissContextMenuBound, { once: true });
     }, 100);
@@ -609,7 +601,6 @@ export class EpubReaderView extends FileView {
       const menuRect = menu.getBoundingClientRect();
       let top = iframeRect.top + rect.bottom + 6;
       let left = iframeRect.left + rect.left;
-      // Keep on-screen
       const maxLeft = window.innerWidth - menuRect.width - 8;
       if (left > maxLeft) left = Math.max(8, maxLeft);
       const maxTop = window.innerHeight - menuRect.height - 8;
@@ -633,7 +624,7 @@ export class EpubReaderView extends FileView {
     document.removeEventListener("mousedown", this.dismissContextMenuBound);
   }
 
-  // ---------- Annotations: draw / note / restore / manage ----------
+  // ---------- Annotations: draw / refresh / manage ----------
 
   private drawLine(annotation: Annotation) {
     if (!this.rendition) return;
@@ -665,13 +656,53 @@ export class EpubReaderView extends FileView {
     this.drawLine(annotation);
   }
 
+  /**
+   * Draw all highlights without clearing first — used by the "rendered" event
+   * after epub.js rebuilds the page iframe. epub.js internally clears marks on
+   * re-render so we just re-add them.
+   */
+  private redrawAllHighlights() {
+    if (!this.file || !this.rendition) return;
+    // Use the last known list (avoid async inside a synchronous event handler)
+    this.annotationVaultStore.getByFile(this.file.path).then((list) => {
+      for (const ann of list) {
+        try { this.drawLine(ann); } catch (e) { /* ignore */ }
+      }
+    });
+  }
+
+  /**
+   * Full refresh: parse the vault md file → clear existing annotations →
+   * re-draw every highlight. Called on book open and on file-watcher trigger.
+   */
+  private async refreshHighlights() {
+    if (!this.file || !this.rendition) return;
+    const list = await this.annotationVaultStore.getByFile(this.file.path);
+
+    // Clear all existing epub.js underline marks
+    try {
+      // epub.js doesn't expose a "clear all" API, so we remove each one by CFI
+      for (const ann of list) {
+        try { this.rendition.annotations.remove(ann.cfiRange, "underline"); } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Re-draw
+    for (const ann of list) {
+      try { this.drawLine(ann); } catch (e) {
+        console.warn("refreshHighlights: drawLine failed for", ann.id, e);
+      }
+    }
+
+    if (this.sidebarMode === "notes") this.renderNotesPanel();
+  }
+
   private async addUnderline(color: HighlightColor) {
     if (!this.file || !this.selectedCfi || !this.selectedText) return;
-    const existing = this.annotationStore.getByCfi(this.file.path, this.selectedCfi);
+    const existing = await this.annotationVaultStore.getByCfi(this.file.path, this.selectedCfi);
     if (existing) {
-      // Update color of existing line on the same range
-      await this.annotationStore.update(this.file.path, existing.id, { color });
-      const updated = this.annotationStore.get(this.file.path, existing.id);
+      await this.annotationVaultStore.update(this.file.path, existing.id, { color });
+      const updated = await this.annotationVaultStore.getById(this.file.path, existing.id);
       if (updated) this.redrawLine(updated);
     } else {
       const ann: Annotation = {
@@ -682,7 +713,7 @@ export class EpubReaderView extends FileView {
         chapter: this.currentChapter || "未知章节",
         created: new Date().toISOString(),
       };
-      await this.annotationStore.add(this.file.path, ann);
+      await this.annotationVaultStore.add(this.file.path, ann);
       this.drawLine(ann);
     }
     this.clearSelection();
@@ -711,7 +742,7 @@ export class EpubReaderView extends FileView {
           chapter,
           created: new Date().toISOString(),
         };
-        await this.annotationStore.add(filePath, ann);
+        await this.annotationVaultStore.add(filePath, ann);
         this.drawLine(ann);
         this.clearSelection();
         if (this.sidebarMode === "notes") this.renderNotesPanel();
@@ -732,18 +763,6 @@ export class EpubReaderView extends FileView {
     this.selectedCfi = "";
   }
 
-  private restoreAnnotations() {
-    if (!this.file || !this.rendition) return;
-    const list = this.annotationStore.getByFile(this.file.path);
-    for (const ann of list) {
-      try {
-        this.drawLine(ann);
-      } catch (e) {
-        console.error("restore annotation failed", e);
-      }
-    }
-  }
-
   private showAnnotationMenu(ann: Annotation) {
     this.dismissContextMenu();
     if (!this.file) return;
@@ -762,8 +781,8 @@ export class EpubReaderView extends FileView {
       dot.title = `改为${c.label}`;
       dot.addEventListener("click", async () => {
         this.dismissContextMenu();
-        await this.annotationStore.update(filePath, ann.id, { color: c.id });
-        const updated = this.annotationStore.get(filePath, ann.id);
+        await this.annotationVaultStore.update(filePath, ann.id, { color: c.id });
+        const updated = await this.annotationVaultStore.getById(filePath, ann.id);
         if (updated) this.redrawLine(updated);
         if (this.sidebarMode === "notes") this.renderNotesPanel();
       });
@@ -779,8 +798,8 @@ export class EpubReaderView extends FileView {
         ann.text,
         { note: ann.note, color: ann.color },
         async ({ note, color }) => {
-          await this.annotationStore.update(filePath, ann.id, { note: note || undefined, color });
-          const updated = this.annotationStore.get(filePath, ann.id);
+          await this.annotationVaultStore.update(filePath, ann.id, { note: note || undefined, color });
+          const updated = await this.annotationVaultStore.getById(filePath, ann.id);
           if (updated) this.redrawLine(updated);
           if (this.sidebarMode === "notes") this.renderNotesPanel();
           new Notice("✅ 已更新");
@@ -798,8 +817,6 @@ export class EpubReaderView extends FileView {
     document.body.appendChild(menu);
     this.contextMenu = menu;
 
-    // Position near the clicked mark using current selection range if any,
-    // otherwise center.
     const contents = (this.rendition as any)?.getContents?.()?.[0];
     this.positionMenu(menu, contents);
 
@@ -817,23 +834,25 @@ export class EpubReaderView extends FileView {
         /* ignore */
       }
     }
-    await this.annotationStore.remove(this.file.path, id);
+    await this.annotationVaultStore.remove(this.file.path, id);
     if (this.sidebarMode === "notes") this.renderNotesPanel();
     new Notice("🗑 标注已删除");
   }
 
-  private renderNotesPanel() {
+  private async renderNotesPanel() {
     if (!this.notesEl) return;
     this.notesEl.empty();
 
-    const list = this.file ? this.annotationStore.getByFile(this.file.path) : [];
+    const list = this.file
+      ? await this.annotationVaultStore.getByFile(this.file.path)
+      : [];
+
     if (list.length === 0) {
       this.notesEl.createDiv({ cls: "epub-notes-empty", text: "暂无标注。选中文字后点击颜色画线或写想法。" });
       return;
     }
 
     const ul = this.notesEl.createEl("ul", { cls: "epub-notes-list" });
-    // Newest first
     const sorted = [...list].sort((a, b) => b.created.localeCompare(a.created));
     for (const ann of sorted) {
       const li = ul.createEl("li", { cls: "epub-note-item" });
@@ -863,8 +882,8 @@ export class EpubReaderView extends FileView {
           ann.text,
           { note: ann.note, color: ann.color },
           async ({ note, color }) => {
-            await this.annotationStore.update(filePath, ann.id, { note: note || undefined, color });
-            const updated = this.annotationStore.get(filePath, ann.id);
+            await this.annotationVaultStore.update(filePath, ann.id, { note: note || undefined, color });
+            const updated = await this.annotationVaultStore.getById(filePath, ann.id);
             if (updated) this.redrawLine(updated);
             this.renderNotesPanel();
           },
@@ -873,24 +892,6 @@ export class EpubReaderView extends FileView {
       });
       const del = actions.createEl("button", { cls: "epub-note-action is-danger", text: "删除" });
       del.addEventListener("click", () => this.removeAnnotation(ann.id, ann.cfiRange));
-    }
-  }
-
-  private async saveExcerpt() {
-    if (!this.file || !this.selectedText) return;
-    const vaultName = (this.app.vault as any).getName?.() ?? "";
-    try {
-      const filePath = await this.excerptManager.appendExcerpt(
-        this.file.basename,
-        this.file.path,
-        this.currentChapter || "未知章节",
-        this.selectedText,
-        this.selectedCfi,
-        vaultName
-      );
-      new Notice(`✅ 摘录已保存到 ${filePath}`);
-    } catch (err) {
-      new Notice(`❌ 摘录保存失败: ${err}`);
     }
   }
 
@@ -905,9 +906,7 @@ export class EpubReaderView extends FileView {
     try {
       const result = await this.aiService.query(this.selectedText);
       notice.hide();
-      const vaultName = (this.app.vault as any).getName?.() ?? "";
-      const filePath = await this.excerptManager.appendAIResponse(
-        this.file.basename,
+      const filePath = await this.annotationVaultStore.appendAIResponse(
         this.file.path,
         this.selectedText,
         result,

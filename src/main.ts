@@ -1,8 +1,7 @@
 import { Notice, Plugin, TFile, normalizePath } from "obsidian";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
-import { ExcerptManager } from "./ExcerptManager";
+import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
-import { AnnotationStore } from "./AnnotationStore";
 import { AIService } from "./AIService";
 import { BookshelfModal } from "./BookshelfModal";
 import { EpubSettingsTab } from "./SettingsTab";
@@ -11,8 +10,7 @@ import { DEFAULT_SETTINGS, EpubPluginSettings } from "./types";
 export default class ObEpubPlugin extends Plugin {
   settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
   progressStore!: ProgressStore;
-  annotationStore!: AnnotationStore;
-  excerptManager!: ExcerptManager;
+  annotationVaultStore!: AnnotationVaultStore;
   aiService!: AIService;
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
 
@@ -22,20 +20,19 @@ export default class ObEpubPlugin extends Plugin {
     this.progressStore = new ProgressStore(this);
     await this.progressStore.load();
 
-    this.annotationStore = new AnnotationStore(this);
-    await this.annotationStore.load();
-
-    this.excerptManager = new ExcerptManager(this.app, this.settings);
+    this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
     this.aiService = new AIService(this.settings);
+
+    // Migrate old annotations from plugin data.json (one-time)
+    await this.migrateOldAnnotations();
 
     // Register the reader view
     this.registerView(EPUB_READER_VIEW_TYPE, (leaf) => {
       return new EpubReaderView(
         leaf,
         this,
-        this.excerptManager,
+        this.annotationVaultStore,
         this.progressStore,
-        this.annotationStore,
         this.aiService,
         this.settings
       );
@@ -89,6 +86,23 @@ export default class ObEpubPlugin extends Plugin {
     });
 
     console.log("ob-epub-reader loaded");
+  }
+
+  /** One-time migration: move old data.json annotations into vault markdown files. */
+  private async migrateOldAnnotations() {
+    try {
+      const data = await this.loadData();
+      if (!data?.annotations || Object.keys(data.annotations).length === 0) return;
+
+      await this.annotationVaultStore.migrateFromPluginData(data.annotations);
+
+      // Clear old annotations from data.json after successful migration
+      data.annotations = {};
+      await this.saveData(data);
+      console.log("ob-epub: annotation migration complete");
+    } catch (err) {
+      console.error("ob-epub: annotation migration failed", err);
+    }
   }
 
   /** Consumed by EpubReaderView.onLoadFile to honour a pending deep-link jump. */
@@ -154,7 +168,7 @@ export default class ObEpubPlugin extends Plugin {
     await this.saveData(existing);
 
     // Propagate settings changes to services
-    this.excerptManager?.updateSettings(this.settings);
+    this.annotationVaultStore?.updateSettings(this.settings);
     this.aiService?.updateSettings(this.settings);
 
     // Update open views
