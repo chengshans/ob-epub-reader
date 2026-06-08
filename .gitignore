@@ -1,0 +1,7 @@
+node_modules/
+main.js
+main.js.map
+.DS_Store
+*.log
+.cursor/
+.specstory/

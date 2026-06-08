@@ -1,0 +1,22 @@
+{
+  "name": "ob-epub-reader",
+  "version": "1.0.0",
+  "description": "Obsidian EPUB Reader Plugin",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "obsidian": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "epubjs": "^0.3.93",
+    "esbuild": "^0.28.0"
+  }
+}
