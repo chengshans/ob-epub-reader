@@ -32,6 +32,7 @@ export class AnnotationVaultStore {
   private app: App;
   private settings: EpubPluginSettings;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private watchPausedUntil = 0;
 
   constructor(app: App, settings: EpubPluginSettings) {
     this.app = app;
@@ -40,6 +41,42 @@ export class AnnotationVaultStore {
 
   updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
+  }
+
+  /** Suppress file-watcher callbacks triggered by our own vault writes. */
+  private pauseWatch(ms = 900) {
+    this.watchPausedUntil = Date.now() + ms;
+  }
+
+  private isWatchPaused(): boolean {
+    return Date.now() < this.watchPausedUntil;
+  }
+
+  /** Extract CFI from a markdown annotation chunk. */
+  private extractCfiFromChunk(text: string): string | null {
+    const linkMatch = text.match(
+      /\[回到原文\]\(\s*<?obsidian:\/\/ob-epub-goto\?([^)>]*)\)?>?/
+    );
+    if (linkMatch) {
+      try {
+        const query = linkMatch[1].replace(/>$/, "");
+        const params = new URLSearchParams(query);
+        const cfi = params.get("cfi");
+        if (cfi) return cfi;
+      } catch {
+        /* fall through */
+      }
+    }
+
+    const raw = text.match(/cfi=(epubcfi\([^)\s\n]+(?:,[^)\s\n]+)*\))/);
+    if (raw) {
+      try {
+        return decodeURIComponent(raw[1]);
+      } catch {
+        return raw[1];
+      }
+    }
+    return null;
   }
 
   // ── Path helpers ──────────────────────────────────────────────────────────
@@ -198,7 +235,7 @@ export class AnnotationVaultStore {
 
       // Header line: > [!ob-epub|COLOR] CHAPTER · DATE ^ID
       const headerMatch = trimmed.match(
-        /^>\s*\[!ob-epub\|([a-z]+)\]\s+(.*?)\s+\^(ann-[^\s\n]+)/m
+        /^>\s*\[!ob-epub\|([a-z]+)\]\s+(.*?)(?:\s+\^(ann-[^\s\n]+))?\s*$/m
       );
       if (!headerMatch) continue;
 
@@ -206,7 +243,8 @@ export class AnnotationVaultStore {
       if (!HIGHLIGHT_COLORS.find((c) => c.id === color)) continue;
 
       const headerRest = headerMatch[2]; // "CHAPTER · DATE"
-      const id = headerMatch[3];
+      const id = headerMatch[3] ?? trimmed.match(/>\s*\^(ann-[a-z0-9-]+)/i)?.[1];
+      if (!id) continue;
 
       // Chapter and date from headerRest "Chapter · YYYY-MM-DD HH:MM"
       const chapterDateMatch = headerRest.match(/^(.*?)\s·\s(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2})$/);
@@ -228,11 +266,7 @@ export class AnnotationVaultStore {
       }
       const text = textLines.join("\n").trim();
 
-      // CFI from [回到原文] link (supports legacy <…> wrapper)
-      const linkMatch = trimmed.match(/\[回到原文\]\(<?obsidian:\/\/ob-epub-goto\?([^>)]+)>?\)/);
-      if (!linkMatch) continue;
-      const query = new URLSearchParams(linkMatch[1]);
-      const cfiRange = query.get("cfi");
+      const cfiRange = this.extractCfiFromChunk(trimmed);
       if (!cfiRange) continue;
 
       // Note: non-blockquote, non-sourcelink lines between the blockquote and ---
@@ -262,6 +296,7 @@ export class AnnotationVaultStore {
     const file = await this.ensureFile(epubFilePath);
     const current = await this.app.vault.read(file);
     const block = this.buildBlock(ann, epubFilePath);
+    this.pauseWatch();
     await this.app.vault.modify(file, current + "\n" + block);
   }
 
@@ -312,6 +347,7 @@ export class AnnotationVaultStore {
 
     const blocks = nextAnnotations.map((a) => this.buildBlock(a, epubFilePath)).join("\n");
     const newContent = preamble.trimEnd() + "\n\n" + blocks;
+    this.pauseWatch();
     await this.writeContent(epubFilePath, newContent);
   }
 
@@ -340,6 +376,7 @@ export class AnnotationVaultStore {
     const mdPath = this.getAnnotationFilePath(epubFilePath);
     const ref = this.app.vault.on("modify", (file: TFile) => {
       if (file.path !== mdPath) return;
+      if (this.isWatchPaused()) return;
       const existing = this.debounceTimers.get(mdPath);
       if (existing) clearTimeout(existing);
       this.debounceTimers.set(
@@ -389,6 +426,7 @@ export class AnnotationVaultStore {
       `---`,
       ``,
     ].join("\n");
+    this.pauseWatch();
     await this.app.vault.modify(file, current + "\n" + block);
     return file.path;
   }

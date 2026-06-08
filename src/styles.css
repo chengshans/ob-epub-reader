@@ -390,7 +390,8 @@ a.ob-epub-goto-link {
   transform: none;
 }
 
-/* ---- User-drawn underline hover ---- */
+/* ---- User-drawn highlight hover ---- */
+.epub-user-highlight,
 .epub-user-underline {
   cursor: pointer;
 }
