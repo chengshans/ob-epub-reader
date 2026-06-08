@@ -38,6 +38,10 @@ export class EpubReaderView extends FileView {
   private settings: EpubPluginSettings;
   private pendingCfi: string = "";
   private annotationWatcherCleanup: (() => void) | null = null;
+  private cachedHighlights: Annotation[] = [];
+  private highlightRedrawTimer: ReturnType<typeof setTimeout> | null = null;
+  private isRefreshingHighlights = false;
+  private isNavigating = false;
 
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
@@ -108,15 +112,19 @@ export class EpubReaderView extends FileView {
   /** Jump to a CFI position (used by deep-link "回到原文"). */
   async navigateToCfi(cfi: string): Promise<void> {
     if (!cfi) return;
-    if (this.rendition) {
-      try {
-        await this.rendition.display(cfi);
-      } catch (err) {
-        console.error("CFI navigation failed:", err);
-        new Notice("无法跳转到原文位置");
-      }
-    } else {
+    if (!this.rendition) {
       this.pendingCfi = cfi;
+      return;
+    }
+    if (this.isNavigating) return;
+    this.isNavigating = true;
+    try {
+      await this.rendition.display(cfi);
+    } catch (err) {
+      console.error("CFI navigation failed:", err);
+      new Notice("无法跳转到原文位置");
+    } finally {
+      this.isNavigating = false;
     }
   }
 
@@ -265,6 +273,11 @@ export class EpubReaderView extends FileView {
     // Clean up vault file watcher
     this.annotationWatcherCleanup?.();
     this.annotationWatcherCleanup = null;
+    if (this.highlightRedrawTimer) {
+      clearTimeout(this.highlightRedrawTimer);
+      this.highlightRedrawTimer = null;
+    }
+    this.cachedHighlights = [];
 
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -359,9 +372,13 @@ export class EpubReaderView extends FileView {
         }
       });
 
-      // Re-draw highlights when epub.js re-renders a page (e.g. page turn)
+      // Re-draw highlights after page render (debounced; uses cache only)
       this.rendition.on("rendered", () => {
-        this.redrawAllHighlights();
+        if (this.highlightRedrawTimer) clearTimeout(this.highlightRedrawTimer);
+        this.highlightRedrawTimer = setTimeout(() => {
+          this.highlightRedrawTimer = null;
+          this.redrawHighlightsForPage();
+        }, 80);
       });
 
       // Navigate to saved position or start
@@ -656,19 +673,12 @@ export class EpubReaderView extends FileView {
     this.drawLine(annotation);
   }
 
-  /**
-   * Draw all highlights without clearing first — used by the "rendered" event
-   * after epub.js rebuilds the page iframe. epub.js internally clears marks on
-   * re-render so we just re-add them.
-   */
-  private redrawAllHighlights() {
-    if (!this.file || !this.rendition) return;
-    // Use the last known list (avoid async inside a synchronous event handler)
-    this.annotationVaultStore.getByFile(this.file.path).then((list) => {
-      for (const ann of list) {
-        try { this.drawLine(ann); } catch (e) { /* ignore */ }
-      }
-    });
+  /** Re-draw cached highlights after epub.js re-renders a page iframe. */
+  private redrawHighlightsForPage() {
+    if (!this.rendition || this.cachedHighlights.length === 0) return;
+    for (const ann of this.cachedHighlights) {
+      try { this.drawLine(ann); } catch { /* ignore */ }
+    }
   }
 
   /**
@@ -676,25 +686,25 @@ export class EpubReaderView extends FileView {
    * re-draw every highlight. Called on book open and on file-watcher trigger.
    */
   private async refreshHighlights() {
-    if (!this.file || !this.rendition) return;
-    const list = await this.annotationVaultStore.getByFile(this.file.path);
-
-    // Clear all existing epub.js underline marks
+    if (!this.file || !this.rendition || this.isRefreshingHighlights) return;
+    this.isRefreshingHighlights = true;
     try {
-      // epub.js doesn't expose a "clear all" API, so we remove each one by CFI
+      const list = await this.annotationVaultStore.getByFile(this.file.path);
+      this.cachedHighlights = list;
+
       for (const ann of list) {
-        try { this.rendition.annotations.remove(ann.cfiRange, "underline"); } catch (e) { /* ignore */ }
+        try { this.rendition.annotations.remove(ann.cfiRange, "underline"); } catch { /* ignore */ }
       }
-    } catch (e) { /* ignore */ }
+      for (const ann of list) {
+        try { this.drawLine(ann); } catch (e) {
+          console.warn("refreshHighlights: drawLine failed for", ann.id, e);
+        }
+      }
 
-    // Re-draw
-    for (const ann of list) {
-      try { this.drawLine(ann); } catch (e) {
-        console.warn("refreshHighlights: drawLine failed for", ann.id, e);
-      }
+      if (this.sidebarMode === "notes") this.renderNotesPanel();
+    } finally {
+      this.isRefreshingHighlights = false;
     }
-
-    if (this.sidebarMode === "notes") this.renderNotesPanel();
   }
 
   private async addUnderline(color: HighlightColor) {

@@ -1,5 +1,19 @@
 /* ========== EPUB Reader Plugin Styles ========== */
 
+/* Excerpt callout: click to jump back to EPUB in split view */
+.ob-epub-goto-callout {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.ob-epub-goto-callout:hover {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+a.ob-epub-goto-link {
+  cursor: pointer;
+}
+
 .ob-epub-container {
   display: flex;
   flex-direction: column;

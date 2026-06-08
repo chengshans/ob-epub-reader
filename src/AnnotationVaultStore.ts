@@ -9,7 +9,7 @@ import { Annotation, EpubPluginSettings, HighlightColor, HIGHLIGHT_COLORS } from
 //
 // 可选的想法文字
 //
-// [回到原文](<obsidian://ob-epub-goto?file=书名.epub&cfi=epubcfi(...)>)
+// [回到原文](obsidian://ob-epub-goto?file=...&cfi=...)
 //
 // ---
 //
@@ -53,6 +53,76 @@ export class AnnotationVaultStore {
 
   private formatDate(date: Date): string {
     return date.toISOString().replace("T", " ").slice(0, 16);
+  }
+
+  /** Build obsidian:// deep-link; URLSearchParams handles encoding, no angle brackets. */
+  private buildSourceLink(epubFilePath: string, cfiRange: string): string {
+    const params = new URLSearchParams();
+    params.set("file", epubFilePath);
+    if (cfiRange) params.set("cfi", cfiRange);
+    const url = `obsidian://ob-epub-goto?${params.toString()}`;
+    // Do NOT wrap in <…>: Obsidian treats the leading '<' as part of the URI (%3C) and fails to open.
+    return `[回到原文](${url})`;
+  }
+
+  /** Strip legacy angle-bracket wrappers and other broken link syntax. */
+  fixLegacyGotoLinksInContent(content: string, epubSource?: string): string {
+    let result = content.replace(
+      /\[回到原文\]\(<(obsidian:\/\/ob-epub-goto\?[^>]+)>\)/g,
+      "[回到原文]($1)"
+    );
+    // Trailing ">" left from old <…> links: [回到原文](obsidian://...>)
+    result = result.replace(
+      /\[回到原文\]\((obsidian:\/\/ob-epub-goto\?[^)\n]+)\)>/g,
+      "[回到原文]($1)"
+    );
+
+    if (epubSource) {
+      result = this.repairBrokenGotoLines(result, epubSource);
+    }
+    return result;
+  }
+
+  /** Repair bare ".epub&cfi=…" lines that leaked outside markdown links. */
+  private repairBrokenGotoLines(content: string, epubSource: string): string {
+    let result = content.replace(
+      /^(?!.*\[回到原文\]).*\.epub&cfi=(epubcfi\([^)\n]+)>?\s*$/gm,
+      (_line, cfi: string) => this.buildSourceLink(epubSource, cfi.replace(/>$/, ""))
+    );
+    result = result.replace(
+      /^(?!.*\[回到原文\])\s*obsidian:\/\/ob-epub-goto\?([^\n]+)>?\s*$/gm,
+      (_line, query: string) => {
+        const params = new URLSearchParams(query.replace(/>$/, ""));
+        const file = params.get("file") ?? epubSource;
+        const cfi = params.get("cfi");
+        if (!file || !cfi) return _line;
+        return this.buildSourceLink(file, cfi);
+      }
+    );
+    return result;
+  }
+
+  private extractEpubSourceFromFrontmatter(content: string): string | undefined {
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    return fmMatch?.[1]?.match(/^epub-source:\s*(.+)$/m)?.[1]?.trim();
+  }
+
+  /** One-time fix for excerpt md files written with the old `<…>` link format. */
+  async fixLegacyGotoLinksInVault(): Promise<void> {
+    const folder = this.settings.excerptFolder.replace(/\/$/, "");
+    const prefix = folder ? `${folder}/` : "";
+    const files = this.app.vault
+      .getMarkdownFiles()
+      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const epubSource = this.extractEpubSourceFromFrontmatter(content);
+      const fixed = this.fixLegacyGotoLinksInContent(content, epubSource);
+      if (fixed !== content) {
+        await this.app.vault.modify(file, fixed);
+      }
+    }
   }
 
   // ── Vault file read/write helpers ─────────────────────────────────────────
@@ -100,8 +170,7 @@ export class AnnotationVaultStore {
     const dateStr = this.formatDate(new Date(ann.created));
     const headerLine = `> [!${CALLOUT_PREFIX}|${ann.color}] ${ann.chapter} · ${dateStr} ^${ann.id}`;
     const textLines = ann.text.split("\n").map((l) => `> ${l}`).join("\n");
-    const sourceUrl = `obsidian://ob-epub-goto?file=${encodeURIComponent(epubFilePath)}&cfi=${encodeURIComponent(ann.cfiRange)}`;
-    const sourceLink = `[回到原文](<${sourceUrl}>)`;
+    const sourceLink = this.buildSourceLink(epubFilePath, ann.cfiRange);
 
     const parts: string[] = [headerLine, textLines, ``];
     if (ann.note) {
@@ -159,10 +228,12 @@ export class AnnotationVaultStore {
       }
       const text = textLines.join("\n").trim();
 
-      // CFI from [回到原文] link
-      const cfiMatch = trimmed.match(/\[回到原文\]\(<[^>]*[?&]cfi=([^>&"']+)[^>]*>\)/);
-      if (!cfiMatch) continue;
-      const cfiRange = decodeURIComponent(cfiMatch[1]);
+      // CFI from [回到原文] link (supports legacy <…> wrapper)
+      const linkMatch = trimmed.match(/\[回到原文\]\(<?obsidian:\/\/ob-epub-goto\?([^>)]+)>?\)/);
+      if (!linkMatch) continue;
+      const query = new URLSearchParams(linkMatch[1]);
+      const cfiRange = query.get("cfi");
+      if (!cfiRange) continue;
 
       // Note: non-blockquote, non-sourcelink lines between the blockquote and ---
       const noteLines: string[] = [];

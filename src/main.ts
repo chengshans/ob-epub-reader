@@ -6,6 +6,7 @@ import { AIService } from "./AIService";
 import { BookshelfModal } from "./BookshelfModal";
 import { EpubSettingsTab } from "./SettingsTab";
 import { DEFAULT_SETTINGS, EpubPluginSettings } from "./types";
+import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 
 export default class ObEpubPlugin extends Plugin {
   settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
@@ -13,6 +14,8 @@ export default class ObEpubPlugin extends Plugin {
   annotationVaultStore!: AnnotationVaultStore;
   aiService!: AIService;
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
+  private lastGotoKey = "";
+  private lastGotoAt = 0;
 
   async onload() {
     await this.loadSettings();
@@ -25,6 +28,11 @@ export default class ObEpubPlugin extends Plugin {
 
     // Migrate old annotations from plugin data.json (one-time)
     await this.migrateOldAnnotations();
+    // Fix legacy [回到原文](<obsidian://…>) links (once)
+    await this.fixLegacyGotoLinksOnce();
+
+    // Click「回到原文」/ callout → jump EPUB (works in split view)
+    registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi));
 
     // Register the reader view
     this.registerView(EPUB_READER_VIEW_TYPE, (leaf) => {
@@ -79,13 +87,31 @@ export default class ObEpubPlugin extends Plugin {
     // Deep-link: obsidian://ob-epub-goto?file=...&cfi=...
     // NOTE: Cannot register "open" — Obsidian core already owns that action.
     this.registerObsidianProtocolHandler("ob-epub-goto", async (params) => {
-      const filePath = params.file;
-      const cfi = params.cfi ?? "";
+      let filePath = params.file;
+      let cfi = params.cfi ?? "";
       if (!filePath || typeof filePath !== "string") return;
+
+      // Recover from residual double-encoding in older links
+      filePath = decodeProtocolParam(filePath);
+      if (typeof cfi === "string") cfi = decodeProtocolParam(cfi);
+
       await this.openEpubAtCfi(filePath, typeof cfi === "string" ? cfi : "");
     });
 
     console.log("ob-epub-reader loaded");
+  }
+
+  /** One-time fix for broken「回到原文」links in excerpt files. */
+  private async fixLegacyGotoLinksOnce() {
+    try {
+      const data = (await this.loadData()) ?? {};
+      if (data.legacyGotoLinksFixed) return;
+      await this.annotationVaultStore.fixLegacyGotoLinksInVault();
+      data.legacyGotoLinksFixed = true;
+      await this.saveData(data);
+    } catch (err) {
+      console.error("ob-epub: legacy goto link fix failed", err);
+    }
   }
 
   /** One-time migration: move old data.json annotations into vault markdown files. */
@@ -121,7 +147,13 @@ export default class ObEpubPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
-  async openEpubAtCfi(filePath: string, cfi: string) {
+  async openEpubAtCfi(filePath: string, cfi: string): Promise<void> {
+    const gotoKey = `${filePath}\0${cfi}`;
+    const now = Date.now();
+    if (gotoKey === this.lastGotoKey && now - this.lastGotoAt < 1000) return;
+    this.lastGotoKey = gotoKey;
+    this.lastGotoAt = now;
+
     const normalized = normalizePath(filePath);
     const file =
       this.app.vault.getFileByPath(normalized) ??
@@ -137,9 +169,13 @@ export default class ObEpubPlugin extends Plugin {
       .find((leaf) => (leaf.view as EpubReaderView).file?.path === file.path);
 
     if (existingLeaf) {
-      await this.app.workspace.revealLeaf(existingLeaf);
       if (cfi) {
         await (existingLeaf.view as EpubReaderView).navigateToCfi(cfi);
+      }
+      // Split view: keep focus on excerpt pane when EPUB is already visible.
+      const view = existingLeaf.view as EpubReaderView;
+      if (!view.containerEl.isShown()) {
+        await this.app.workspace.revealLeaf(existingLeaf);
       }
       return;
     }
