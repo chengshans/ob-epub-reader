@@ -27,6 +27,9 @@ export class EpubReaderView extends FileView {
   private flow: "paginated" | "scrolled";
   private fontSize: number;
   private contextMenu: HTMLElement | null = null;
+  private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
+  private contextMenuContentDoc: Document | null = null;
+  private contextMenuDismissTimer: ReturnType<typeof setTimeout> | null = null;
   private selectedText: string = "";
   private selectedCfi: string = "";
   private resizeObserver: ResizeObserver | null = null;
@@ -320,6 +323,7 @@ export class EpubReaderView extends FileView {
   }
 
   private destroyBook() {
+    this.dismissContextMenu();
     // Clean up vault file watcher
     this.annotationWatcherCleanup?.();
     this.annotationWatcherCleanup = null;
@@ -774,10 +778,7 @@ export class EpubReaderView extends FileView {
     document.body.appendChild(menu);
     this.contextMenu = menu;
     this.positionMenu(menu, contents);
-
-    setTimeout(() => {
-      document.addEventListener("mousedown", this.dismissContextMenuBound, { once: true });
-    }, 100);
+    this.bindContextMenuDismiss(true, contents?.document);
   }
 
   private positionMenu(menu: HTMLElement, contents: any) {
@@ -804,14 +805,52 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private dismissContextMenuBound = () => this.dismissContextMenu();
+  private bindContextMenuDismiss(clearSelection: boolean, contentDoc?: Document) {
+    this.unbindContextMenuDismiss();
 
-  private dismissContextMenu() {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (this.contextMenu?.contains(target)) return;
+      this.dismissContextMenu(clearSelection);
+    };
+
+    this.contextMenuDismissTimer = setTimeout(() => {
+      this.contextMenuDismissTimer = null;
+      this.contextMenuDismissHandler = handler;
+      document.addEventListener("mousedown", handler, { capture: true });
+      if (contentDoc) {
+        this.contextMenuContentDoc = contentDoc;
+        contentDoc.addEventListener("mousedown", handler, { capture: true });
+      }
+    }, 100);
+  }
+
+  private unbindContextMenuDismiss() {
+    if (this.contextMenuDismissTimer) {
+      clearTimeout(this.contextMenuDismissTimer);
+      this.contextMenuDismissTimer = null;
+    }
+    if (this.contextMenuDismissHandler) {
+      document.removeEventListener("mousedown", this.contextMenuDismissHandler, { capture: true });
+      this.contextMenuContentDoc?.removeEventListener(
+        "mousedown",
+        this.contextMenuDismissHandler,
+        { capture: true }
+      );
+      this.contextMenuDismissHandler = null;
+      this.contextMenuContentDoc = null;
+    }
+  }
+
+  private dismissContextMenu(clearSelection = false) {
+    this.unbindContextMenuDismiss();
     if (this.contextMenu) {
       this.contextMenu.remove();
       this.contextMenu = null;
     }
-    document.removeEventListener("mousedown", this.dismissContextMenuBound);
+    if (clearSelection) {
+      this.clearSelection();
+    }
   }
 
   // ---------- Annotations: draw / refresh / manage ----------
@@ -1017,10 +1056,7 @@ export class EpubReaderView extends FileView {
 
     const contents = (this.rendition as any)?.getContents?.()?.[0];
     this.positionMenu(menu, contents);
-
-    setTimeout(() => {
-      document.addEventListener("mousedown", this.dismissContextMenuBound, { once: true });
-    }, 100);
+    this.bindContextMenuDismiss(false, contents?.document);
   }
 
   private async removeAnnotation(id: string, cfiRange: string) {
