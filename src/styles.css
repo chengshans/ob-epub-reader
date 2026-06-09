@@ -1,5 +1,32 @@
 /* ========== EPUB Reader Plugin Styles ========== */
 
+/* ---- ob-epub callout colors (keep in sync with HIGHLIGHT_COLORS in types.ts) ---- */
+.callout[data-callout="ob-epub"] {
+  --callout-icon: pencil;
+  --callout-color: 232, 179, 57;
+  --callout-background-alpha: 0.5;
+}
+
+.callout[data-callout="ob-epub"][data-callout-metadata="yellow"] {
+  --callout-color: 232, 179, 57;
+}
+
+.callout[data-callout="ob-epub"][data-callout-metadata="red"] {
+  --callout-color: 224, 83, 61;
+}
+
+.callout[data-callout="ob-epub"][data-callout-metadata="green"] {
+  --callout-color: 58, 166, 117;
+}
+
+.callout[data-callout="ob-epub"][data-callout-metadata="blue"] {
+  --callout-color: 59, 130, 196;
+}
+
+.callout[data-callout="ob-epub"][data-callout-metadata="purple"] {
+  --callout-color: 139, 92, 246;
+}
+
 /* Excerpt callout: click to jump back to EPUB in split view */
 .ob-epub-goto-callout {
   cursor: pointer;
