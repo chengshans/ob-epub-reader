@@ -20,7 +20,7 @@ export default class ObEpubPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    this.progressStore = new ProgressStore(this);
+    this.progressStore = new ProgressStore(this.app, this.settings);
     await this.progressStore.load();
 
     this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
@@ -28,6 +28,7 @@ export default class ObEpubPlugin extends Plugin {
 
     // Migrate old annotations from plugin data.json (one-time)
     await this.migrateOldAnnotations();
+    await this.migrateProgressFromDataJson();
     // Fix legacy [回到原文](<obsidian://…>) links (once)
     await this.fixLegacyGotoLinksOnce();
 
@@ -101,6 +102,20 @@ export default class ObEpubPlugin extends Plugin {
     console.log("ob-epub-reader loaded");
   }
 
+  /** 一次性迁移：将 data.json 中的 progress 移到 vault JSON 文件 */
+  private async migrateProgressFromDataJson() {
+    try {
+      const data = await this.loadData();
+      if (!data?.progress || Object.keys(data.progress).length === 0) return;
+      await this.progressStore.migrateFrom(data.progress);
+      delete data.progress;
+      await this.saveData(data);
+      console.log("ob-epub: progress migration to vault complete");
+    } catch (err) {
+      console.error("ob-epub: progress migration failed", err);
+    }
+  }
+
   /** One-time fix for broken「回到原文」links in excerpt files. */
   private async fixLegacyGotoLinksOnce() {
     try {
@@ -172,11 +187,7 @@ export default class ObEpubPlugin extends Plugin {
       if (cfi) {
         await (existingLeaf.view as EpubReaderView).navigateToCfi(cfi);
       }
-      // Split view: keep focus on excerpt pane when EPUB is already visible.
-      const view = existingLeaf.view as EpubReaderView;
-      if (!view.containerEl.isShown()) {
-        await this.app.workspace.revealLeaf(existingLeaf);
-      }
+      await this.app.workspace.revealLeaf(existingLeaf);
       return;
     }
 
@@ -204,6 +215,7 @@ export default class ObEpubPlugin extends Plugin {
     await this.saveData(existing);
 
     // Propagate settings changes to services
+    this.progressStore?.updateSettings(this.settings);
     this.annotationVaultStore?.updateSettings(this.settings);
     this.aiService?.updateSettings(this.settings);
 

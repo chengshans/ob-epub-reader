@@ -48,19 +48,92 @@ export function decodeProtocolParam(value: string): string {
   }
 }
 
+/** Read the real target URL from Obsidian-rendered anchors (href / data-href / resolved .href). */
+export function getAnchorGotoHref(anchor: HTMLAnchorElement): string {
+  if (anchor.dataset.obEpubGotoFile && anchor.dataset.obEpubGotoCfi) {
+    const params = new URLSearchParams();
+    params.set("file", anchor.dataset.obEpubGotoFile);
+    params.set("cfi", anchor.dataset.obEpubGotoCfi);
+    return `obsidian://ob-epub-goto?${params.toString()}`;
+  }
+  const dataHref = anchor.getAttribute("data-href") ?? anchor.dataset?.href ?? "";
+  const attrHref = anchor.getAttribute("href") ?? "";
+  if (attrHref.includes("ob-epub-goto")) return attrHref;
+  if (dataHref.includes("ob-epub-goto")) return dataHref;
+  // Obsidian may rewrite href; resolved property often keeps obsidian:// intact.
+  try {
+    const resolved = anchor.href ?? "";
+    if (resolved.includes("ob-epub-goto")) return resolved;
+  } catch {
+    /* ignore */
+  }
+  return attrHref || dataHref;
+}
+
+function parseAnchorGoto(anchor: HTMLAnchorElement): { file: string; cfi: string } | null {
+  if (anchor.dataset.obEpubGotoFile && anchor.dataset.obEpubGotoCfi) {
+    return { file: anchor.dataset.obEpubGotoFile, cfi: anchor.dataset.obEpubGotoCfi };
+  }
+  return parseObEpubGotoUrl(getAnchorGotoHref(anchor));
+}
+
+function tryHandleGotoClick(
+  target: EventTarget | null,
+  goto: (file: string, cfi: string) => Promise<void>
+): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const anchor = target.closest("a") as HTMLAnchorElement | null;
+  if (anchor) {
+    const parsed = parseAnchorGoto(anchor);
+    if (parsed) {
+      void goto(parsed.file, parsed.cfi);
+      return true;
+    }
+  }
+
+  const callout = target.closest(".ob-epub-goto-callout") as HTMLElement | null;
+  if (callout && !target.closest("a")) {
+    const link = findGotoLinkNear(callout);
+    if (link) {
+      const parsed = parseAnchorGoto(link);
+      if (parsed) {
+        void goto(parsed.file, parsed.cfi);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function registerExcerptGotoHandler(
   plugin: Plugin,
   openAtCfi: (file: string, cfi: string) => Promise<void>
 ) {
   const goto = openAtCfi;
 
+  // Capture-phase handler: works even when Obsidian rewrites href or post-processor misses a pass.
+  plugin.registerDomEvent(
+    document,
+    "click",
+    (evt: MouseEvent) => {
+      if (!tryHandleGotoClick(evt.target, goto)) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+    },
+    { capture: true }
+  );
+
   // Wire links in reading/preview mode directly — never let Obsidian open obsidian://
   // (malformed URIs or double-handling with the protocol handler can crash the app).
   plugin.registerMarkdownPostProcessor((el: HTMLElement, _ctx: MarkdownPostProcessorContext) => {
     // Callouts first — they locate sibling links by href before we strip it.
     wireObEpubCallouts(el, goto);
-    el.querySelectorAll('a[href*="ob-epub-goto"]').forEach((node) => {
-      wireGotoAnchor(node as HTMLAnchorElement, goto);
+    el.querySelectorAll("a").forEach((node) => {
+      const anchor = node as HTMLAnchorElement;
+      if (!getAnchorGotoHref(anchor).includes("ob-epub-goto")) return;
+      wireGotoAnchor(anchor, goto);
     });
   });
 }
@@ -71,13 +144,16 @@ function wireGotoAnchor(
 ) {
   if (anchor.dataset.obEpubGotoWired === "1") return;
 
-  const parsed = parseObEpubGotoUrl(anchor.getAttribute("href") ?? "");
+  const parsed = parseAnchorGoto(anchor);
   if (!parsed) return;
 
   anchor.dataset.obEpubGotoWired = "1";
+  anchor.dataset.obEpubGotoFile = parsed.file;
+  anchor.dataset.obEpubGotoCfi = parsed.cfi;
   anchor.addClass("ob-epub-goto-link");
   anchor.title = "定位到 EPUB 原文";
   anchor.removeAttribute("href");
+  anchor.removeAttribute("data-href");
 
   anchor.addEventListener("click", (e) => {
     e.preventDefault();
@@ -97,7 +173,7 @@ function wireObEpubCallouts(
     const gotoLink = findGotoLinkNear(container);
     if (!gotoLink) return;
 
-    const parsed = parseObEpubGotoUrl(gotoLink.getAttribute("href") ?? "");
+    const parsed = parseAnchorGoto(gotoLink);
     if (!parsed) return;
 
     container.dataset.obEpubGotoWired = "1";
@@ -120,10 +196,13 @@ function findGotoLinkNear(container: HTMLElement): HTMLAnchorElement | null {
     if (!sibling) break;
     if (sibling.classList?.contains("callout")) break;
     if (sibling.tagName === "HR") break;
-    const direct = sibling.matches('a[href*="ob-epub-goto"]')
-      ? (sibling as HTMLAnchorElement)
-      : null;
-    const nested = sibling.querySelector('a[href*="ob-epub-goto"]') as HTMLAnchorElement | null;
+    const direct =
+      sibling.tagName === "A" && getAnchorGotoHref(sibling as HTMLAnchorElement).includes("ob-epub-goto")
+        ? (sibling as HTMLAnchorElement)
+        : null;
+    const nested = Array.from(sibling.querySelectorAll("a")).find((a) =>
+      getAnchorGotoHref(a as HTMLAnchorElement).includes("ob-epub-goto")
+    ) as HTMLAnchorElement | undefined;
     if (direct || nested) return direct ?? nested;
   }
   return null;

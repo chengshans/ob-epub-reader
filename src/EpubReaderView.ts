@@ -43,6 +43,7 @@ export class EpubReaderView extends FileView {
   private highlightRedrawTimer: ReturnType<typeof setTimeout> | null = null;
   private isRefreshingHighlights = false;
   private isNavigating = false;
+  private pendingNavigateCfi: string | null = null;
   private highlightsInitialLoaded = false;
 
   // Layout elements
@@ -118,7 +119,10 @@ export class EpubReaderView extends FileView {
       this.pendingCfi = cfi;
       return;
     }
-    if (this.isNavigating) return;
+    if (this.isNavigating) {
+      this.pendingNavigateCfi = cfi;
+      return;
+    }
     this.isNavigating = true;
     try {
       await this.rendition.display(cfi);
@@ -127,6 +131,11 @@ export class EpubReaderView extends FileView {
       new Notice("无法跳转到原文位置");
     } finally {
       this.isNavigating = false;
+      const next = this.pendingNavigateCfi;
+      this.pendingNavigateCfi = null;
+      if (next && next !== cfi) {
+        await this.navigateToCfi(next);
+      }
     }
   }
 
@@ -357,7 +366,6 @@ export class EpubReaderView extends FileView {
       // Mouse wheel + keyboard navigation (bound inside each iframe document)
       this.rendition.hooks.content.register((contents: any) => {
         this.attachContentNavigation(contents);
-        this.injectAnnotationStyles(contents);
       });
 
       // Track location changes
@@ -385,10 +393,9 @@ export class EpubReaderView extends FileView {
             void this.refreshHighlights().then(() => {
               this.highlightsInitialLoaded = true;
             });
-          } else {
-            this.redrawHighlightsForPage();
           }
-        }, 80);
+          // epub.js 的 hooks.render.inject 自动重绘当前 section 的高亮，无需手动 redraw
+        }, 150);
       });
 
       // Navigate to saved position or start (highlights load on first "rendered")
@@ -419,20 +426,6 @@ export class EpubReaderView extends FileView {
   }
 
   // ---------- Navigation: wheel + keyboard ----------
-
-  private injectAnnotationStyles(contents: any) {
-    const doc: Document | undefined = contents?.document;
-    if (!doc || doc.getElementById("ob-epub-ann-styles")) return;
-    const style = doc.createElement("style");
-    style.id = "ob-epub-ann-styles";
-    style.textContent = `
-      .${HIGHLIGHT_CLASS} {
-        cursor: pointer;
-        mix-blend-mode: multiply;
-      }
-    `;
-    doc.head.appendChild(style);
-  }
 
   private attachContentNavigation(contents: any) {
     const doc: Document | undefined = contents?.document;
@@ -712,14 +705,6 @@ export class EpubReaderView extends FileView {
       this.cachedHighlights[idx] = annotation;
     } else {
       this.cachedHighlights.push(annotation);
-    }
-  }
-
-  /** Re-draw cached highlights after epub.js re-renders a page iframe. */
-  private redrawHighlightsForPage() {
-    if (!this.rendition || this.cachedHighlights.length === 0) return;
-    for (const ann of this.cachedHighlights) {
-      try { this.drawLine(ann); } catch { /* ignore */ }
     }
   }
 
