@@ -28,11 +28,17 @@ export function normalizePercent(percent: number): number {
   return percent;
 }
 
+function normalizeReadingTimeSeconds(seconds: number | undefined): number {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return 0;
+  return Math.floor(seconds);
+}
+
 function normalizeProgress(progress: BookProgress): BookProgress {
   return {
     ...progress,
     cfi: normalizeCfi(progress.cfi),
     percent: normalizePercent(progress.percent),
+    readingTimeSeconds: normalizeReadingTimeSeconds(progress.readingTimeSeconds),
   };
 }
 
@@ -235,6 +241,7 @@ export class ProgressStore {
       chapter,
       percent: normalizedPercent,
       lastRead: new Date().toISOString(),
+      readingTimeSeconds: existing?.readingTimeSeconds ?? 0,
     };
 
     this.progress[filePath] = entry;
@@ -243,6 +250,43 @@ export class ProgressStore {
     } catch (err) {
       console.error(
         "ob-epub: failed to save reading progress to",
+        this.getProgressFilePath(filePath),
+        err
+      );
+      throw err;
+    }
+  }
+
+  async saveReadingTime(
+    filePath: string,
+    totalSeconds: number,
+    context?: { cfi: string; chapter: string; percent: number }
+  ) {
+    const normalizedTotal = normalizeReadingTimeSeconds(totalSeconds);
+    const existing = await this.resolveExistingProgress(filePath);
+    const existingSeconds = existing?.readingTimeSeconds ?? 0;
+    if (normalizedTotal <= existingSeconds) return;
+
+    const cfiStr = normalizeCfi(existing?.cfi || context?.cfi);
+    if (!cfiStr) {
+      console.warn("ob-epub: skip reading time save, empty CFI for", filePath);
+      return;
+    }
+
+    const entry: BookProgress = {
+      cfi: cfiStr,
+      chapter: existing?.chapter || context?.chapter || "",
+      percent: existing?.percent ?? normalizePercent(context?.percent ?? 0),
+      lastRead: existing?.lastRead || new Date().toISOString(),
+      readingTimeSeconds: normalizedTotal,
+    };
+
+    this.progress[filePath] = normalizeProgress(entry);
+    try {
+      await this.annotationVaultStore.writeProgress(filePath, this.progress[filePath]);
+    } catch (err) {
+      console.error(
+        "ob-epub: failed to save reading time to",
         this.getProgressFilePath(filePath),
         err
       );

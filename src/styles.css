@@ -551,6 +551,11 @@ a.ob-epub-goto-link {
   color: var(--text-muted);
 }
 
+.bookshelf-reading-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ---- Dark theme adjustments ---- */
 .theme-dark .epub-reader-area {
   background: var(--background-primary);

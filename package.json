@@ -1,6 +1,6 @@
 {
   "name": "ob-epub-reader",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Obsidian EPUB Reader Plugin",
   "main": "main.js",
   "scripts": {

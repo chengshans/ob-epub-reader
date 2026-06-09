@@ -1,5 +1,6 @@
 import { App, Modal, TFile } from "obsidian";
 import { ProgressStore } from "./ProgressStore";
+import { formatReadingTime } from "./types";
 
 export class BookshelfModal extends Modal {
   private progressStore: ProgressStore;
@@ -49,6 +50,13 @@ export class BookshelfModal extends Modal {
           cls: "bookshelf-last-read",
           text: `上次阅读：${progress.chapter || "未知章节"} · ${progress.lastRead.slice(0, 10)}`,
         });
+        const readingSeconds = progress.readingTimeSeconds ?? 0;
+        if (readingSeconds > 0) {
+          meta.createEl("div", {
+            cls: "bookshelf-reading-time",
+            text: `已读 ${formatReadingTime(readingSeconds)}`,
+          });
+        }
       }
 
       item.addEventListener("click", () => {

@@ -55,6 +55,17 @@ export class EpubReaderView extends FileView {
   private pendingNavigateCfi: string | null = null;
   private highlightsInitialLoaded = false;
 
+  // Reading time tracking
+  private persistedReadingSeconds = 0;
+  private unsavedReadingSeconds = 0;
+  private readingSessionStart: number | null = null;
+  private readingTimePeriodicTimer: ReturnType<typeof setInterval> | null = null;
+  private readingTimeTrackingActive = false;
+  private onVisibilityChange: (() => void) | null = null;
+  private onWindowBlur: (() => void) | null = null;
+  private onWindowFocus: (() => void) | null = null;
+  private currentPercent = 0;
+
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
   private sidebarEl: HTMLElement | null = null;
@@ -323,6 +334,8 @@ export class EpubReaderView extends FileView {
   }
 
   private destroyBook() {
+    void this.flushReadingTime();
+    this.teardownReadingTimeTracking();
     this.dismissContextMenu();
     // Clean up vault file watcher
     this.annotationWatcherCleanup?.();
@@ -477,6 +490,10 @@ export class EpubReaderView extends FileView {
         this.blockProgressSave = false;
         this.isBookInitializing = false;
         await this.rendition.display();
+      }
+
+      if (!this.isBookInitializing) {
+        this.beginReadingTimeTracking(file);
       }
 
       // epub.js 的 percentage 依赖 locations 索引，需在后台生成
@@ -699,6 +716,134 @@ export class EpubReaderView extends FileView {
     }, 800);
   }
 
+  private initReadingTimeFromProgress(file: TFile) {
+    const progress = this.progressStore.getProgress(file.path);
+    this.persistedReadingSeconds = progress?.readingTimeSeconds ?? 0;
+    this.unsavedReadingSeconds = 0;
+    this.readingSessionStart = null;
+  }
+
+  private canTrackReadingTime(): boolean {
+    return (
+      !this.blockProgressSave &&
+      !this.isBookInitializing &&
+      !!this.file &&
+      document.visibilityState === "visible" &&
+      document.hasFocus()
+    );
+  }
+
+  private startReadingTimer() {
+    if (!this.canTrackReadingTime()) return;
+    if (this.readingSessionStart != null) return;
+    this.readingSessionStart = Date.now();
+  }
+
+  private pauseReadingTimer() {
+    if (this.readingSessionStart == null) return;
+    const elapsed = Math.floor((Date.now() - this.readingSessionStart) / 1000);
+    if (elapsed > 0) {
+      this.unsavedReadingSeconds += elapsed;
+    }
+    this.readingSessionStart = null;
+  }
+
+  private async flushReadingTime(resumeAfter = false) {
+    if (!this.file) return;
+    const wasTracking = this.readingSessionStart != null;
+    this.pauseReadingTimer();
+    if (this.unsavedReadingSeconds <= 0) {
+      if (resumeAfter && wasTracking && this.canTrackReadingTime()) {
+        this.startReadingTimer();
+      }
+      return;
+    }
+
+    const total = this.persistedReadingSeconds + this.unsavedReadingSeconds;
+    const unsaved = this.unsavedReadingSeconds;
+    this.unsavedReadingSeconds = 0;
+
+    try {
+      await this.progressStore.saveReadingTime(
+        this.file.path,
+        total,
+        this.currentCfi
+          ? {
+              cfi: this.currentCfi,
+              chapter: this.currentChapter,
+              percent: this.currentPercent,
+            }
+          : undefined
+      );
+      this.persistedReadingSeconds = total;
+    } catch (err) {
+      this.unsavedReadingSeconds = unsaved;
+      console.error("ob-epub: reading time flush failed", err);
+    }
+
+    if (resumeAfter && this.canTrackReadingTime()) {
+      this.startReadingTimer();
+    }
+  }
+
+  private beginReadingTimeTracking(file: TFile) {
+    this.initReadingTimeFromProgress(file);
+    this.setupReadingTimeTracking();
+    this.startReadingTimer();
+  }
+
+  private setupReadingTimeTracking() {
+    if (this.readingTimeTrackingActive) return;
+    this.readingTimeTrackingActive = true;
+
+    this.onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void this.flushReadingTime(false);
+      } else if (this.canTrackReadingTime()) {
+        this.startReadingTimer();
+      }
+    };
+    this.onWindowBlur = () => {
+      void this.flushReadingTime(false);
+    };
+    this.onWindowFocus = () => {
+      if (this.canTrackReadingTime()) {
+        this.startReadingTimer();
+      }
+    };
+
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
+    window.addEventListener("blur", this.onWindowBlur);
+    window.addEventListener("focus", this.onWindowFocus);
+
+    this.readingTimePeriodicTimer = setInterval(() => {
+      void this.flushReadingTime(true);
+    }, 60_000);
+  }
+
+  private teardownReadingTimeTracking() {
+    if (this.readingTimePeriodicTimer) {
+      clearInterval(this.readingTimePeriodicTimer);
+      this.readingTimePeriodicTimer = null;
+    }
+    if (this.onVisibilityChange) {
+      document.removeEventListener("visibilitychange", this.onVisibilityChange);
+      this.onVisibilityChange = null;
+    }
+    if (this.onWindowBlur) {
+      window.removeEventListener("blur", this.onWindowBlur);
+      this.onWindowBlur = null;
+    }
+    if (this.onWindowFocus) {
+      window.removeEventListener("focus", this.onWindowFocus);
+      this.onWindowFocus = null;
+    }
+    this.readingTimeTrackingActive = false;
+    this.readingSessionStart = null;
+    this.unsavedReadingSeconds = 0;
+    this.persistedReadingSeconds = 0;
+  }
+
   private cfiRoughlyMatches(target: string, actual: string): boolean {
     if (!target || !actual) return false;
     if (target === actual) return true;
@@ -732,9 +877,10 @@ export class EpubReaderView extends FileView {
   }
 
   private updateProgressBar(percent: number) {
+    this.currentPercent = normalizePercent(percent);
     const fill = this.containerEl.querySelector("#epub-progress-fill") as HTMLElement | null;
     const text = this.containerEl.querySelector("#epub-progress-text") as HTMLElement | null;
-    const pct = Math.round(normalizePercent(percent) * 100);
+    const pct = Math.round(this.currentPercent * 100);
     if (fill) fill.style.width = `${pct}%`;
     if (text) text.textContent = `${pct}%`;
   }

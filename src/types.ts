@@ -23,6 +23,18 @@ export interface BookProgress {
   chapter: string;
   percent: number;
   lastRead: string;
+  readingTimeSeconds?: number;
+}
+
+/** 将累计阅读秒数格式化为可读字符串，如 4980 → "1h 23m" */
+export function formatReadingTime(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 60) return "刚读";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
 }
 
 export interface ProgressData {

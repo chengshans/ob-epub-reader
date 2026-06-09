@@ -113,7 +113,7 @@ Prompt 模板中使用 `{text}` 作为选中文字的占位符。
 | `《书名》摘录.md` | `{摘录文件夹}/` | 高亮、标注、AI 解读；frontmatter 含阅读进度 |
 | `data.json` | `.obsidian/plugins/ob-epub-reader/` | 插件设置（不含标注与进度） |
 
-摘录 frontmatter 进度字段：`progress-percent`、`progress-cfi`、`progress-chapter`、`last-read`。
+摘录 frontmatter 进度字段：`progress-percent`、`progress-cfi`、`progress-chapter`、`last-read`、`reading-time-seconds`（累计阅读秒数）。
 
 旧版本曾将标注和进度保存在 `data.json` 或 `reading-progress.json` 中，插件首次加载时会自动迁移到摘录 frontmatter。迁移后可手动删除旧的 `reading-progress.json`。
 
