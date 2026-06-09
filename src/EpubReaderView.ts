@@ -45,6 +45,7 @@ export class EpubReaderView extends FileView {
   private loadedFilePath: string | null = null;
   private loadingFilePath: string | null = null;
   private blockProgressSave = false;
+  private isBookInitializing = false;
   private resumeTargetCfi = "";
   private isRefreshingHighlights = false;
   private isNavigating = false;
@@ -132,7 +133,9 @@ export class EpubReaderView extends FileView {
 
       const jumpCfi = this.pendingCfi || this.openBridge.consumePendingCfi(file.path);
       this.pendingCfi = "";
-      const savedProgress = this.progressStore.getProgress(file.path);
+      const savedProgress =
+        (await this.annotationVaultStore.readProgress(file.path)) ??
+        this.progressStore.getProgress(file.path);
       if (savedProgress) this.updateProgressBar(savedProgress.percent);
 
       const startCfi = normalizeCfi(jumpCfi || savedProgress?.cfi || "");
@@ -149,6 +152,7 @@ export class EpubReaderView extends FileView {
     cfi = normalizeCfi(cfi);
     if (!cfi) return;
     this.blockProgressSave = false;
+    this.isBookInitializing = false;
     if (!this.rendition) {
       this.pendingCfi = cfi;
       return;
@@ -357,6 +361,7 @@ export class EpubReaderView extends FileView {
 
     const resumeCfi = normalizeCfi(startCfi);
     this.blockProgressSave = !!resumeCfi;
+    this.isBookInitializing = true;
 
     const loadingEl = this.readerEl.createEl("div", { cls: "epub-loading", text: "正在加载 EPUB…" });
 
@@ -443,11 +448,13 @@ export class EpubReaderView extends FileView {
           const arrived = await this.waitForResumeCfi(resumeCfi, 5000);
           if (arrived) {
             this.blockProgressSave = false;
+            this.isBookInitializing = false;
           } else {
             await this.rendition.display(resumeCfi);
             const retry = await this.waitForResumeCfi(resumeCfi, 3000);
             if (retry) {
               this.blockProgressSave = false;
+              this.isBookInitializing = false;
             } else {
               console.warn("ob-epub: resume timed out, keeping saved progress", resumeCfi);
               if (savedProgress) this.updateProgressBar(savedProgress.percent);
@@ -464,11 +471,13 @@ export class EpubReaderView extends FileView {
         }
       } else {
         this.blockProgressSave = false;
+        this.isBookInitializing = false;
         await this.rendition.display();
       }
 
       // epub.js 的 percentage 依赖 locations 索引，需在后台生成
       void this.book.locations.generate(1600).then(async () => {
+        if (this.blockProgressSave || this.isBookInitializing) return;
         const loc = await Promise.resolve(this.rendition?.currentLocation?.());
         if (!loc) return;
         const percentage = this.extractPercentFromLocation(loc);
@@ -529,6 +538,7 @@ export class EpubReaderView extends FileView {
   private turnPage(dir: "next" | "prev") {
     if (!this.rendition) return;
     this.blockProgressSave = false;
+    this.isBookInitializing = false;
     this.wheelCooldown = true;
     const p = dir === "next" ? this.rendition.next() : this.rendition.prev();
     Promise.resolve(p).finally(() => {
@@ -542,10 +552,12 @@ export class EpubReaderView extends FileView {
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       e.preventDefault();
       this.blockProgressSave = false;
+      this.isBookInitializing = false;
       this.rendition?.next();
     } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
       e.preventDefault();
       this.blockProgressSave = false;
+      this.isBookInitializing = false;
       this.rendition?.prev();
     }
   }
@@ -624,6 +636,7 @@ export class EpubReaderView extends FileView {
       const label = li.createEl("span", { cls: "epub-toc-label", text: item.label.trim() });
       label.addEventListener("click", () => {
         this.blockProgressSave = false;
+        this.isBookInitializing = false;
         this.currentChapter = item.label.trim();
         this.rendition?.display(item.href);
       });
@@ -662,18 +675,20 @@ export class EpubReaderView extends FileView {
   }
 
   private scheduleProgressSave(percent: number) {
-    if (this.blockProgressSave || !this.file || !this.currentCfi) return;
+    if (this.blockProgressSave || this.isBookInitializing || !this.file || !this.currentCfi) return;
     if (this.progressSaveTimer) clearTimeout(this.progressSaveTimer);
     this.progressSaveTimer = setTimeout(() => {
       this.progressSaveTimer = null;
-      if (this.blockProgressSave || !this.file || !this.currentCfi) return;
+      if (this.blockProgressSave || this.isBookInitializing || !this.file || !this.currentCfi) return;
       void this.progressStore.saveProgress(
         this.file.path,
         this.currentCfi,
         this.currentChapter,
         percent
       ).catch((err) => {
-        const path = this.progressStore.getProgressFilePath();
+        const path = this.file
+          ? this.progressStore.getProgressFilePath(this.file.path)
+          : this.progressStore.getProgressFilePath();
         console.error("ob-epub: progress save failed", path, err);
         new Notice(`阅读进度保存失败（${path}），请确认摘录文件夹存在且可写`);
       });

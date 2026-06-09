@@ -20,10 +20,9 @@ export default class ObEpubPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    this.progressStore = new ProgressStore(this.app, this.settings);
-    await this.progressStore.load();
-
     this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
+    this.progressStore = new ProgressStore(this.app, this.settings, this.annotationVaultStore);
+    await this.progressStore.load();
     this.aiService = new AIService(this.settings);
 
     // Migrate old annotations from plugin data.json (one-time)

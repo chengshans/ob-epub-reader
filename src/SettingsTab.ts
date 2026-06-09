@@ -16,7 +16,7 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("摘录文件夹")
-      .setDesc("摘录与阅读进度保存到哪个文件夹（进度文件：{文件夹}/reading-progress.json）")
+      .setDesc("摘录 Markdown 保存目录；阅读进度写入各书摘录文件的 frontmatter")
       .addText((text) =>
         text
           .setPlaceholder("co-books")

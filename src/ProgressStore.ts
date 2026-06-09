@@ -1,9 +1,9 @@
 import { App, TFile, normalizePath } from "obsidian";
+import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { BookProgress, EpubPluginSettings } from "./types";
 
-/** 主进度文件（Vault 可索引，用 vault API 读写） */
+/** 旧版集中进度文件（仅用于一次性迁移读取） */
 const PROGRESS_FILENAME = "reading-progress.json";
-/** 旧版隐藏文件（adapter 读写，加载后迁移到主文件） */
 const HIDDEN_PROGRESS_FILENAME = ".reading-progress.json";
 
 /** 将 epub.js 的 EpubCFI 对象或历史 JSON 对象统一为 CFI 字符串 */
@@ -40,14 +40,21 @@ export class ProgressStore {
   private progress: Record<string, BookProgress> = {};
   private app: App;
   private settings: EpubPluginSettings;
+  private annotationVaultStore: AnnotationVaultStore;
 
-  constructor(app: App, settings: EpubPluginSettings) {
+  constructor(
+    app: App,
+    settings: EpubPluginSettings,
+    annotationVaultStore: AnnotationVaultStore
+  ) {
     this.app = app;
     this.settings = settings;
+    this.annotationVaultStore = annotationVaultStore;
   }
 
   async updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
+    this.annotationVaultStore.updateSettings(settings);
     await this.load();
   }
 
@@ -59,12 +66,20 @@ export class ProgressStore {
     return normalizePath(folder);
   }
 
-  getProgressFilePath(): string {
+  private getLegacyProgressFilePath(): string {
     return normalizePath(`${this.getExcerptFolder()}/${PROGRESS_FILENAME}`);
   }
 
   private getHiddenProgressFilePath(): string {
     return normalizePath(`${this.getExcerptFolder()}/${HIDDEN_PROGRESS_FILENAME}`);
+  }
+
+  /** 返回该书摘录 Markdown 路径（进度写入 frontmatter） */
+  getProgressFilePath(epubFilePath?: string): string {
+    if (epubFilePath) {
+      return this.annotationVaultStore.getAnnotationFilePath(epubFilePath);
+    }
+    return this.getExcerptFolder();
   }
 
   private get adapter() {
@@ -79,25 +94,6 @@ export class ProgressStore {
     }
   }
 
-  /** 与 AnnotationVaultStore 一致：优先 vault.createFolder */
-  private async ensureFolder(folder: string): Promise<void> {
-    const normalized = normalizePath(folder.replace(/\/$/, ""));
-    const parts = normalized.split("/").filter(Boolean);
-    let current = "";
-    for (const part of parts) {
-      current = current ? `${current}/${part}` : part;
-      const path = normalizePath(current);
-      if (this.app.vault.getAbstractFileByPath(path)) continue;
-      try {
-        await this.app.vault.createFolder(path);
-      } catch {
-        if (!(await this.adapterExists(path))) {
-          await this.adapter.mkdir(path);
-        }
-      }
-    }
-  }
-
   private parseProgressFile(content: string): Record<string, BookProgress> {
     const raw = JSON.parse(content) || {};
     const progress: Record<string, BookProgress> = {};
@@ -107,7 +103,7 @@ export class ProgressStore {
     return progress;
   }
 
-  private async readVaultProgressFile(path: string): Promise<Record<string, BookProgress> | null> {
+  private async readLegacyProgressFile(path: string): Promise<Record<string, BookProgress> | null> {
     const normalized = normalizePath(path);
     const file = this.app.vault.getAbstractFileByPath(normalized);
     if (!(file instanceof TFile)) return null;
@@ -115,7 +111,7 @@ export class ProgressStore {
       const content = await this.app.vault.read(file);
       return this.parseProgressFile(content);
     } catch (err) {
-      console.warn(`ob-epub: failed to read progress file ${normalized}`, err);
+      console.warn(`ob-epub: failed to read legacy progress file ${normalized}`, err);
       return null;
     }
   }
@@ -136,56 +132,82 @@ export class ProgressStore {
   private mergeProgress(
     target: Record<string, BookProgress>,
     source: Record<string, BookProgress>
-  ): boolean {
-    let changed = false;
+  ): Array<{ epubPath: string; progress: BookProgress }> {
+    const toMigrate: Array<{ epubPath: string; progress: BookProgress }> = [];
     for (const [filePath, entry] of Object.entries(source)) {
+      const normalized = normalizeProgress(entry);
       const existing = target[filePath];
-      if (!existing || entry.lastRead > existing.lastRead) {
-        target[filePath] = entry;
-        changed = true;
+      if (!existing || normalized.lastRead > existing.lastRead) {
+        target[filePath] = normalized;
+        toMigrate.push({ epubPath: filePath, progress: normalized });
       }
     }
-    return changed;
+    return toMigrate;
+  }
+
+  /** 内存未命中时从摘录 frontmatter 补读，避免启动竞态导致覆盖 */
+  private async resolveExistingProgress(filePath: string): Promise<BookProgress | null> {
+    const cached = this.progress[filePath];
+    if (cached) return normalizeProgress(cached);
+    const fromDisk = await this.annotationVaultStore.readProgress(filePath);
+    if (!fromDisk) return null;
+    const normalized = normalizeProgress(fromDisk);
+    this.progress[filePath] = normalized;
+    return normalized;
+  }
+
+  private shouldRejectProgressSave(
+    existing: BookProgress | null,
+    cfiStr: string,
+    normalizedPercent: number
+  ): boolean {
+    if (!existing) return false;
+
+    const existingKey = cfiSpineKey(existing.cfi);
+    const newKey = cfiSpineKey(cfiStr);
+
+    if (normalizedPercent + 0.02 < existing.percent) {
+      if (!newKey || !existingKey || newKey <= existingKey) {
+        return true;
+      }
+    }
+
+    // 禁止用开头的 0% 覆盖已有有效进度（重启恢复失败时的典型场景）
+    if (existing.percent > 0.01 && normalizedPercent < 0.01) {
+      if (!newKey || !existingKey || newKey <= existingKey) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async load() {
-    const currentPath = this.getProgressFilePath();
-    const hiddenPath = this.getHiddenProgressFilePath();
+    const fromFrontmatter = await this.annotationVaultStore.scanAllProgress();
+    this.progress = { ...fromFrontmatter };
 
-    const current = (await this.readVaultProgressFile(currentPath)) ?? {};
-    const hidden = await this.readHiddenProgressFile(hiddenPath);
+    const legacy =
+      (await this.readLegacyProgressFile(this.getLegacyProgressFilePath())) ?? {};
+    const hidden = (await this.readHiddenProgressFile(this.getHiddenProgressFilePath())) ?? {};
 
-    this.progress = { ...current };
-    let dirty = false;
+    const legacyMerged = { ...legacy };
+    this.mergeProgress(legacyMerged, hidden);
 
-    if (hidden) {
-      dirty = this.mergeProgress(this.progress, hidden);
+    // 仅将尚无 frontmatter 进度的书从旧 JSON 迁入，避免每次启动用旧 JSON 覆盖
+    const toMigrate: Array<{ epubPath: string; progress: BookProgress }> = [];
+    for (const [filePath, entry] of Object.entries(legacyMerged)) {
+      if (fromFrontmatter[filePath]) continue;
+      const normalized = normalizeProgress(entry);
+      this.progress[filePath] = normalized;
+      toMigrate.push({ epubPath: filePath, progress: normalized });
     }
 
-    for (const entry of Object.values(this.progress)) {
-      if (typeof entry.cfi !== "string" || entry.percent > 1) dirty = true;
-    }
-
-    if (dirty) {
+    for (const { epubPath, progress } of toMigrate) {
       try {
-        await this.save();
+        await this.annotationVaultStore.writeProgress(epubPath, progress);
       } catch (err) {
-        console.error("ob-epub: failed to migrate/normalize progress file", err);
+        console.error("ob-epub: failed to migrate progress to frontmatter for", epubPath, err);
       }
-    }
-  }
-
-  async save() {
-    const folder = this.getExcerptFolder();
-    await this.ensureFolder(folder);
-
-    const path = this.getProgressFilePath();
-    const content = JSON.stringify(this.progress, null, 2);
-    const existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof TFile) {
-      await this.app.vault.modify(existing, content);
-    } else {
-      await this.app.vault.create(path, content);
     }
   }
 
@@ -203,25 +225,27 @@ export class ProgressStore {
     }
 
     const normalizedPercent = normalizePercent(percent);
-    const existing = this.progress[filePath];
-    if (existing && normalizedPercent + 0.02 < existing.percent) {
-      const existingKey = cfiSpineKey(existing.cfi);
-      const newKey = cfiSpineKey(cfiStr);
-      if (!newKey || !existingKey || newKey <= existingKey) {
-        return;
-      }
+    const existing = await this.resolveExistingProgress(filePath);
+    if (this.shouldRejectProgressSave(existing, cfiStr, normalizedPercent)) {
+      return;
     }
 
-    this.progress[filePath] = {
+    const entry: BookProgress = {
       cfi: cfiStr,
       chapter,
       percent: normalizedPercent,
       lastRead: new Date().toISOString(),
     };
+
+    this.progress[filePath] = entry;
     try {
-      await this.save();
+      await this.annotationVaultStore.writeProgress(filePath, entry);
     } catch (err) {
-      console.error("ob-epub: failed to save reading progress to", this.getProgressFilePath(), err);
+      console.error(
+        "ob-epub: failed to save reading progress to",
+        this.getProgressFilePath(filePath),
+        err
+      );
       throw err;
     }
   }
@@ -234,17 +258,15 @@ export class ProgressStore {
     return normalizePercent(this.progress[filePath]?.percent ?? 0);
   }
 
-  /** 从旧的 data.json progress 迁移数据到 vault 文件 */
+  /** 从旧的 data.json progress 迁移数据到摘录 frontmatter */
   async migrateFrom(oldProgress: Record<string, BookProgress>): Promise<void> {
-    let changed = false;
-    for (const [filePath, progress] of Object.entries(oldProgress)) {
-      if (!this.progress[filePath]) {
-        this.progress[filePath] = normalizeProgress(progress);
-        changed = true;
+    const toMigrate = this.mergeProgress(this.progress, oldProgress);
+    for (const { epubPath, progress } of toMigrate) {
+      try {
+        await this.annotationVaultStore.writeProgress(epubPath, progress);
+      } catch (err) {
+        console.error("ob-epub: failed to migrate progress from data.json for", epubPath, err);
       }
-    }
-    if (changed) {
-      await this.save();
     }
   }
 }

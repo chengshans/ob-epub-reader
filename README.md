@@ -98,7 +98,7 @@ Prompt 模板中使用 `{text}` 作为选中文字的占位符。
 
 | 选项 | 说明 | 默认值 |
 |------|------|--------|
-| 摘录文件夹 | 摘录与进度文件的保存目录 | `co-books` |
+| 摘录文件夹 | 摘录 Markdown 保存目录（进度写入各书 frontmatter） | `co-books` |
 | 默认阅读模式 | 分页 / 滚动 | 分页 |
 | 默认字体大小 | 内容区字号（px） | 16 |
 | AI API URL | OpenAI 兼容接口地址 | `https://api.openai.com/v1` |
@@ -110,11 +110,12 @@ Prompt 模板中使用 `{text}` 作为选中文字的占位符。
 
 | 文件 | 位置 | 内容 |
 |------|------|------|
-| `reading-progress.json` | `{摘录文件夹}/` | 各 EPUB 的 CFI、章节、百分比、最后阅读时间 |
-| `《书名》摘录.md` | `{摘录文件夹}/` | 高亮、标注、AI 解读 |
+| `《书名》摘录.md` | `{摘录文件夹}/` | 高亮、标注、AI 解读；frontmatter 含阅读进度 |
 | `data.json` | `.obsidian/plugins/ob-epub-reader/` | 插件设置（不含标注与进度） |
 
-旧版本曾将标注和进度保存在 `data.json` 中，插件首次加载时会自动迁移到 Vault 文件。
+摘录 frontmatter 进度字段：`progress-percent`、`progress-cfi`、`progress-chapter`、`last-read`。
+
+旧版本曾将标注和进度保存在 `data.json` 或 `reading-progress.json` 中，插件首次加载时会自动迁移到摘录 frontmatter。迁移后可手动删除旧的 `reading-progress.json`。
 
 ## 项目结构
 

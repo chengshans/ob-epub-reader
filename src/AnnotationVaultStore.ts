@@ -1,5 +1,5 @@
 import { App, normalizePath, TFile } from "obsidian";
-import { Annotation, EpubPluginSettings, HighlightColor, HIGHLIGHT_COLORS } from "./types";
+import { Annotation, BookProgress, EpubPluginSettings, HighlightColor, HIGHLIGHT_COLORS } from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
@@ -81,7 +81,7 @@ export class AnnotationVaultStore {
 
   // ── Path helpers ──────────────────────────────────────────────────────────
 
-  private getAnnotationFilePath(epubFilePath: string): string {
+  getAnnotationFilePath(epubFilePath: string): string {
     const folder = this.settings.excerptFolder.replace(/\/$/, "");
     const basename = epubFilePath.split("/").pop() ?? epubFilePath;
     const title = basename.replace(/\.epub$/i, "");
@@ -139,9 +139,127 @@ export class AnnotationVaultStore {
     return result;
   }
 
-  private extractEpubSourceFromFrontmatter(content: string): string | undefined {
+  private extractFrontmatterBody(content: string): string | null {
     const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    return fmMatch?.[1]?.match(/^epub-source:\s*(.+)$/m)?.[1]?.trim();
+    return fmMatch?.[1] ?? null;
+  }
+
+  private extractEpubSourceFromFrontmatter(content: string): string | undefined {
+    const body = this.extractFrontmatterBody(content);
+    return body?.match(/^epub-source:\s*(.+)$/m)?.[1]?.trim();
+  }
+
+  private parseYamlScalar(raw: string): string {
+    const trimmed = raw.trim();
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      return trimmed.slice(1, -1);
+    }
+    return trimmed;
+  }
+
+  parseProgressFromContent(content: string): BookProgress | null {
+    const body = this.extractFrontmatterBody(content);
+    if (!body) return null;
+
+    const percentMatch = body.match(/^progress-percent:\s*([\d.]+)/m);
+    const cfiMatch = body.match(/^progress-cfi:\s*(.+)$/m);
+    const chapterMatch = body.match(/^progress-chapter:\s*(.+)$/m);
+    const lastReadMatch = body.match(/^last-read:\s*(.+)$/m);
+
+    if (!cfiMatch) return null;
+
+    const cfi = this.parseYamlScalar(cfiMatch[1]);
+    if (!cfi.startsWith("epubcfi(")) return null;
+
+    let percent = percentMatch ? Number(percentMatch[1]) : 0;
+    if (!Number.isFinite(percent) || percent < 0) percent = 0;
+    if (percent > 1) percent = Math.min(percent / 100, 1);
+
+    return {
+      cfi,
+      chapter: chapterMatch ? this.parseYamlScalar(chapterMatch[1]) : "",
+      percent,
+      lastRead: lastReadMatch ? this.parseYamlScalar(lastReadMatch[1]) : "",
+    };
+  }
+
+  private yamlQuote(value: string): string {
+    if (!value) return '""';
+    if (/[:#\[\]{}|>&*!%@`,]/.test(value) || value.includes('"')) {
+      return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    }
+    return value;
+  }
+
+  buildProgressFrontmatterFields(progress: BookProgress): string {
+    return [
+      `progress-percent: ${progress.percent}`,
+      `progress-cfi: ${this.yamlQuote(progress.cfi)}`,
+      `progress-chapter: ${this.yamlQuote(progress.chapter)}`,
+      `last-read: ${progress.lastRead}`,
+    ].join("\n");
+  }
+
+  upsertProgressInContent(content: string, progress: BookProgress): string {
+    const progressFields = this.buildProgressFrontmatterFields(progress);
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+    if (!fmMatch) {
+      return `---\n${progressFields}\n---\n\n${content}`;
+    }
+
+    let body = fmMatch[1];
+    body = body
+      .replace(/^progress-percent:.*$/m, "")
+      .replace(/^progress-cfi:.*$/m, "")
+      .replace(/^progress-chapter:.*$/m, "")
+      .replace(/^last-read:.*$/m, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trimEnd();
+
+    const newBody = body ? `${body}\n${progressFields}` : progressFields;
+    const rest = content.slice(fmMatch[0].length);
+    return `---\n${newBody}\n---${rest}`;
+  }
+
+  async readProgress(epubFilePath: string): Promise<BookProgress | null> {
+    const content = await this.readContent(epubFilePath);
+    if (!content) return null;
+    return this.parseProgressFromContent(content);
+  }
+
+  async writeProgress(epubFilePath: string, progress: BookProgress): Promise<void> {
+    const file = await this.ensureFile(epubFilePath);
+    const content = await this.app.vault.read(file);
+    const updated = this.upsertProgressInContent(content, progress);
+    if (updated === content) return;
+    this.pauseWatch();
+    await this.app.vault.modify(file, updated);
+  }
+
+  async scanAllProgress(): Promise<Record<string, BookProgress>> {
+    const folder = this.settings.excerptFolder.replace(/\/$/, "");
+    const prefix = folder ? `${folder}/` : "";
+    const result: Record<string, BookProgress> = {};
+
+    const files = this.app.vault
+      .getMarkdownFiles()
+      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const epubSource = this.extractEpubSourceFromFrontmatter(content);
+      if (!epubSource) continue;
+      const progress = this.parseProgressFromContent(content);
+      if (progress) {
+        result[epubSource] = progress;
+      }
+    }
+
+    return result;
   }
 
   /** One-time fix for excerpt md files written with the old `<…>` link format. */
