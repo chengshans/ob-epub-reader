@@ -1,5 +1,5 @@
 import { App, normalizePath, TFile } from "obsidian";
-import { Annotation, BookProgress, EpubPluginSettings, HighlightColor, HIGHLIGHT_COLORS } from "./types";
+import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, parseReadingTime } from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
@@ -186,7 +186,8 @@ export class AnnotationVaultStore {
     const cfiMatch = body.match(/^progress-cfi:\s*(.+)$/m);
     const chapterMatch = body.match(/^progress-chapter:\s*(.+)$/m);
     const lastReadMatch = body.match(/^last-read:\s*(.+)$/m);
-    const readingTimeMatch = body.match(/^reading-time-seconds:\s*(\d+)/m);
+    const readingTimeMatch = body.match(/^reading-time:\s*(.+)$/m);
+    const readingTimeSecondsMatch = body.match(/^reading-time-seconds:\s*(\d+)/m);
 
     if (!cfiMatch) return null;
 
@@ -197,7 +198,12 @@ export class AnnotationVaultStore {
     if (!Number.isFinite(percent) || percent < 0) percent = 0;
     if (percent > 1) percent = Math.min(percent / 100, 1);
 
-    let readingTimeSeconds = readingTimeMatch ? Number(readingTimeMatch[1]) : 0;
+    let readingTimeSeconds = 0;
+    if (readingTimeMatch) {
+      readingTimeSeconds = parseReadingTime(this.parseYamlScalar(readingTimeMatch[1]));
+    } else if (readingTimeSecondsMatch) {
+      readingTimeSeconds = Number(readingTimeSecondsMatch[1]);
+    }
     if (!Number.isFinite(readingTimeSeconds) || readingTimeSeconds < 0) readingTimeSeconds = 0;
 
     return {
@@ -223,7 +229,7 @@ export class AnnotationVaultStore {
       `progress-cfi: ${this.yamlQuote(progress.cfi)}`,
       `progress-chapter: ${this.yamlQuote(progress.chapter)}`,
       `last-read: ${progress.lastRead}`,
-      `reading-time-seconds: ${progress.readingTimeSeconds ?? 0}`,
+      `reading-time: ${this.yamlQuote(formatReadingTime(progress.readingTimeSeconds ?? 0))}`,
     ].join("\n");
   }
 
@@ -241,6 +247,7 @@ export class AnnotationVaultStore {
       .replace(/^progress-cfi:.*$/m, "")
       .replace(/^progress-chapter:.*$/m, "")
       .replace(/^last-read:.*$/m, "")
+      .replace(/^reading-time:.*$/m, "")
       .replace(/^reading-time-seconds:.*$/m, "")
       .replace(/\n{3,}/g, "\n\n")
       .trimEnd();

@@ -26,15 +26,39 @@ export interface BookProgress {
   readingTimeSeconds?: number;
 }
 
-/** 将累计阅读秒数格式化为可读字符串，如 4980 → "1h 23m" */
+/** 将累计阅读秒数格式化为时分秒，如 390 → "6分30秒"，4980 → "1小时23分0秒" */
 export function formatReadingTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
-  if (total < 60) return "刚读";
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
-  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h`;
-  return `${minutes}m`;
+  const secs = total % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}小时`);
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}分`);
+  parts.push(`${secs}秒`);
+  return parts.join("");
+}
+
+/** 解析时分秒字符串或纯秒数字符串，返回累计秒数 */
+export function parseReadingTime(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+
+  if (/^\d+$/.test(trimmed)) return Math.floor(Number(trimmed));
+
+  const hmsMatch = trimmed.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+  if (hmsMatch) {
+    return Number(hmsMatch[1]) * 3600 + Number(hmsMatch[2]) * 60 + Number(hmsMatch[3]);
+  }
+
+  let seconds = 0;
+  const hourMatch = trimmed.match(/(\d+)小时/);
+  const minMatch = trimmed.match(/(\d+)分/);
+  const secMatch = trimmed.match(/(\d+)秒/);
+  if (hourMatch) seconds += Number(hourMatch[1]) * 3600;
+  if (minMatch) seconds += Number(minMatch[1]) * 60;
+  if (secMatch) seconds += Number(secMatch[1]);
+  return seconds;
 }
 
 export interface ProgressData {
