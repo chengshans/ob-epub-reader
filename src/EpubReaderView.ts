@@ -61,6 +61,7 @@ export class EpubReaderView extends FileView {
   private isNavigating = false;
   private pendingNavigateCfi: string | null = null;
   private highlightsInitialLoaded = false;
+  private isClosing = false;
 
   // Reading time tracking
   private persistedReadingSeconds = 0;
@@ -130,11 +131,20 @@ export class EpubReaderView extends FileView {
   }
 
   async onClose() {
+    this.isClosing = true;
     if (this.progressSaveTimer) {
       clearTimeout(this.progressSaveTimer);
       this.progressSaveTimer = null;
     }
-    this.destroyBook();
+    await this.flushReadingTime(false).catch((err) => {
+      console.error("ob-epub: reading time flush on close failed", err);
+    });
+    try {
+      this.destroyBook();
+    } catch (err) {
+      console.error("ob-epub: onClose cleanup failed", err);
+      this.destroyBook();
+    }
   }
 
   // FileView lifecycle: called by Obsidian when a file is opened in this view
@@ -202,6 +212,9 @@ export class EpubReaderView extends FileView {
   // FileView lifecycle: called when switching away from this file
   async onUnloadFile(_file: TFile): Promise<void> {
     this.loadedFilePath = null;
+    await this.flushReadingTime(false).catch((err) => {
+      console.error("ob-epub: reading time flush on unload failed", err);
+    });
     this.destroyBook();
   }
 
@@ -294,13 +307,6 @@ export class EpubReaderView extends FileView {
     const nextBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "▶" });
     nextBtn.title = "下一页";
     nextBtn.addEventListener("click", () => this.rendition?.next());
-
-    // Bookshelf button
-    const shelfBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "📚" });
-    shelfBtn.title = "书架";
-    shelfBtn.addEventListener("click", () => {
-      this.containerEl.dispatchEvent(new CustomEvent("epub-open-bookshelf"));
-    });
   }
 
   private toggleToc() {
@@ -341,13 +347,21 @@ export class EpubReaderView extends FileView {
     }
   }
 
+  private safeCleanup(label: string, fn: () => void): void {
+    try {
+      fn();
+    } catch (err) {
+      console.error(`ob-epub: cleanup failed (${label})`, err);
+    }
+  }
+
   private destroyBook() {
-    void this.flushReadingTime();
-    this.teardownReadingTimeTracking();
-    this.dismissContextMenu();
-    // Clean up vault file watcher
-    this.annotationWatcherCleanup?.();
-    this.annotationWatcherCleanup = null;
+    this.safeCleanup("teardownReadingTimeTracking", () => this.teardownReadingTimeTracking());
+    this.safeCleanup("dismissContextMenu", () => this.dismissContextMenu());
+    this.safeCleanup("annotationWatcher", () => {
+      this.annotationWatcherCleanup?.();
+      this.annotationWatcherCleanup = null;
+    });
     if (this.highlightRedrawTimer) {
       clearTimeout(this.highlightRedrawTimer);
       this.highlightRedrawTimer = null;
@@ -356,23 +370,31 @@ export class EpubReaderView extends FileView {
     this.highlightsInitialLoaded = false;
     this.tocSpineEntries = [];
 
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    if (this.keydownHandler) {
-      this.containerEl.removeEventListener("keydown", this.keydownHandler);
+    this.safeCleanup("resizeObserver", () => {
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = null;
+    });
+    this.safeCleanup("keydownHandler", () => {
+      if (this.keydownHandler && this.containerEl.isConnected) {
+        this.containerEl.removeEventListener("keydown", this.keydownHandler);
+      }
       this.keydownHandler = null;
-    }
-    if (this.rendition) {
-      this.rendition.destroy();
+    });
+    this.safeCleanup("rendition", () => {
+      if (this.rendition) {
+        this.rendition.destroy();
+      }
       this.rendition = null;
-    }
-    if (this.book) {
-      this.book.destroy();
+    });
+    this.safeCleanup("book", () => {
+      if (this.book) {
+        this.book.destroy();
+      }
       this.book = null;
-    }
-    if (this.readerEl) {
-      this.readerEl.empty();
-    }
+    });
+    this.safeCleanup("readerEl", () => {
+      this.readerEl?.empty();
+    });
   }
 
   private async loadBook(file: TFile, startCfi: string = "") {
@@ -754,6 +776,7 @@ export class EpubReaderView extends FileView {
 
   private canTrackReadingTime(): boolean {
     return (
+      !this.isClosing &&
       !this.blockProgressSave &&
       !this.isBookInitializing &&
       !!this.file &&
@@ -778,6 +801,7 @@ export class EpubReaderView extends FileView {
   }
 
   private async flushReadingTime(resumeAfter = false) {
+    if (this.isClosing && resumeAfter) return;
     if (!this.file) return;
     const wasTracking = this.readingSessionStart != null;
     this.pauseReadingTimer();

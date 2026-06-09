@@ -471,18 +471,37 @@ a.ob-epub-goto-link {
   border: 1px solid var(--background-modifier-border);
 }
 
-/* ---- Bookshelf Modal ---- */
-.ob-epub-bookshelf .modal-content {
-  padding: 20px;
+/* ---- Bookshelf Sidebar ---- */
+.ob-epub-bookshelf-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.bookshelf-heading {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+  flex-shrink: 0;
+}
+
+.bookshelf-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
 }
 
 .bookshelf-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 60vh;
+  flex: 1;
   overflow-y: auto;
-  margin-top: 12px;
+  margin-top: 4px;
+  padding-right: 2px;
 }
 
 .bookshelf-item {

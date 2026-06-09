@@ -1,9 +1,10 @@
-import { Notice, Plugin, TFile, normalizePath } from "obsidian";
+import { Notice, Plugin, TFile, addIcon, normalizePath } from "obsidian";
+import { BOOKSHELF_ICON_ID, BOOKSHELF_ICON_SVG } from "./icons/bookshelfIcon";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { AIService } from "./AIService";
-import { BookshelfModal } from "./BookshelfModal";
+import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
 import { DEFAULT_SETTINGS, EpubPluginSettings } from "./types";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
@@ -46,22 +47,48 @@ export default class ObEpubPlugin extends Plugin {
       );
     });
 
+    addIcon(BOOKSHELF_ICON_ID, BOOKSHELF_ICON_SVG);
+
+    // Bookshelf sidebar view
+    this.registerView(BOOKSHELF_VIEW_TYPE, (leaf) => {
+      return new BookshelfView(leaf, this.progressStore, (file) => {
+        void this.openEpubFile(file);
+      });
+    });
+
+    this.addRibbonIcon(BOOKSHELF_ICON_ID, "EPUB 书架", () => {
+      void this.openBookshelf();
+    });
+
     // Register .epub file extension → open with this view
     this.registerExtensions(["epub"], EPUB_READER_VIEW_TYPE);
 
     // Settings tab
     this.addSettingTab(new EpubSettingsTab(this.app, this));
 
-    // Command: open bookshelf
+    // Command: open bookshelf sidebar
     this.addCommand({
       id: "open-bookshelf",
       name: "打开 EPUB 书架",
       callback: () => {
-        new BookshelfModal(this.app, this.progressStore, (file) => {
-          this.openEpubFile(file);
-        }).open();
+        void this.openBookshelf();
       },
     });
+
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        if (file instanceof TFile && file.extension === "epub") {
+          this.refreshBookshelfViews();
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        if (file instanceof TFile && file.extension === "epub") {
+          this.refreshBookshelfViews();
+        }
+      })
+    );
 
     // Command: open current epub
     this.addCommand({
@@ -75,13 +102,6 @@ export default class ObEpubPlugin extends Plugin {
           new Notice("请先选中一个 .epub 文件");
         }
       },
-    });
-
-    // Handle bookshelf open events from the view
-    this.registerDomEvent(document, "epub-open-bookshelf" as any, () => {
-      new BookshelfModal(this.app, this.progressStore, (file) => {
-        this.openEpubFile(file);
-      }).open();
     });
 
     // Deep-link: obsidian://ob-epub-goto?file=...&cfi=...
@@ -143,6 +163,35 @@ export default class ObEpubPlugin extends Plugin {
     } catch (err) {
       console.error("ob-epub: annotation migration failed", err);
     }
+  }
+
+  async openBookshelf(): Promise<void> {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(BOOKSHELF_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      const leftLeaf = workspace.getLeftLeaf(false);
+      if (!leftLeaf) {
+        new Notice("无法打开侧边栏书架");
+        return;
+      }
+      await leftLeaf.setViewState({ type: BOOKSHELF_VIEW_TYPE, active: true });
+      leaf = leftLeaf;
+    }
+
+    await workspace.revealLeaf(leaf);
+    (leaf.view as BookshelfView).refresh();
+  }
+
+  private refreshBookshelfViews(): void {
+    if (!this.app?.workspace) return;
+    this.app.workspace.getLeavesOfType(BOOKSHELF_VIEW_TYPE).forEach((leaf) => {
+      try {
+        (leaf.view as BookshelfView).refresh();
+      } catch (err) {
+        console.error("ob-epub: bookshelf refresh failed", err);
+      }
+    });
   }
 
   /** Consumed by EpubReaderView.onLoadFile to honour a pending deep-link jump. */
@@ -225,6 +274,12 @@ export default class ObEpubPlugin extends Plugin {
   }
 
   onunload() {
+    try {
+      this.app.workspace.detachLeavesOfType(BOOKSHELF_VIEW_TYPE);
+      this.app.workspace.detachLeavesOfType(EPUB_READER_VIEW_TYPE);
+    } catch (err) {
+      console.error("ob-epub: detach views failed", err);
+    }
     console.log("ob-epub-reader unloaded");
   }
 }

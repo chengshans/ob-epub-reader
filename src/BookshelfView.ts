@@ -1,32 +1,67 @@
-import { App, Modal, TFile } from "obsidian";
+import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
+import { BOOKSHELF_ICON_ID } from "./icons/bookshelfIcon";
 import { ProgressStore } from "./ProgressStore";
 import { formatReadingTime } from "./types";
 
-export class BookshelfModal extends Modal {
+export const BOOKSHELF_VIEW_TYPE = "epub-bookshelf";
+
+export class BookshelfView extends ItemView {
   private progressStore: ProgressStore;
   private openCallback: (file: TFile) => void;
 
-  constructor(app: App, progressStore: ProgressStore, onOpen: (file: TFile) => void) {
-    super(app);
+  constructor(
+    leaf: WorkspaceLeaf,
+    progressStore: ProgressStore,
+    onOpen: (file: TFile) => void
+  ) {
+    super(leaf);
     this.progressStore = progressStore;
     this.openCallback = onOpen;
   }
 
-  async onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.addClass("ob-epub-bookshelf");
+  getViewType(): string {
+    return BOOKSHELF_VIEW_TYPE;
+  }
 
-    contentEl.createEl("h2", { text: "📚 EPUB 书架" });
+  getDisplayText(): string {
+    return "EPUB 书架";
+  }
+
+  getIcon(): string {
+    return BOOKSHELF_ICON_ID;
+  }
+
+  async onOpen(): Promise<void> {
+    this.render();
+  }
+
+  async onClose(): Promise<void> {
+    try {
+      this.contentEl.empty();
+    } catch (err) {
+      console.error("ob-epub: bookshelf onClose failed", err);
+    }
+  }
+
+  refresh(): void {
+    this.render();
+  }
+
+  private render(): void {
+    const container = this.contentEl;
+    container.empty();
+    container.addClass("ob-epub-bookshelf-view");
+
+    container.createEl("h4", { cls: "bookshelf-heading", text: "📚 EPUB 书架" });
 
     const epubFiles = this.app.vault.getFiles().filter((f) => f.extension === "epub");
 
     if (epubFiles.length === 0) {
-      contentEl.createEl("p", { text: "Vault 中没有找到 EPUB 文件。" });
+      container.createEl("p", { cls: "bookshelf-empty", text: "Vault 中没有找到 EPUB 文件。" });
       return;
     }
 
-    const list = contentEl.createDiv({ cls: "bookshelf-list" });
+    const list = container.createDiv({ cls: "bookshelf-list" });
 
     for (const file of epubFiles) {
       const progress = this.progressStore.getProgress(file.path);
@@ -60,13 +95,8 @@ export class BookshelfModal extends Modal {
       }
 
       item.addEventListener("click", () => {
-        this.close();
         this.openCallback(file);
       });
     }
-  }
-
-  onClose() {
-    this.contentEl.empty();
   }
 }
