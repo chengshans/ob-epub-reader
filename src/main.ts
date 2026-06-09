@@ -215,7 +215,7 @@ export default class ObEpubPlugin extends Plugin {
     await this.saveData(existing);
 
     // Propagate settings changes to services
-    this.progressStore?.updateSettings(this.settings);
+    await this.progressStore?.updateSettings(this.settings);
     this.annotationVaultStore?.updateSettings(this.settings);
     this.aiService?.updateSettings(this.settings);
 

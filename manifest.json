@@ -1,7 +1,7 @@
 {
   "id": "ob-epub-reader",
   "name": "EPUB Reader",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "minAppVersion": "1.0.0",
   "description": "Read EPUB files directly in Obsidian with TOC, highlights, excerpts, and AI integration.",
   "author": "ob-epub",
