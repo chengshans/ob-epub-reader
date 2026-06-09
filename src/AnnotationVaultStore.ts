@@ -3,7 +3,7 @@ import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, Highli
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
-// > [!ob-epub|yellow] 第三章 · 2026-05-23 18:15 ^ann-abc123
+// > [!ob-epub|yellow] 第三章 · 2026-05-23 18:15:42 ^ann-abc123
 // > 原文内容第一行
 // > 原文内容第二行
 //
@@ -88,25 +88,27 @@ export class AnnotationVaultStore {
     return normalizePath(`${folder}/《${title}》摘录.md`);
   }
 
-  /** Format as local `YYYY-MM-DD HH:mm` (not UTC). */
+  /** Format as local `YYYY-MM-DD HH:mm:ss` (not UTC). */
   private formatDate(date: Date): string {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     const hours = String(date.getHours()).padStart(2, "0");
     const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
   private parseLocalDateTime(value: string): Date {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})$/);
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})(?::(\d{2}))?$/);
     if (!match) return new Date(value);
     return new Date(
       Number(match[1]),
       Number(match[2]) - 1,
       Number(match[3]),
       Number(match[4]),
-      Number(match[5])
+      Number(match[5]),
+      Number(match[6] ?? 0)
     );
   }
 
@@ -396,8 +398,8 @@ export class AnnotationVaultStore {
       const id = headerMatch[3] ?? trimmed.match(/>\s*\^(ann-[a-z0-9-]+)/i)?.[1];
       if (!id) continue;
 
-      // Chapter and date from headerRest "Chapter · YYYY-MM-DD HH:MM"
-      const chapterDateMatch = headerRest.match(/^(.*?)\s·\s(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2})$/);
+      // Chapter and date from headerRest "Chapter · YYYY-MM-DD HH:mm:ss"
+      const chapterDateMatch = headerRest.match(/^(.*?)\s·\s(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(?::\d{2})?)$/);
       const chapter = chapterDateMatch ? chapterDateMatch[1].trim() : headerRest.trim();
       const created = chapterDateMatch
         ? this.parseLocalDateTime(chapterDateMatch[2]).toISOString()
