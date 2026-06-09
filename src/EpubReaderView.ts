@@ -12,6 +12,12 @@ import {
   colorHex,
 } from "./types";
 import { NoteInputModal } from "./NoteInputModal";
+import {
+  buildTocSpineIndex,
+  resolveChapterLabel,
+  spineIndexFromLocation,
+  TocSpineEntry,
+} from "./ChapterResolver";
 
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
 
@@ -23,6 +29,7 @@ export class EpubReaderView extends FileView {
   private rendition: Rendition | null = null;
   private currentCfi: string = "";
   private currentChapter: string = "";
+  private tocSpineEntries: TocSpineEntry[] = [];
   private tocItems: NavItem[] = [];
   private flow: "paginated" | "scrolled";
   private fontSize: number;
@@ -151,6 +158,7 @@ export class EpubReaderView extends FileView {
         (await this.annotationVaultStore.readProgress(file.path)) ??
         this.progressStore.getProgress(file.path);
       if (savedProgress) this.updateProgressBar(savedProgress.percent);
+      this.currentChapter = savedProgress?.chapter?.trim() ?? "";
 
       const startCfi = normalizeCfi(jumpCfi || savedProgress?.cfi || "");
       this.resumeTargetCfi = startCfi;
@@ -346,6 +354,7 @@ export class EpubReaderView extends FileView {
     }
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
+    this.tocSpineEntries = [];
 
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -388,6 +397,8 @@ export class EpubReaderView extends FileView {
 
       await this.book.ready;
       loadingEl.remove();
+
+      await this.loadTocData();
 
       // 等一帧确保 readerEl 已有真实布局尺寸
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
@@ -436,6 +447,7 @@ export class EpubReaderView extends FileView {
       // Track location changes
       this.rendition.on("relocated", (location: any) => {
         this.currentCfi = normalizeCfi(location?.start?.cfi);
+        this.syncChapterFromLocation(location);
         const percentage = this.extractPercentFromLocation(location);
         this.updateProgressBar(percentage);
         this.scheduleProgressSave(percentage);
@@ -492,6 +504,9 @@ export class EpubReaderView extends FileView {
         await this.rendition.display();
       }
 
+      const loc = await Promise.resolve(this.rendition.currentLocation?.());
+      this.syncChapterFromLocation(loc ?? undefined);
+
       if (!this.isBookInitializing) {
         this.beginReadingTimeTracking(file);
       }
@@ -517,8 +532,7 @@ export class EpubReaderView extends FileView {
       // Keyboard navigation at the host level
       this.registerKeyboardNavigation();
 
-      // Load TOC
-      await this.loadToc();
+      this.renderToc();
 
       // Refresh notes panel if currently shown
       if (this.sidebarMode === "notes") this.renderNotesPanel();
@@ -637,16 +651,31 @@ export class EpubReaderView extends FileView {
     this.accentColor = accent;
   }
 
-  private async loadToc() {
-    if (!this.book || !this.tocEl) return;
+  private async loadTocData() {
+    if (!this.book) return;
 
     const nav = await this.book.loaded.navigation;
     this.tocItems = nav.toc;
+    this.tocSpineEntries = buildTocSpineIndex(this.book, this.tocItems);
+  }
+
+  private renderToc() {
+    if (!this.tocEl) return;
 
     const tocList = this.tocEl.querySelector(".epub-toc-list") ?? this.tocEl.createEl("ul", { cls: "epub-toc-list" });
     tocList.empty();
 
     this.renderTocItems(this.tocItems, tocList as HTMLElement, 0);
+  }
+
+  private syncChapterFromLocation(location?: any) {
+    const spineIndex = spineIndexFromLocation(location, this.currentCfi, this.book);
+    if (spineIndex == null || this.tocSpineEntries.length === 0) return;
+
+    const resolved = resolveChapterLabel(this.tocSpineEntries, spineIndex);
+    if (resolved) {
+      this.currentChapter = resolved;
+    }
   }
 
   private renderTocItems(items: NavItem[], container: HTMLElement, depth: number) {

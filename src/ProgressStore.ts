@@ -316,7 +316,7 @@ export class ProgressStore {
 }
 
 /** 提取 CFI 中的 spine 章节序号，用于比较阅读深度 */
-function cfiSpineKey(cfi: string): number {
+export function cfiSpineKey(cfi: string): number {
   const match = cfi.match(/epubcfi\(\/6\/(\d+)!/);
   return match ? Number(match[1]) : 0;
 }

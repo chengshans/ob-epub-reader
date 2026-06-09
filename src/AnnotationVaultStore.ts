@@ -88,8 +88,26 @@ export class AnnotationVaultStore {
     return normalizePath(`${folder}/《${title}》摘录.md`);
   }
 
+  /** Format as local `YYYY-MM-DD HH:mm` (not UTC). */
   private formatDate(date: Date): string {
-    return date.toISOString().replace("T", " ").slice(0, 16);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }
+
+  private parseLocalDateTime(value: string): Date {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})$/);
+    if (!match) return new Date(value);
+    return new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5])
+    );
   }
 
   /** Build obsidian:// deep-link; URLSearchParams handles encoding, no angle brackets. */
@@ -305,7 +323,7 @@ export class AnnotationVaultStore {
     const frontmatter = [
       `---`,
       `epub-source: ${epubFilePath}`,
-      `created: ${now.toISOString().slice(0, 10)}`,
+      `created: ${this.formatDate(now).slice(0, 10)}`,
       `---`,
       ``,
       `# 《${title}》摘录`,
@@ -375,7 +393,7 @@ export class AnnotationVaultStore {
       const chapterDateMatch = headerRest.match(/^(.*?)\s·\s(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2})$/);
       const chapter = chapterDateMatch ? chapterDateMatch[1].trim() : headerRest.trim();
       const created = chapterDateMatch
-        ? new Date(chapterDateMatch[2]).toISOString()
+        ? this.parseLocalDateTime(chapterDateMatch[2]).toISOString()
         : new Date(0).toISOString();
 
       // Quoted text lines (lines starting with ">", skip header line, skip ^ID line)
