@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "node esbuild.config.mjs production"
+    "build": "node esbuild.config.mjs production",
+    "release": "node esbuild.config.mjs production && node scripts/package-release.mjs",
+    "release:publish": "node scripts/create-gitee-release.mjs"
   },
   "keywords": [],
   "author": "",

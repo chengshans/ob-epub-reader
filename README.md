@@ -35,10 +35,16 @@ npm install
 npm run build
 ```
 
-构建产物会输出到 `esbuild.config.mjs` 中配置的 `PLUGIN_DIR`。开发前请将该路径改为你本机 Vault 的插件目录，例如：
+构建产物默认输出到 `dist/`。若需直接部署到 Vault 插件目录，可设置环境变量：
 
+```bash
+PLUGIN_DIR="/path/to/vault/.obsidian/plugins/ob-epub-reader" npm run build
 ```
-/path/to/your-vault/.obsidian/plugins/ob-epub-reader
+
+打包发布 zip（`release/ob-epub-reader-{version}.zip`）：
+
+```bash
+npm run release
 ```
 
 开发模式（监听文件变化）：

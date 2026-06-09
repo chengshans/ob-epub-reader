@@ -3,7 +3,9 @@ import process from "process";
 import fs from "fs";
 import path from "path";
 
-const PLUGIN_DIR = "/mnt/3a6ae4bf-b0e7-4fcc-9941-3d3ffc2d95c0/seven/ZYW-HUB/ai-co-reading/.obsidian/plugins/ob-epub-reader";
+const PLUGIN_DIR =
+  process.env.PLUGIN_DIR ||
+  path.resolve("dist");
 
 const prod = process.argv[2] === "production";
 
