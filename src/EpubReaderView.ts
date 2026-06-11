@@ -51,6 +51,7 @@ export class EpubReaderView extends FileView {
   private annotationWatcherCleanup: (() => void) | null = null;
   private cachedHighlights: Annotation[] = [];
   private highlightRedrawTimer: ReturnType<typeof setTimeout> | null = null;
+  private highlightSyncTimer: ReturnType<typeof setTimeout> | null = null;
   private progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private loadedFilePath: string | null = null;
   private loadingFilePath: string | null = null;
@@ -366,6 +367,10 @@ export class EpubReaderView extends FileView {
       clearTimeout(this.highlightRedrawTimer);
       this.highlightRedrawTimer = null;
     }
+    if (this.highlightSyncTimer) {
+      clearTimeout(this.highlightSyncTimer);
+      this.highlightSyncTimer = null;
+    }
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
     this.tocSpineEntries = [];
@@ -483,9 +488,12 @@ export class EpubReaderView extends FileView {
           if (!this.highlightsInitialLoaded) {
             void this.refreshHighlights().then(() => {
               this.highlightsInitialLoaded = true;
+              this.scheduleHighlightSync();
             });
+          } else {
+            // Re-sync after layout changes (resize / re-render) to fix orphan marks.
+            this.scheduleHighlightSync();
           }
-          // epub.js 的 hooks.render.inject 自动重绘当前 section 的高亮，无需手动 redraw
         }, 150);
       });
 
@@ -1054,12 +1062,77 @@ export class EpubReaderView extends FileView {
 
   // ---------- Annotations: draw / refresh / manage ----------
 
+  private getViewList(): any[] {
+    if (!this.rendition) return [];
+    const views = this.rendition.views();
+    return Array.isArray(views)
+      ? views
+      : (views as { all?: () => any[] }).all?.() ?? [];
+  }
+
+  private getDisplayedViews(): any[] {
+    return this.getViewList().filter((view) => view?.displayed);
+  }
+
+  private purgeAllViewHighlights(view: any) {
+    if (!view?.highlights) return;
+    for (const cfi of Object.keys(view.highlights)) {
+      try {
+        view.unhighlight(cfi);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /**
+   * Clear orphan SVG marks and re-attach store annotations once per view.
+   * epub.js inject re-attaches on every render without removing old marks,
+   * which causes misaligned duplicate highlights.
+   */
+  private syncViewHighlights(view: any) {
+    if (!this.rendition?.annotations || !view) return;
+    const store = this.rendition.annotations as any;
+    const sectionIndex = view.index;
+    const hashes: string[] = store._annotationsBySectionIndex?.[sectionIndex] ?? [];
+    if (hashes.length === 0) return;
+
+    this.purgeAllViewHighlights(view);
+
+    const seen = new Set<string>();
+    for (const hash of hashes) {
+      if (seen.has(hash)) continue;
+      seen.add(hash);
+      const annotation = store._annotations?.[hash];
+      if (!annotation) continue;
+      annotation.mark = undefined;
+      try {
+        annotation.attach(view);
+      } catch (e) {
+        console.warn("syncViewHighlights: attach failed", hash, e);
+      }
+    }
+  }
+
+  private syncAllDisplayedHighlights() {
+    for (const view of this.getDisplayedViews()) {
+      this.syncViewHighlights(view);
+    }
+  }
+
+  private scheduleHighlightSync() {
+    if (this.highlightSyncTimer) clearTimeout(this.highlightSyncTimer);
+    this.highlightSyncTimer = setTimeout(() => {
+      this.highlightSyncTimer = null;
+      this.syncAllDisplayedHighlights();
+    }, 80);
+  }
+
   private drawLine(annotation: Annotation) {
     if (!this.rendition) return;
+    this.removeDrawnLine(annotation.cfiRange);
+    this.purgeViewHighlight(annotation.cfiRange);
     const hex = colorHex(annotation.color);
-    const className = annotation.note
-      ? `${HIGHLIGHT_CLASS} has-note`
-      : HIGHLIGHT_CLASS;
     this.rendition.annotations.add(
       ANNOTATION_TYPE,
       annotation.cfiRange,
@@ -1067,10 +1140,11 @@ export class EpubReaderView extends FileView {
       (err: Error | null) => {
         if (err) console.warn("drawLine failed:", annotation.id, err.message);
       },
-      className,
+      HIGHLIGHT_CLASS,
       {
         fill: hex,
         "fill-opacity": "0.38",
+        "mix-blend-mode": "normal",
       }
     );
   }
@@ -1090,10 +1164,22 @@ export class EpubReaderView extends FileView {
     }
   }
 
+  /** Clear orphaned marks-pane SVG layers not tracked in epub.js store. */
+  private purgeViewHighlight(cfiRange: string) {
+    if (!this.rendition) return;
+    for (const view of this.getViewList()) {
+      try {
+        view.unhighlight?.(cfiRange);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   private redrawLine(annotation: Annotation) {
     if (!this.rendition) return;
-    this.removeDrawnLine(annotation.cfiRange);
     this.drawLine(annotation);
+    this.scheduleHighlightSync();
   }
 
   private upsertCachedHighlight(annotation: Annotation) {
@@ -1124,6 +1210,7 @@ export class EpubReaderView extends FileView {
           console.warn("refreshHighlights: drawLine failed for", ann.id, e);
         }
       }
+      this.scheduleHighlightSync();
 
       if (this.sidebarMode === "notes") this.renderNotesPanel();
     } finally {
@@ -1137,7 +1224,10 @@ export class EpubReaderView extends FileView {
     if (existing) {
       await this.annotationVaultStore.update(this.file.path, existing.id, { color });
       const updated = await this.annotationVaultStore.getById(this.file.path, existing.id);
-      if (updated) this.redrawLine(updated);
+      if (updated) {
+        this.upsertCachedHighlight(updated);
+        this.redrawLine(updated);
+      }
     } else {
       const ann: Annotation = {
         id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
@@ -1150,6 +1240,7 @@ export class EpubReaderView extends FileView {
       await this.annotationVaultStore.add(this.file.path, ann);
       this.upsertCachedHighlight(ann);
       this.drawLine(ann);
+      this.scheduleHighlightSync();
     }
     this.clearSelection();
     if (this.sidebarMode === "notes") this.renderNotesPanel();
@@ -1180,6 +1271,7 @@ export class EpubReaderView extends FileView {
         await this.annotationVaultStore.add(filePath, ann);
         this.upsertCachedHighlight(ann);
         this.drawLine(ann);
+        this.scheduleHighlightSync();
         this.clearSelection();
         if (this.sidebarMode === "notes") this.renderNotesPanel();
         new Notice(note ? "✅ 标注已保存" : "✅ 已画线");
@@ -1219,7 +1311,10 @@ export class EpubReaderView extends FileView {
         this.dismissContextMenu();
         await this.annotationVaultStore.update(filePath, ann.id, { color: c.id });
         const updated = await this.annotationVaultStore.getById(filePath, ann.id);
-        if (updated) this.redrawLine(updated);
+        if (updated) {
+          this.upsertCachedHighlight(updated);
+          this.redrawLine(updated);
+        }
         if (this.sidebarMode === "notes") this.renderNotesPanel();
       });
     }
@@ -1236,7 +1331,10 @@ export class EpubReaderView extends FileView {
         async ({ note, color }) => {
           await this.annotationVaultStore.update(filePath, ann.id, { note: note || undefined, color });
           const updated = await this.annotationVaultStore.getById(filePath, ann.id);
-          if (updated) this.redrawLine(updated);
+          if (updated) {
+            this.upsertCachedHighlight(updated);
+            this.redrawLine(updated);
+          }
           if (this.sidebarMode === "notes") this.renderNotesPanel();
           new Notice("✅ 已更新");
         },
@@ -1312,7 +1410,10 @@ export class EpubReaderView extends FileView {
           async ({ note, color }) => {
             await this.annotationVaultStore.update(filePath, ann.id, { note: note || undefined, color });
             const updated = await this.annotationVaultStore.getById(filePath, ann.id);
-            if (updated) this.redrawLine(updated);
+            if (updated) {
+              this.upsertCachedHighlight(updated);
+              this.redrawLine(updated);
+            }
             this.renderNotesPanel();
           },
           "编辑标注"
