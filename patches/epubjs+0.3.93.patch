@@ -1,0 +1,110 @@
+diff --git a/node_modules/epubjs/lib/contents.js b/node_modules/epubjs/lib/contents.js
+index 8392d87..43be818 100644
+--- a/node_modules/epubjs/lib/contents.js
++++ b/node_modules/epubjs/lib/contents.js
+@@ -843,31 +843,7 @@ class Contents {
+ 
+ 
+   addScript(src) {
+-    return new Promise(function (resolve, reject) {
+-      var $script;
+-      var ready = false;
+-
+-      if (!this.document) {
+-        resolve(false);
+-        return;
+-      }
+-
+-      $script = this.document.createElement("script");
+-      $script.type = "text/javascript";
+-      $script.async = true;
+-      $script.src = src;
+-
+-      $script.onload = $script.onreadystatechange = function () {
+-        if (!ready && (!this.readyState || this.readyState == "complete")) {
+-          ready = true;
+-          setTimeout(function () {
+-            resolve(true);
+-          }, 1);
+-        }
+-      };
+-
+-      this.document.head.appendChild($script);
+-    }.bind(this));
++    return Promise.resolve(false);
+   }
+   /**
+    * Add a class to the contents container
+diff --git a/node_modules/epubjs/lib/rendition.js b/node_modules/epubjs/lib/rendition.js
+index 0dda80c..3efa9e7 100644
+--- a/node_modules/epubjs/lib/rendition.js
++++ b/node_modules/epubjs/lib/rendition.js
+@@ -1040,12 +1040,7 @@ class Rendition {
+ 
+ 
+   injectScript(doc, section) {
+-    let script = doc.createElement("script");
+-    script.setAttribute("type", "text/javascript");
+-    script.setAttribute("src", this.settings.script);
+-    script.textContent = " "; // Needed to prevent self closing tag
+-
+-    doc.getElementsByTagName("head")[0].appendChild(script);
++    // Scripted content disabled — no script injection.
+   }
+   /**
+    * Hook to handle the document identifier before
+diff --git a/node_modules/epubjs/src/contents.js b/node_modules/epubjs/src/contents.js
+index 3effe72..3e26178 100644
+--- a/node_modules/epubjs/src/contents.js
++++ b/node_modules/epubjs/src/contents.js
+@@ -818,32 +818,7 @@ class Contents {
+ 	 * @returns {Promise} loaded
+ 	 */
+ 	addScript(src) {
+-
+-		return new Promise(function(resolve, reject){
+-			var $script;
+-			var ready = false;
+-
+-			if(!this.document) {
+-				resolve(false);
+-				return;
+-			}
+-
+-			$script = this.document.createElement("script");
+-			$script.type = "text/javascript";
+-			$script.async = true;
+-			$script.src = src;
+-			$script.onload = $script.onreadystatechange = function() {
+-				if ( !ready && (!this.readyState || this.readyState == "complete") ) {
+-					ready = true;
+-					setTimeout(function(){
+-						resolve(true);
+-					}, 1);
+-				}
+-			};
+-
+-			this.document.head.appendChild($script);
+-
+-		}.bind(this));
++		return Promise.resolve(false);
+ 	}
+ 
+ 	/**
+diff --git a/node_modules/epubjs/src/rendition.js b/node_modules/epubjs/src/rendition.js
+index 14a21b4..b5fdc43 100644
+--- a/node_modules/epubjs/src/rendition.js
++++ b/node_modules/epubjs/src/rendition.js
+@@ -1037,11 +1037,7 @@ class Rendition {
+ 	 * @private
+ 	 */
+ 	injectScript(doc, section) {
+-		let script = doc.createElement("script");
+-		script.setAttribute("type", "text/javascript");
+-		script.setAttribute("src", this.settings.script);
+-		script.textContent = " "; // Needed to prevent self closing tag
+-		doc.getElementsByTagName("head")[0].appendChild(script);
++		// Scripted content disabled — no script injection.
+ 	}
+ 
+ 	/**

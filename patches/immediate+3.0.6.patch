@@ -1,0 +1,26 @@
+diff --git a/node_modules/immediate/lib/browser.js b/node_modules/immediate/lib/browser.js
+index db03d0a..5f9af8e 100644
+--- a/node_modules/immediate/lib/browser.js
++++ b/node_modules/immediate/lib/browser.js
+@@ -20,21 +20,6 @@ var scheduleDrain;
+     scheduleDrain = function () {
+       channel.port2.postMessage(0);
+     };
+-  } else if ('document' in global && 'onreadystatechange' in global.document.createElement('script')) {
+-    scheduleDrain = function () {
+-
+-      // Create a <script> element; its readystatechange event will be fired asynchronously once it is inserted
+-      // into the document. Do so, thus queuing up the task. Remember to clean up once it's been called.
+-      var scriptEl = global.document.createElement('script');
+-      scriptEl.onreadystatechange = function () {
+-        nextTick();
+-
+-        scriptEl.onreadystatechange = null;
+-        scriptEl.parentNode.removeChild(scriptEl);
+-        scriptEl = null;
+-      };
+-      global.document.documentElement.appendChild(scriptEl);
+-    };
+   } else {
+     scheduleDrain = function () {
+       setTimeout(nextTick, 0);

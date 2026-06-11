@@ -250,7 +250,7 @@ export class EpubReaderView extends FileView {
 
     // Notes panel
     this.notesEl = this.sidebarEl.createDiv({ cls: "epub-notes" });
-    this.notesEl.style.display = "none";
+    this.notesEl.hide();
 
     // Reader area
     this.readerEl = bodyEl.createDiv({ cls: "epub-reader-area" });
@@ -319,14 +319,14 @@ export class EpubReaderView extends FileView {
   private toggleToc() {
     this.tocVisible = !this.tocVisible;
     if (this.sidebarEl) {
-      this.sidebarEl.style.display = this.tocVisible ? "" : "none";
+      this.sidebarEl.toggleVisibility(this.tocVisible);
     }
   }
 
   private setSidebarMode(mode: "toc" | "notes") {
     this.sidebarMode = mode;
-    if (this.tocEl) this.tocEl.style.display = mode === "toc" ? "" : "none";
-    if (this.notesEl) this.notesEl.style.display = mode === "notes" ? "" : "none";
+    if (this.tocEl) this.tocEl.toggleVisibility(mode === "toc");
+    if (this.notesEl) this.notesEl.toggleVisibility(mode === "notes");
     const tabs = this.sidebarEl?.querySelectorAll(".epub-sidebar-tab");
     tabs?.forEach((t, i) => {
       const active = (i === 0 && mode === "toc") || (i === 1 && mode === "notes");
@@ -718,7 +718,7 @@ export class EpubReaderView extends FileView {
   private renderTocItems(items: NavItem[], container: HTMLElement, depth: number) {
     for (const item of items) {
       const li = container.createEl("li", { cls: "epub-toc-item" });
-      li.style.paddingLeft = `${depth * 12}px`;
+      li.setCssProps({ paddingLeft: `${depth * 12}px` });
 
       const label = li.createEl("span", { cls: "epub-toc-label", text: item.label.trim() });
       label.addEventListener("click", () => {
@@ -730,13 +730,12 @@ export class EpubReaderView extends FileView {
 
       if (item.subitems && item.subitems.length > 0) {
         const toggle = li.createEl("span", { cls: "epub-toc-toggle", text: "▶" });
-        const subList = li.createEl("ul", { cls: "epub-toc-sublist" });
-        subList.style.display = "none";
+        const subList = li.createEl("ul", { cls: "epub-toc-sublist is-collapsed" });
 
         toggle.addEventListener("click", (e) => {
           e.stopPropagation();
-          const expanded = subList.style.display !== "none";
-          subList.style.display = expanded ? "none" : "";
+          const expanded = !subList.hasClass("is-collapsed");
+          subList.toggleClass("is-collapsed", expanded);
           toggle.textContent = expanded ? "▶" : "▼";
         });
 
@@ -949,7 +948,7 @@ export class EpubReaderView extends FileView {
     const fill = this.containerEl.querySelector("#epub-progress-fill") as HTMLElement | null;
     const text = this.containerEl.querySelector("#epub-progress-text") as HTMLElement | null;
     const pct = Math.round(this.currentPercent * 100);
-    if (fill) fill.style.width = `${pct}%`;
+    if (fill) fill.setCssProps({ width: `${pct}%` });
     if (text) text.textContent = `${pct}%`;
   }
 
@@ -964,7 +963,7 @@ export class EpubReaderView extends FileView {
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
     for (const c of HIGHLIGHT_COLORS) {
       const dot = colorRow.createDiv({ cls: "epub-color-dot" });
-      dot.style.background = c.hex;
+      dot.setAttribute("data-color", c.id);
       dot.title = `画线 · ${c.label}`;
       dot.addEventListener("click", async () => {
         this.dismissContextMenu();
@@ -998,8 +997,8 @@ export class EpubReaderView extends FileView {
   private positionMenu(menu: HTMLElement, contents: any) {
     const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
     const sel = contents?.window?.getSelection?.();
-    menu.style.position = "fixed";
     if (sel && sel.rangeCount > 0 && iframe) {
+      menu.removeClass("is-centered");
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const iframeRect = iframe.getBoundingClientRect();
@@ -1010,12 +1009,14 @@ export class EpubReaderView extends FileView {
       if (left > maxLeft) left = Math.max(8, maxLeft);
       const maxTop = window.innerHeight - menuRect.height - 8;
       if (top > maxTop) top = iframeRect.top + rect.top - menuRect.height - 6;
-      menu.style.top = `${Math.max(8, top)}px`;
-      menu.style.left = `${Math.max(8, left)}px`;
+      menu.setCssProps({
+        top: `${Math.max(8, top)}px`,
+        left: `${Math.max(8, left)}px`,
+        transform: "",
+      });
     } else {
-      menu.style.top = "50%";
-      menu.style.left = "50%";
-      menu.style.transform = "translate(-50%, -50%)";
+      menu.addClass("is-centered");
+      menu.setCssProps({ top: "", left: "", transform: "" });
     }
   }
 
@@ -1171,13 +1172,14 @@ export class EpubReaderView extends FileView {
     btn.setAttribute("data-cfi", annotation.cfiRange);
     btn.setAttribute("data-id", annotation.id);
     btn.textContent = noteTypeIcon(annotation.noteType);
-    btn.style.position = "absolute";
-    btn.style.width = `${iconSize}px`;
-    btn.style.height = `${iconSize}px`;
-    btn.style.fontSize = `${Math.max(10, iconSize - 9)}px`;
-    btn.style.lineHeight = `${iconSize - 2}px`;
-    btn.style.top = `${top}px`;
-    btn.style.left = `${left}px`;
+    btn.setCssProps({
+      width: `${iconSize}px`,
+      height: `${iconSize}px`,
+      fontSize: `${Math.max(10, iconSize - 9)}px`,
+      lineHeight: `${iconSize - 2}px`,
+      top: `${top}px`,
+      left: `${left}px`,
+    });
 
     btn.addEventListener("mousedown", (e) => e.stopPropagation());
     btn.addEventListener("click", (e) => {
@@ -1466,7 +1468,7 @@ export class EpubReaderView extends FileView {
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
     for (const c of HIGHLIGHT_COLORS) {
       const dot = colorRow.createDiv({ cls: "epub-color-dot" });
-      dot.style.background = c.hex;
+      dot.setAttribute("data-color", c.id);
       if (c.id === ann.color) dot.addClass("is-active");
       dot.title = `改为${c.label}`;
       dot.addEventListener("click", async () => {
@@ -1533,7 +1535,7 @@ export class EpubReaderView extends FileView {
 
       const head = li.createDiv({ cls: "epub-note-item-head" });
       const dot = head.createDiv({ cls: "epub-color-dot is-static" });
-      dot.style.background = colorHex(ann.color);
+      dot.setAttribute("data-color", ann.color);
       head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
       if (ann.note) {
         head.createSpan({

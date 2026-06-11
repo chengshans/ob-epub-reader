@@ -13,7 +13,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("ob-epub-settings");
-    containerEl.createEl("h2", { text: "EPUB Marginalia 设置" });
+    new Setting(containerEl).setName("EPUB Marginalia 设置").setHeading();
 
     new Setting(containerEl)
       .setName("摘录文件夹")
@@ -56,7 +56,7 @@ export class EpubSettingsTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h3", { text: "想法图标" });
+    new Setting(containerEl).setName("想法图标").setHeading();
 
     new Setting(containerEl)
       .setName("图标大小")
@@ -100,7 +100,7 @@ export class EpubSettingsTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h3", { text: "AI 集成" });
+    new Setting(containerEl).setName("AI 集成").setHeading();
 
     new Setting(containerEl)
       .setName("AI API URL")

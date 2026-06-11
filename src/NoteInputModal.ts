@@ -65,7 +65,7 @@ export class NoteInputModal extends Modal {
     const dotEls: Record<string, HTMLElement> = {};
     for (const c of HIGHLIGHT_COLORS) {
       const dot = dots.createDiv({ cls: "epub-color-dot" });
-      dot.style.background = c.hex;
+      dot.setAttribute("data-color", c.id);
       dot.title = c.label;
       dot.setAttribute("data-color", c.id);
       if (c.id === this.color) dot.addClass("is-active");

@@ -77,7 +77,7 @@ export class BookshelfView extends ItemView {
 
       const progressBar = meta.createDiv({ cls: "bookshelf-progress-wrap" });
       const bar = progressBar.createDiv({ cls: "bookshelf-progress-bar" });
-      bar.style.width = `${percent}%`;
+      bar.setCssProps({ width: `${percent}%` });
       progressBar.createEl("span", { cls: "bookshelf-percent", text: `${percent}%` });
 
       if (progress) {

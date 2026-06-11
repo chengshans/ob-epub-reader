@@ -263,6 +263,10 @@ a.ob-epub-goto-link {
   flex: 1 0 100%;
 }
 
+.epub-toc-sublist.is-collapsed {
+  display: none;
+}
+
 .epub-toc-label {
   flex: 1;
   padding: 5px 12px;
@@ -388,6 +392,12 @@ a.ob-epub-goto-link {
   align-items: center;
 }
 
+.epub-context-menu.is-centered {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .epub-ctx-colors {
   display: flex;
   align-items: center;
@@ -412,6 +422,12 @@ a.ob-epub-goto-link {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
   transition: transform 0.1s, border-color 0.1s;
 }
+
+.epub-color-dot[data-color="yellow"] { background: #e8b339; }
+.epub-color-dot[data-color="red"] { background: #e0533d; }
+.epub-color-dot[data-color="green"] { background: #3aa675; }
+.epub-color-dot[data-color="blue"] { background: #3b82c4; }
+.epub-color-dot[data-color="purple"] { background: #8b5cf6; }
 
 .epub-color-dot:hover {
   transform: scale(1.18);
