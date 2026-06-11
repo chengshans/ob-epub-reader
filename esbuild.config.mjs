@@ -7,6 +7,20 @@ const PLUGIN_DIR =
   process.env.PLUGIN_DIR ||
   path.resolve("dist");
 
+function copyBuildAssets(pluginDir) {
+  const manifestDest = path.join(pluginDir, "manifest.json");
+  if (path.resolve(manifestDest) !== path.resolve("manifest.json")) {
+    fs.copyFileSync("manifest.json", manifestDest);
+  }
+
+  if (fs.existsSync("src/styles.css")) {
+    const stylesDest = path.join(pluginDir, "styles.css");
+    if (path.resolve(stylesDest) !== path.resolve("src/styles.css")) {
+      fs.copyFileSync("src/styles.css", stylesDest);
+    }
+  }
+}
+
 const prod = process.argv[2] === "production";
 
 const context = await esbuild.context({
@@ -27,18 +41,10 @@ if (prod) {
   await context.rebuild();
   await context.dispose();
 
-  // Copy manifest.json and styles.css to plugin dir
-  fs.copyFileSync("manifest.json", path.join(PLUGIN_DIR, "manifest.json"));
-  if (fs.existsSync("src/styles.css")) {
-    fs.copyFileSync("src/styles.css", path.join(PLUGIN_DIR, "styles.css"));
-  }
+  copyBuildAssets(PLUGIN_DIR);
   console.log("Build complete. Files copied to:", PLUGIN_DIR);
 } else {
   await context.watch();
-  // Copy manifest.json and styles.css in dev mode too
-  fs.copyFileSync("manifest.json", path.join(PLUGIN_DIR, "manifest.json"));
-  if (fs.existsSync("src/styles.css")) {
-    fs.copyFileSync("src/styles.css", path.join(PLUGIN_DIR, "styles.css"));
-  }
+  copyBuildAssets(PLUGIN_DIR);
   console.log("Watching...");
 }
