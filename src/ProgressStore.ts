@@ -65,7 +65,7 @@ export class ProgressStore {
   }
 
   private getExcerptFolder(): string {
-    const folder = (this.settings.excerptFolder || "co-books").trim().replace(/\/$/, "");
+    const folder = (this.settings.excerptFolder || "epub-books/anno").trim().replace(/\/$/, "");
     if (!folder) {
       throw new Error("摘录文件夹未设置");
     }

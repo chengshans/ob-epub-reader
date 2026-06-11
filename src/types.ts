@@ -9,7 +9,7 @@ export interface EpubPluginSettings {
 }
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
-  excerptFolder: "co-books",
+  excerptFolder: "epub-books/anno",
   aiApiUrl: "https://api.openai.com/v1",
   aiApiKey: "",
   aiModel: "gpt-4o-mini",
