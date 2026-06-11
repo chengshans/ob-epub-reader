@@ -141,17 +141,29 @@ a.ob-epub-goto-link {
   border-bottom-color: var(--interactive-accent);
 }
 
-/* ---- TOC panel ---- */
-.epub-toc {
+/* ---- Sidebar panels (TOC / Notes share one flex slot) ---- */
+.epub-sidebar-panels {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.epub-toc,
+.epub-notes {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
-/* ---- Notes panel ---- */
 .epub-notes {
-  flex: 1;
-  overflow-y: auto;
   padding: 6px;
+}
+
+.epub-toc.is-hidden,
+.epub-notes.is-hidden {
+  display: none;
 }
 
 .epub-notes-empty {

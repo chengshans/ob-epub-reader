@@ -68,6 +68,7 @@ export class EpubReaderView extends FileView {
   private isNavigating = false;
   private pendingNavigateCfi: string | null = null;
   private highlightsInitialLoaded = false;
+  private notesPanelRenderGen = 0;
   private isClosing = false;
 
   // Reading time tracking
@@ -208,6 +209,7 @@ export class EpubReaderView extends FileView {
       new Notice("无法跳转到原文位置");
     } finally {
       this.isNavigating = false;
+      this.scheduleHighlightSync();
       const next = this.pendingNavigateCfi;
       this.pendingNavigateCfi = null;
       if (next && next !== cfi) {
@@ -245,12 +247,13 @@ export class EpubReaderView extends FileView {
     tocTab.addEventListener("click", () => this.setSidebarMode("toc"));
     notesTab.addEventListener("click", () => this.setSidebarMode("notes"));
 
-    // TOC panel
-    this.tocEl = this.sidebarEl.createDiv({ cls: "epub-toc" });
+    const panelsEl = this.sidebarEl.createDiv({ cls: "epub-sidebar-panels" });
 
-    // Notes panel
-    this.notesEl = this.sidebarEl.createDiv({ cls: "epub-notes" });
-    this.notesEl.hide();
+    // TOC panel
+    this.tocEl = panelsEl.createDiv({ cls: "epub-toc" });
+
+    // Notes panel (hidden via CSS class — avoid hide()/toggleVisibility mismatch)
+    this.notesEl = panelsEl.createDiv({ cls: "epub-notes is-hidden" });
 
     // Reader area
     this.readerEl = bodyEl.createDiv({ cls: "epub-reader-area" });
@@ -325,14 +328,14 @@ export class EpubReaderView extends FileView {
 
   private setSidebarMode(mode: "toc" | "notes") {
     this.sidebarMode = mode;
-    if (this.tocEl) this.tocEl.toggleVisibility(mode === "toc");
-    if (this.notesEl) this.notesEl.toggleVisibility(mode === "notes");
+    this.tocEl?.toggleClass("is-hidden", mode !== "toc");
+    this.notesEl?.toggleClass("is-hidden", mode !== "notes");
     const tabs = this.sidebarEl?.querySelectorAll(".epub-sidebar-tab");
     tabs?.forEach((t, i) => {
       const active = (i === 0 && mode === "toc") || (i === 1 && mode === "notes");
       t.toggleClass("is-active", active);
     });
-    if (mode === "notes") this.renderNotesPanel();
+    if (mode === "notes") void this.renderNotesPanel();
   }
 
   private changeFontSize(delta: number) {
@@ -1517,11 +1520,25 @@ export class EpubReaderView extends FileView {
 
   private async renderNotesPanel() {
     if (!this.notesEl) return;
+    const gen = ++this.notesPanelRenderGen;
     this.notesEl.empty();
 
-    const list = this.file
-      ? await this.annotationVaultStore.getByFile(this.file.path)
-      : [];
+    let list = this.cachedHighlights;
+    if (list.length === 0 && this.file) {
+      try {
+        list = await this.annotationVaultStore.getByFile(this.file.path);
+        this.cachedHighlights = list;
+      } catch (err) {
+        console.warn("ob-epub: renderNotesPanel failed", err);
+        if (gen !== this.notesPanelRenderGen) return;
+        this.notesEl.createDiv({
+          cls: "epub-notes-empty",
+          text: "标注加载失败，请稍后重试。",
+        });
+        return;
+      }
+    }
+    if (gen !== this.notesPanelRenderGen) return;
 
     if (list.length === 0) {
       this.notesEl.createDiv({ cls: "epub-notes-empty", text: "暂无标注。选中文字后点击颜色画线或写想法。" });
@@ -1554,7 +1571,9 @@ export class EpubReaderView extends FileView {
 
       const actions = li.createDiv({ cls: "epub-note-item-actions" });
       const jump = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
-      jump.addEventListener("click", () => this.rendition?.display(ann.cfiRange));
+      jump.addEventListener("click", () => {
+        void this.navigateToCfi(ann.cfiRange);
+      });
       const edit = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
       edit.addEventListener("click", () => {
         this.openNoteEditor(ann, "编辑标注", false);
