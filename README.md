@@ -1,4 +1,4 @@
-# ob-epub-reader
+# EPUB Marginalia (ob-epub-reader)
 
 在 Obsidian 中直接阅读 EPUB 电子书，支持目录导航、阅读进度、文本高亮与标注、摘录导出，以及 AI 辅助解读。
 
@@ -26,7 +26,7 @@
    styles.css
    ```
 
-2. 在 Obsidian 设置 → 社区插件 中启用 **EPUB Reader**
+2. 在 Obsidian 设置 → 社区插件 中启用 **EPUB Marginalia**
 
 ### 从源码构建
 
@@ -94,7 +94,7 @@ Prompt 模板中使用 `{text}` 作为选中文字的占位符。
 
 ## 设置
 
-在 **设置 → EPUB Reader** 中可配置：
+在 **设置 → EPUB Marginalia** 中可配置：
 
 | 选项 | 说明 | 默认值 |
 |------|------|--------|

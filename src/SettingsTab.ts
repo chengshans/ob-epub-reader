@@ -13,7 +13,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("ob-epub-settings");
-    containerEl.createEl("h2", { text: "EPUB Reader 设置" });
+    containerEl.createEl("h2", { text: "EPUB Marginalia 设置" });
 
     new Setting(containerEl)
       .setName("摘录文件夹")

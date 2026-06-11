@@ -122,7 +122,7 @@ export class EpubReaderView extends FileView {
   }
 
   getDisplayText(): string {
-    return this.file?.basename ?? "EPUB Reader";
+    return this.file?.basename ?? "EPUB Marginalia";
   }
 
   getIcon(): string {
@@ -282,7 +282,7 @@ export class EpubReaderView extends FileView {
     this.tocToggleBtn.addEventListener("click", () => this.toggleToc());
 
     // Book title
-    const titleEl = toolbar.createEl("span", { cls: "epub-toolbar-title", text: this.file?.basename ?? "EPUB Reader" });
+    const titleEl = toolbar.createEl("span", { cls: "epub-toolbar-title", text: this.file?.basename ?? "EPUB Marginalia" });
     titleEl.id = "epub-toolbar-title";
 
     // Spacer

@@ -1,7 +1,7 @@
 {
   "name": "ob-epub-reader",
   "version": "1.3.1",
-  "description": "Obsidian EPUB Reader Plugin",
+  "description": "Obsidian EPUB Marginalia Plugin",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
