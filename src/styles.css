@@ -255,8 +255,12 @@ a.ob-epub-goto-link {
 
 .epub-toc-item {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.epub-toc-sublist {
+  flex: 1 0 100%;
 }
 
 .epub-toc-label {
