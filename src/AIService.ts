@@ -1,5 +1,9 @@
-import { Notice } from "obsidian";
+import { requestUrl } from "obsidian";
 import { EpubPluginSettings } from "./types";
+
+interface ChatCompletionResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
 
 export class AIService {
   private settings: EpubPluginSettings;
@@ -20,10 +24,11 @@ export class AIService {
     const prompt = this.settings.aiPromptTemplate.replace("{text}", selectedText);
     const apiUrl = this.settings.aiApiUrl.replace(/\/$/, "") + "/chat/completions";
 
-    const response = await fetch(apiUrl, {
+    const response = await requestUrl({
+      url: apiUrl,
       method: "POST",
+      contentType: "application/json",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${this.settings.aiApiKey}`,
       },
       body: JSON.stringify({
@@ -31,19 +36,19 @@ export class AIService {
         messages: [{ role: "user", content: prompt }],
         max_tokens: 1000,
       }),
+      throw: false,
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`AI API 错误 (${response.status}): ${err}`);
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`AI API 错误 (${response.status}): ${response.text}`);
     }
 
-    const data = await response.json();
+    const data = response.json as ChatCompletionResponse;
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
       throw new Error("AI 返回结果为空");
     }
-    return content as string;
+    return content;
   }
 
   isConfigured(): boolean {
