@@ -9,9 +9,13 @@
     "release": "node esbuild.config.mjs production && node scripts/package-release.mjs",
     "release:publish": "node scripts/create-gitee-release.mjs"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["obsidian", "obsidian-plugin", "epub"],
+  "author": "chengshans",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chengshans/ob-epub-reader.git"
+  },
   "devDependencies": {
     "@types/node": "^18.0.0",
     "obsidian": "latest",
