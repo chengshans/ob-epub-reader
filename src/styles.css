@@ -423,6 +423,32 @@ a.ob-epub-goto-link {
   cursor: pointer;
 }
 
+/* ---- In-text note icon (annotations with 想法) ---- */
+.epub-reader-area .epub-note-icon {
+  position: absolute;
+  z-index: 100;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 50%;
+  background: var(--background-primary);
+  color: var(--interactive-accent);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.epub-reader-area .epub-note-icon:hover {
+  transform: scale(1.12);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  border-color: var(--interactive-accent);
+}
+
 /* ---- Note input modal ---- */
 .epub-note-modal h3 {
   margin: 0 0 12px;

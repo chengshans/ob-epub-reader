@@ -23,6 +23,7 @@ export const EPUB_READER_VIEW_TYPE = "epub-reader";
 
 const ANNOTATION_TYPE = "highlight";
 const HIGHLIGHT_CLASS = "epub-user-highlight";
+const NOTE_ICON_CLASS = "epub-note-icon";
 
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
@@ -478,6 +479,7 @@ export class EpubReaderView extends FileView {
         const percentage = this.extractPercentFromLocation(location);
         this.updateProgressBar(percentage);
         this.scheduleProgressSave(percentage);
+        this.scheduleHighlightSync();
       });
 
       // Draw highlights only after epub.js finishes rendering the page iframe.
@@ -1095,29 +1097,34 @@ export class EpubReaderView extends FileView {
     const store = this.rendition.annotations as any;
     const sectionIndex = view.index;
     const hashes: string[] = store._annotationsBySectionIndex?.[sectionIndex] ?? [];
-    if (hashes.length === 0) return;
 
-    this.purgeAllViewHighlights(view);
+    if (hashes.length > 0) {
+      this.purgeAllViewHighlights(view);
 
-    const seen = new Set<string>();
-    for (const hash of hashes) {
-      if (seen.has(hash)) continue;
-      seen.add(hash);
-      const annotation = store._annotations?.[hash];
-      if (!annotation) continue;
-      annotation.mark = undefined;
-      try {
-        annotation.attach(view);
-      } catch (e) {
-        console.warn("syncViewHighlights: attach failed", hash, e);
+      const seen = new Set<string>();
+      for (const hash of hashes) {
+        if (seen.has(hash)) continue;
+        seen.add(hash);
+        const annotation = store._annotations?.[hash];
+        if (!annotation) continue;
+        annotation.mark = undefined;
+        try {
+          annotation.attach(view);
+        } catch (e) {
+          console.warn("syncViewHighlights: attach failed", hash, e);
+        }
       }
     }
+
   }
 
   private syncAllDisplayedHighlights() {
     for (const view of this.getDisplayedViews()) {
       this.syncViewHighlights(view);
     }
+    requestAnimationFrame(() => {
+      this.syncAllNoteIcons();
+    });
   }
 
   private scheduleHighlightSync() {
@@ -1126,6 +1133,139 @@ export class EpubReaderView extends FileView {
       this.highlightSyncTimer = null;
       this.syncAllDisplayedHighlights();
     }, 80);
+  }
+
+  private purgeAllNoteIcons() {
+    this.readerEl?.querySelectorAll(`.${NOTE_ICON_CLASS}`).forEach((el) => el.remove());
+  }
+
+  private removeNoteIcon(cfiRange: string) {
+    this.readerEl?.querySelectorAll(`.${NOTE_ICON_CLASS}`).forEach((el) => {
+      if (el.getAttribute("data-cfi") === cfiRange) el.remove();
+    });
+  }
+
+  private placeNoteIconAtClientRect(annotation: Annotation, rect: DOMRect) {
+    if (!this.readerEl) return;
+
+    const readerRect = this.readerEl.getBoundingClientRect();
+    const iconSize = 30;
+    const left = rect.right - readerRect.left - iconSize + 20;
+    const top = rect.top - readerRect.top + Math.max(0, (rect.height - iconSize) / 2);
+
+    const btn = document.createElement("button");
+    btn.className = NOTE_ICON_CLASS;
+    btn.type = "button";
+    btn.title = annotation.note ? "查看/编辑想法" : "添加想法";
+    btn.setAttribute("data-cfi", annotation.cfiRange);
+    btn.setAttribute("data-id", annotation.id);
+    btn.textContent = "💡";
+    btn.style.position = "absolute";
+    btn.style.top = `${top}px`;
+    btn.style.left = `${left}px`;
+
+    btn.addEventListener("mousedown", (e) => e.stopPropagation());
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const ann =
+        this.cachedHighlights.find((a) => a.id === annotation.id) ?? annotation;
+      this.openNoteEditor(ann);
+    });
+
+    this.readerEl.appendChild(btn);
+  }
+
+  private getHighlightClientRect(cfiRange: string): DOMRect | null {
+    for (const view of this.getViewList()) {
+      const hl = view.highlights?.[cfiRange];
+      const el = hl?.element as Element | undefined;
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) return rect;
+    }
+
+    if (!this.readerEl) return null;
+    for (const el of this.readerEl.querySelectorAll(`[ref="${HIGHLIGHT_CLASS}"]`)) {
+      const mark = el as HTMLElement;
+      if (mark.dataset.epubcfi === cfiRange) {
+        const rect = mark.getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0) return rect;
+      }
+    }
+    return null;
+  }
+
+  private placeNoteIconAtRange(annotation: Annotation, range: Range) {
+    const rects = range.getClientRects();
+    if (rects.length === 0) return;
+    this.placeNoteIconAtClientRect(annotation, rects[rects.length - 1]);
+  }
+
+  private resolveAnnotationRange(cfiRange: string): Range | null {
+    if (!this.rendition) return null;
+    try {
+      const range = (this.rendition as any).getRange?.(cfiRange);
+      if (range) return range;
+    } catch {
+      /* fall through */
+    }
+    for (const view of this.getDisplayedViews()) {
+      try {
+        const range = view.contents?.range?.(cfiRange);
+        if (range) return range;
+      } catch {
+        /* try next view */
+      }
+    }
+    return null;
+  }
+
+  private syncAllNoteIcons() {
+    if (!this.readerEl || !this.rendition) return;
+    this.purgeAllNoteIcons();
+
+    for (const ann of this.cachedHighlights) {
+      if (!ann.note) continue;
+      const hlRect = this.getHighlightClientRect(ann.cfiRange);
+      if (hlRect) {
+        this.placeNoteIconAtClientRect(ann, hlRect);
+        continue;
+      }
+      const range = this.resolveAnnotationRange(ann.cfiRange);
+      if (range) this.placeNoteIconAtRange(ann, range);
+    }
+  }
+
+  private openNoteEditor(
+    ann: Annotation,
+    title = "编辑标注",
+    noticeOnSave = true
+  ) {
+    if (!this.file) return;
+    const filePath = this.file.path;
+    new NoteInputModal(
+      this.app,
+      ann.text,
+      { note: ann.note, color: ann.color },
+      async ({ note, color }) => {
+        await this.annotationVaultStore.update(filePath, ann.id, {
+          note: note || undefined,
+          color,
+        });
+        const updated = await this.annotationVaultStore.getById(filePath, ann.id);
+        if (updated) {
+          this.upsertCachedHighlight(updated);
+          this.redrawLine(updated);
+          if (!updated.note) {
+            this.removeNoteIcon(updated.cfiRange);
+          }
+        }
+        if (this.sidebarMode === "notes") this.renderNotesPanel();
+        if (noticeOnSave) new Notice("✅ 已更新");
+      },
+      title
+    ).open();
   }
 
   private drawLine(annotation: Annotation) {
@@ -1147,6 +1287,11 @@ export class EpubReaderView extends FileView {
         "mix-blend-mode": "normal",
       }
     );
+    if (!annotation.note) {
+      this.removeNoteIcon(annotation.cfiRange);
+    } else {
+      this.scheduleHighlightSync();
+    }
   }
 
   private removeDrawnLine(cfiRange: string) {
@@ -1324,22 +1469,7 @@ export class EpubReaderView extends FileView {
     const editBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: ann.note ? "📝 编辑想法" : "📝 添加想法" });
     editBtn.addEventListener("click", () => {
       this.dismissContextMenu();
-      new NoteInputModal(
-        this.app,
-        ann.text,
-        { note: ann.note, color: ann.color },
-        async ({ note, color }) => {
-          await this.annotationVaultStore.update(filePath, ann.id, { note: note || undefined, color });
-          const updated = await this.annotationVaultStore.getById(filePath, ann.id);
-          if (updated) {
-            this.upsertCachedHighlight(updated);
-            this.redrawLine(updated);
-          }
-          if (this.sidebarMode === "notes") this.renderNotesPanel();
-          new Notice("✅ 已更新");
-        },
-        "编辑标注"
-      ).open();
+      this.openNoteEditor(ann);
     });
 
     const delBtn = menu.createEl("button", { cls: "epub-ctx-btn is-danger", text: "🗑 删除" });
@@ -1358,6 +1488,7 @@ export class EpubReaderView extends FileView {
 
   private async removeAnnotation(id: string, cfiRange: string) {
     if (!this.file) return;
+    this.removeNoteIcon(cfiRange);
     this.removeDrawnLine(cfiRange);
     this.cachedHighlights = this.cachedHighlights.filter((a) => a.id !== id);
     await this.annotationVaultStore.remove(this.file.path, id);
@@ -1401,23 +1532,7 @@ export class EpubReaderView extends FileView {
       jump.addEventListener("click", () => this.rendition?.display(ann.cfiRange));
       const edit = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
       edit.addEventListener("click", () => {
-        if (!this.file) return;
-        const filePath = this.file.path;
-        new NoteInputModal(
-          this.app,
-          ann.text,
-          { note: ann.note, color: ann.color },
-          async ({ note, color }) => {
-            await this.annotationVaultStore.update(filePath, ann.id, { note: note || undefined, color });
-            const updated = await this.annotationVaultStore.getById(filePath, ann.id);
-            if (updated) {
-              this.upsertCachedHighlight(updated);
-              this.redrawLine(updated);
-            }
-            this.renderNotesPanel();
-          },
-          "编辑标注"
-        ).open();
+        this.openNoteEditor(ann, "编辑标注", false);
       });
       const del = actions.createEl("button", { cls: "epub-note-action is-danger", text: "删除" });
       del.addEventListener("click", () => this.removeAnnotation(ann.id, ann.cfiRange));
