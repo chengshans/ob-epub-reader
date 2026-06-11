@@ -1,5 +1,5 @@
 import { App, normalizePath, TFile } from "obsidian";
-import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, parseReadingTime } from "./types";
+import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, normalizeNoteType, NoteType, parseReadingTime } from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
@@ -16,6 +16,7 @@ import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, Highli
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CALLOUT_PREFIX = "ob-epub";
+const NOTE_TYPE_COMMENT_RE = /^<!--\s*ob-epub-note-type:\s*([a-z]+)\s*-->$/;
 
 // Old annotation shape from plugin data.json (before migration)
 interface OldAnnotation {
@@ -363,6 +364,7 @@ export class AnnotationVaultStore {
 
     const parts: string[] = [headerLine, textLines, ``];
     if (ann.note) {
+      parts.push(`<!-- ob-epub-note-type: ${ann.noteType ?? "note"} -->`);
       parts.push(ann.note, ``);
     }
     parts.push(sourceLink, ``, `---`, ``);
@@ -423,6 +425,7 @@ export class AnnotationVaultStore {
 
       // Note: non-blockquote, non-sourcelink lines between the blockquote and ---
       const noteLines: string[] = [];
+      let parsedNoteType: NoteType | undefined;
       let pastQuote = false;
       for (const line of lines) {
         if (line.startsWith(">")) {
@@ -432,11 +435,17 @@ export class AnnotationVaultStore {
         if (!pastQuote) continue;
         if (/^\[回到原文\]/.test(line.trim())) continue;
         if (line.trim() === "") continue;
+        const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
+        if (typeMatch) {
+          parsedNoteType = normalizeNoteType(typeMatch[1]);
+          continue;
+        }
         noteLines.push(line);
       }
       const note = noteLines.join("\n").trim() || undefined;
+      const noteType = note ? (parsedNoteType ?? "note") : undefined;
 
-      annotations.push({ id, cfiRange, text, color, note, chapter, created });
+      annotations.push({ id, cfiRange, text, color, note, noteType, chapter, created });
     }
 
     return annotations;

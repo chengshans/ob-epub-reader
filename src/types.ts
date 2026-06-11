@@ -6,6 +6,12 @@ export interface EpubPluginSettings {
   aiPromptTemplate: string;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
+  /** 想法图标直径 (px) */
+  noteIconSize: number;
+  /** 相对高亮右缘的水平偏移 (px)，正值向右 */
+  noteIconOffsetX: number;
+  /** 垂直偏移 (px)，正值向下 */
+  noteIconOffsetY: number;
 }
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
@@ -16,6 +22,9 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   aiPromptTemplate: "请解释以下这段话的含义：\n\n{text}",
   defaultFlow: "paginated",
   fontSize: 16,
+  noteIconSize: 20,
+  noteIconOffsetX: 2,
+  noteIconOffsetY: 0,
 };
 
 export interface BookProgress {
@@ -88,12 +97,65 @@ export function colorHex(id: HighlightColor): string {
   return HIGHLIGHT_COLORS.find((c) => c.id === id)?.hex ?? "#e8b339";
 }
 
+// ---- Note types (想法类型) ----
+
+export type NoteType = "note" | "inspiration" | "practice" | "revisit" | "question";
+
+export interface NoteTypeDef {
+  id: NoteType;
+  label: string;
+  icon: string;
+}
+
+export const NOTE_TYPES: NoteTypeDef[] = [
+  { id: "note", label: "做笔记", icon: "📝" },
+  { id: "inspiration", label: "灵感", icon: "💡" },
+  { id: "practice", label: "准备实践", icon: "✅" },
+  { id: "revisit", label: "反复看", icon: "🔁" },
+  { id: "question", label: "疑问", icon: "❓" },
+];
+
+const NOTE_TYPE_IDS = new Set<string>(NOTE_TYPES.map((t) => t.id));
+
+export function normalizeNoteType(raw: string | undefined): NoteType {
+  if (raw && NOTE_TYPE_IDS.has(raw)) return raw as NoteType;
+  return "note";
+}
+
+export function noteTypeIcon(id?: NoteType): string {
+  return NOTE_TYPES.find((t) => t.id === (id ?? "note"))?.icon ?? "📝";
+}
+
+export function noteTypeLabel(id?: NoteType): string {
+  return NOTE_TYPES.find((t) => t.id === (id ?? "note"))?.label ?? "做笔记";
+}
+
+export const NOTE_ICON_SIZE_MIN = 14;
+export const NOTE_ICON_SIZE_MAX = 30;
+export const NOTE_ICON_OFFSET_X_MIN = -8;
+export const NOTE_ICON_OFFSET_X_MAX = 30;
+export const NOTE_ICON_OFFSET_Y_MIN = -8;
+export const NOTE_ICON_OFFSET_Y_MAX = 8;
+
+export function clampNoteIconSize(value: number): number {
+  return Math.min(NOTE_ICON_SIZE_MAX, Math.max(NOTE_ICON_SIZE_MIN, Math.round(value)));
+}
+
+export function clampNoteIconOffsetX(value: number): number {
+  return Math.min(NOTE_ICON_OFFSET_X_MAX, Math.max(NOTE_ICON_OFFSET_X_MIN, Math.round(value)));
+}
+
+export function clampNoteIconOffsetY(value: number): number {
+  return Math.min(NOTE_ICON_OFFSET_Y_MAX, Math.max(NOTE_ICON_OFFSET_Y_MIN, Math.round(value)));
+}
+
 export interface Annotation {
   id: string;
   cfiRange: string;
   text: string;
   color: HighlightColor;
   note?: string;
+  noteType?: NoteType;
   chapter: string;
   created: string;
 }

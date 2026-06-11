@@ -190,6 +190,17 @@ a.ob-epub-goto-link {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.epub-note-item-type {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+  border: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
 }
 
 .epub-note-item-text {
@@ -427,15 +438,12 @@ a.ob-epub-goto-link {
 .epub-reader-area .epub-note-icon {
   position: absolute;
   z-index: 100;
-  width: 20px;
-  height: 20px;
+  box-sizing: border-box;
   padding: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: 50%;
   background: var(--background-primary);
   color: var(--interactive-accent);
-  font-size: 11px;
-  line-height: 18px;
   text-align: center;
   cursor: pointer;
   pointer-events: auto;
@@ -482,6 +490,43 @@ a.ob-epub-goto-link {
 .epub-color-dots {
   display: flex;
   gap: 8px;
+}
+
+.epub-note-type-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.epub-note-type-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.epub-note-type-chip {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+  white-space: nowrap;
+}
+
+.epub-note-type-chip:hover {
+  border-color: var(--interactive-accent);
+}
+
+.epub-note-type-chip.is-active {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
 }
 
 .epub-note-textarea {
@@ -599,6 +644,63 @@ a.ob-epub-goto-link {
 .bookshelf-reading-time {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* ---- Plugin settings tab (sliders / controls contrast) ---- */
+.ob-epub-settings .setting-item-control input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 140px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border-hover);
+  cursor: pointer;
+}
+
+.ob-epub-settings .setting-item-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  border: 2px solid var(--background-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.ob-epub-settings .setting-item-control input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border-hover);
+}
+
+.ob-epub-settings .setting-item-control input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  border: 2px solid var(--background-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.ob-epub-settings .setting-item-control select,
+.ob-epub-settings .setting-item-control input[type="text"],
+.ob-epub-settings .setting-item-control input[type="password"],
+.ob-epub-settings .setting-item-control textarea {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+.ob-epub-settings .setting-item-control select:focus,
+.ob-epub-settings .setting-item-control input[type="text"]:focus,
+.ob-epub-settings .setting-item-control input[type="password"]:focus,
+.ob-epub-settings .setting-item-control textarea:focus {
+  border-color: var(--interactive-accent);
 }
 
 /* ---- Dark theme adjustments ---- */

@@ -10,6 +10,11 @@ import {
   HighlightColor,
   HIGHLIGHT_COLORS,
   colorHex,
+  noteTypeIcon,
+  noteTypeLabel,
+  clampNoteIconSize,
+  clampNoteIconOffsetX,
+  clampNoteIconOffsetY,
 } from "./types";
 import { NoteInputModal } from "./NoteInputModal";
 import {
@@ -1149,18 +1154,28 @@ export class EpubReaderView extends FileView {
     if (!this.readerEl) return;
 
     const readerRect = this.readerEl.getBoundingClientRect();
-    const iconSize = 30;
-    const left = rect.right - readerRect.left - iconSize + 20;
-    const top = rect.top - readerRect.top + Math.max(0, (rect.height - iconSize) / 2);
+    const iconSize = clampNoteIconSize(this.settings.noteIconSize);
+    const offsetX = clampNoteIconOffsetX(this.settings.noteIconOffsetX);
+    const offsetY = clampNoteIconOffsetY(this.settings.noteIconOffsetY);
+    const left = rect.right - readerRect.left - iconSize + offsetX;
+    const top =
+      rect.top -
+      readerRect.top +
+      Math.max(0, (rect.height - iconSize) / 2) +
+      offsetY;
 
     const btn = document.createElement("button");
     btn.className = NOTE_ICON_CLASS;
     btn.type = "button";
-    btn.title = annotation.note ? "查看/编辑想法" : "添加想法";
+    btn.title = `${noteTypeLabel(annotation.noteType)} · 查看/编辑想法`;
     btn.setAttribute("data-cfi", annotation.cfiRange);
     btn.setAttribute("data-id", annotation.id);
-    btn.textContent = "💡";
+    btn.textContent = noteTypeIcon(annotation.noteType);
     btn.style.position = "absolute";
+    btn.style.width = `${iconSize}px`;
+    btn.style.height = `${iconSize}px`;
+    btn.style.fontSize = `${Math.max(10, iconSize - 9)}px`;
+    btn.style.lineHeight = `${iconSize - 2}px`;
     btn.style.top = `${top}px`;
     btn.style.left = `${left}px`;
 
@@ -1247,10 +1262,11 @@ export class EpubReaderView extends FileView {
     new NoteInputModal(
       this.app,
       ann.text,
-      { note: ann.note, color: ann.color },
-      async ({ note, color }) => {
+      { note: ann.note, color: ann.color, noteType: ann.noteType },
+      async ({ note, color, noteType }) => {
         await this.annotationVaultStore.update(filePath, ann.id, {
           note: note || undefined,
+          noteType: note ? noteType : undefined,
           color,
         });
         const updated = await this.annotationVaultStore.getById(filePath, ann.id);
@@ -1403,13 +1419,14 @@ export class EpubReaderView extends FileView {
       this.app,
       text,
       { color: "yellow" },
-      async ({ note, color }) => {
+      async ({ note, color, noteType }) => {
         const ann: Annotation = {
           id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
           cfiRange,
           text,
           color,
           note: note || undefined,
+          noteType: note ? noteType : undefined,
           chapter,
           created: new Date().toISOString(),
         };
@@ -1518,6 +1535,12 @@ export class EpubReaderView extends FileView {
       const dot = head.createDiv({ cls: "epub-color-dot is-static" });
       dot.style.background = colorHex(ann.color);
       head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
+      if (ann.note) {
+        head.createSpan({
+          cls: "epub-note-item-type",
+          text: noteTypeLabel(ann.noteType),
+        });
+      }
 
       const quote = li.createDiv({ cls: "epub-note-item-text" });
       quote.setText(ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text);
@@ -1569,6 +1592,7 @@ export class EpubReaderView extends FileView {
     this.fontSize = settings.fontSize;
     if (this.rendition) {
       this.rendition.themes.fontSize(`${this.fontSize}px`);
+      this.scheduleHighlightSync();
     }
   }
 }

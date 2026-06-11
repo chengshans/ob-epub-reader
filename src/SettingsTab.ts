@@ -12,6 +12,7 @@ export class EpubSettingsTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass("ob-epub-settings");
     containerEl.createEl("h2", { text: "EPUB Reader 设置" });
 
     new Setting(containerEl)
@@ -51,6 +52,50 @@ export class EpubSettingsTab extends PluginSettingTab {
           .setDynamicTooltip()
           .onChange(async (value) => {
             this.plugin.settings.fontSize = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    containerEl.createEl("h3", { text: "想法图标" });
+
+    new Setting(containerEl)
+      .setName("图标大小")
+      .setDesc("原文想法图标的直径（14–28 px）")
+      .addSlider((slider) =>
+        slider
+          .setLimits(14, 28, 1)
+          .setValue(this.plugin.settings.noteIconSize)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.noteIconSize = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("水平位置")
+      .setDesc("相对高亮右缘的偏移（-8 ~ +24 px，正值向右）")
+      .addSlider((slider) =>
+        slider
+          .setLimits(-8, 24, 1)
+          .setValue(this.plugin.settings.noteIconOffsetX)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.noteIconOffsetX = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("垂直位置")
+      .setDesc("相对高亮垂直居中的偏移（-8 ~ +8 px，正值向下）")
+      .addSlider((slider) =>
+        slider
+          .setLimits(-8, 8, 1)
+          .setValue(this.plugin.settings.noteIconOffsetY)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.noteIconOffsetY = value;
             await this.plugin.saveSettings();
           })
       );
