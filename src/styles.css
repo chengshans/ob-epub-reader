@@ -41,6 +41,10 @@ a.ob-epub-goto-link {
   cursor: pointer;
 }
 
+.ob-epub-cfi-hidden {
+  display: none !important;
+}
+
 .ob-epub-container {
   display: flex;
   flex-direction: column;

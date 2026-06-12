@@ -18,6 +18,7 @@ import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, Highli
 
 const CALLOUT_PREFIX = "ob-epub";
 const NOTE_TYPE_COMMENT_RE = /^<!--\s*ob-epub-note-type:\s*([a-z]+)\s*-->$/;
+const CFI_COMMENT_RE = /^<!--\s*ob-epub-cfi:\s*epubcfi\([\s\S]*?\)\s*-->$/;
 
 // Old annotation shape from plugin data.json (before migration)
 interface OldAnnotation {
@@ -573,6 +574,7 @@ export class AnnotationVaultStore {
           parsedNoteType = normalizeNoteType(typeMatch[1]);
           continue;
         }
+        if (CFI_COMMENT_RE.test(line.trim())) continue;
         noteLines.push(line);
       }
       const note = noteLines.join("\n").trim() || undefined;

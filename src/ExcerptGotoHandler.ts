@@ -224,12 +224,27 @@ export function registerExcerptGotoHandler(
   plugin.registerDomEvent(document, "click", interceptGotoNavigation, { capture: true });
 
   plugin.registerMarkdownPostProcessor((el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+    if (ctx.sourcePath.endsWith("摘录.md")) {
+      hideObEpubCfiComments(el);
+    }
     wireObEpubCallouts(el, goto, resolveAnn, ctx.sourcePath, plugin.app);
     el.querySelectorAll("a").forEach((node) => {
       const anchor = node as HTMLAnchorElement;
       if (!isGotoLinkElement(anchor)) return;
       void wireGotoAnchor(anchor, goto, resolveAnn, ctx.sourcePath, plugin.app);
     });
+  });
+}
+
+const CFI_COMMENT_TEXT_RE = /^<!--\s*ob-epub-cfi:\s*epubcfi\([\s\S]*?\)\s*-->$/;
+
+/** Hide CFI metadata lines in excerpt Live Preview (reading mode already omits HTML comments). */
+function hideObEpubCfiComments(container: HTMLElement): void {
+  container.querySelectorAll("p, pre, code").forEach((node) => {
+    const el = node as HTMLElement;
+    if (CFI_COMMENT_TEXT_RE.test(el.textContent?.trim() ?? "")) {
+      el.addClass("ob-epub-cfi-hidden");
+    }
   });
 }
 
