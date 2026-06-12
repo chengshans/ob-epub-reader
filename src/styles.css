@@ -92,6 +92,78 @@ a.ob-epub-goto-link {
   flex: 1;
 }
 
+.epub-theme-swatches {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 14px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-hover);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.epub-theme-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.28);
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+
+.epub-theme-swatch:hover {
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(0, 0, 0, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.epub-theme-swatch.is-active {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(0, 0, 0, 0.28),
+    0 0 0 2px var(--interactive-accent);
+}
+
+.epub-theme-swatch[data-theme="dark"] {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
+}
+
+.epub-theme-swatch[data-theme="dark"]:hover {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.5),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.epub-theme-swatch[data-theme="dark"].is-active {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.4),
+    0 0 0 2px var(--interactive-accent);
+}
+
+.theme-dark .epub-theme-swatches {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.theme-dark .epub-theme-swatch:not([data-theme="dark"]) {
+  box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.45);
+}
+
+.theme-dark .epub-theme-swatch:not([data-theme="dark"]):hover {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(0, 0, 0, 0.55),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.theme-dark .epub-theme-swatch:not([data-theme="dark"]).is-active {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(0, 0, 0, 0.45),
+    0 0 0 2px var(--interactive-accent);
+}
+
 /* ---- Body (TOC + Reader) ---- */
 .epub-body {
   display: flex;
@@ -467,26 +539,63 @@ a.ob-epub-goto-link {
 }
 
 /* ---- In-text note icon (annotations with 想法) ---- */
-.epub-reader-area .epub-note-icon {
+/* background colors: keep in sync with HIGHLIGHT_COLORS in types.ts */
+.epub-reader-area button.epub-note-icon {
   position: absolute;
   z-index: 100;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid transparent;
   border-radius: 50%;
-  background: var(--background-primary);
-  color: var(--interactive-accent);
-  text-align: center;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #e8b339;
+  color: #fff;
+  line-height: 1;
   cursor: pointer;
   pointer-events: auto;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
-.epub-reader-area .epub-note-icon:hover {
+.epub-reader-area button.epub-note-icon .epub-note-icon-glyph {
+  display: block;
+  font-size: var(--epub-note-glyph-size, 14px);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.epub-reader-area button.epub-note-icon[data-color="yellow"] {
+  background-color: #e8b339;
+  border-color: #e8b339;
+}
+
+.epub-reader-area button.epub-note-icon[data-color="red"] {
+  background-color: #e0533d;
+  border-color: #e0533d;
+}
+
+.epub-reader-area button.epub-note-icon[data-color="green"] {
+  background-color: #3aa675;
+  border-color: #3aa675;
+}
+
+.epub-reader-area button.epub-note-icon[data-color="blue"] {
+  background-color: #3b82c4;
+  border-color: #3b82c4;
+}
+
+.epub-reader-area button.epub-note-icon[data-color="purple"] {
+  background-color: #8b5cf6;
+  border-color: #8b5cf6;
+}
+
+.epub-reader-area button.epub-note-icon:hover {
   transform: scale(1.12);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
 }
 
 /* ---- Note input modal ---- */

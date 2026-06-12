@@ -9,12 +9,16 @@ import {
   Annotation,
   HighlightColor,
   HIGHLIGHT_COLORS,
+  READING_THEMES,
+  ReadingThemeId,
   colorHex,
   noteTypeIcon,
   noteTypeLabel,
   clampNoteIconSize,
   clampNoteIconOffsetX,
   clampNoteIconOffsetY,
+  noteIconGlyphSize,
+  normalizeReadingTheme,
 } from "./types";
 import { NoteInputModal } from "./NoteInputModal";
 import {
@@ -39,6 +43,9 @@ export class EpubReaderView extends FileView {
   private tocItems: NavItem[] = [];
   private flow: "paginated" | "scrolled";
   private fontSize: number;
+  private readingTheme: ReadingThemeId;
+  private themesRegistered = false;
+  private onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
   private contextMenuContentDoc: Document | null = null;
@@ -84,6 +91,7 @@ export class EpubReaderView extends FileView {
 
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
+  private themeSwatchesEl: HTMLElement | null = null;
   private sidebarEl: HTMLElement | null = null;
   private tocEl: HTMLElement | null = null;
   private notesEl: HTMLElement | null = null;
@@ -102,7 +110,8 @@ export class EpubReaderView extends FileView {
     annotationVaultStore: AnnotationVaultStore,
     progressStore: ProgressStore,
     aiService: AIService,
-    settings: EpubPluginSettings
+    settings: EpubPluginSettings,
+    onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>
   ) {
     super(leaf);
     this.openBridge = openBridge;
@@ -110,8 +119,10 @@ export class EpubReaderView extends FileView {
     this.progressStore = progressStore;
     this.aiService = aiService;
     this.settings = settings;
+    this.onReadingThemeChange = onReadingThemeChange;
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
+    this.readingTheme = normalizeReadingTheme(settings.readingTheme);
   }
 
   getViewType(): string {
@@ -300,6 +311,8 @@ export class EpubReaderView extends FileView {
     fontSizeUp.title = "增大字体";
     fontSizeUp.addEventListener("click", () => this.changeFontSize(2));
 
+    this.buildThemeToolbar(toolbar);
+
     // Flow toggle
     const flowBtn = toolbar.createEl("button", {
       cls: "epub-toolbar-btn",
@@ -399,6 +412,7 @@ export class EpubReaderView extends FileView {
         this.rendition.destroy();
       }
       this.rendition = null;
+      this.themesRegistered = false;
     });
     this.safeCleanup("book", () => {
       if (this.book) {
@@ -654,21 +668,86 @@ export class EpubReaderView extends FileView {
     return v || fallback;
   }
 
-  private applyTheme() {
-    if (!this.rendition) return;
+  private buildThemeToolbar(toolbar: HTMLElement) {
+    const swatches = toolbar.createDiv({ cls: "epub-theme-swatches" });
+    this.themeSwatchesEl = swatches;
+
+    for (const theme of READING_THEMES) {
+      const swatch = swatches.createDiv({
+        cls: "epub-theme-swatch",
+        attr: { "data-theme": theme.id },
+      });
+      swatch.title = theme.label;
+      if (theme.id === "obsidian") {
+        swatch.style.background = theme.swatch;
+      } else {
+        swatch.style.backgroundColor = theme.swatch;
+      }
+      swatch.addEventListener("click", () => {
+        void this.setReadingTheme(theme.id);
+      });
+    }
+
+    this.updateThemeToolbarActive();
+  }
+
+  private updateThemeToolbarActive() {
+    if (!this.themeSwatchesEl) return;
+    this.themeSwatchesEl.querySelectorAll(".epub-theme-swatch").forEach((el) => {
+      const id = (el as HTMLElement).dataset.theme;
+      el.toggleClass("is-active", id === this.readingTheme);
+    });
+  }
+
+  private async setReadingTheme(id: ReadingThemeId) {
+    if (this.readingTheme === id) return;
+    this.readingTheme = id;
+    this.applyTheme();
+    this.updateThemeToolbarActive();
+    if (this.onReadingThemeChange) {
+      await this.onReadingThemeChange(id);
+    }
+  }
+
+  private resolveThemeColors(): {
+    background: string;
+    textColor: string;
+    linkColor: string;
+    selectionBg: string;
+    accent: string;
+  } {
     const isDark = document.body.hasClass("theme-dark");
+    if (this.readingTheme === "obsidian") {
+      return {
+        background: this.cssVar("--background-primary", isDark ? "#1e1e1e" : "#ffffff"),
+        textColor: this.cssVar("--text-normal", isDark ? "#dcddde" : "#1a1a1a"),
+        linkColor: this.cssVar("--link-color", "#5b8def"),
+        selectionBg: this.cssVar(
+          "--text-selection",
+          isDark ? "rgba(123,104,238,0.4)" : "rgba(123,104,238,0.25)"
+        ),
+        accent: this.cssVar("--interactive-accent", "#7b68ee"),
+      };
+    }
 
-    const background = this.cssVar("--background-primary", isDark ? "#1e1e1e" : "#ffffff");
-    const textColor = this.cssVar("--text-normal", isDark ? "#dcddde" : "#1a1a1a");
-    const linkColor = this.cssVar("--link-color", "#5b8def");
-    const fontFamily = this.cssVar(
-      "--font-text",
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
-    );
-    const accent = this.cssVar("--interactive-accent", "#7b68ee");
-    const selectionBg = this.cssVar("--text-selection", isDark ? "rgba(123,104,238,0.4)" : "rgba(123,104,238,0.25)");
+    const theme = READING_THEMES.find((t) => t.id === this.readingTheme)!;
+    return {
+      background: theme.background,
+      textColor: theme.text,
+      linkColor: theme.link,
+      selectionBg: theme.selection,
+      accent: this.cssVar("--interactive-accent", "#7b68ee"),
+    };
+  }
 
-    this.rendition.themes.register("custom", {
+  private buildThemeRules(
+    background: string,
+    textColor: string,
+    linkColor: string,
+    selectionBg: string,
+    fontFamily: string
+  ): Record<string, Record<string, string>> {
+    return {
       "html, body": {
         background: `${background} !important`,
         color: `${textColor} !important`,
@@ -682,13 +761,74 @@ export class EpubReaderView extends FileView {
         "-webkit-user-select": "text !important",
         "user-select": "text !important",
       },
-      "a": { color: `${linkColor} !important` },
+      a: { color: `${linkColor} !important` },
       "::selection": { background: `${selectionBg}`, color: `${textColor}` },
       "::-moz-selection": { background: `${selectionBg}`, color: `${textColor}` },
-    });
-    this.rendition.themes.select("custom");
+    };
+  }
+
+  private registerAllThemes(fontFamily: string) {
+    if (!this.rendition || this.themesRegistered) return;
+
+    const isDark = document.body.hasClass("theme-dark");
+    const obsidianColors = {
+      background: this.cssVar("--background-primary", isDark ? "#1e1e1e" : "#ffffff"),
+      textColor: this.cssVar("--text-normal", isDark ? "#dcddde" : "#1a1a1a"),
+      linkColor: this.cssVar("--link-color", "#5b8def"),
+      selectionBg: this.cssVar(
+        "--text-selection",
+        isDark ? "rgba(123,104,238,0.4)" : "rgba(123,104,238,0.25)"
+      ),
+    };
+
+    this.rendition.themes.register(
+      "obsidian",
+      this.buildThemeRules(
+        obsidianColors.background,
+        obsidianColors.textColor,
+        obsidianColors.linkColor,
+        obsidianColors.selectionBg,
+        fontFamily
+      )
+    );
+
+    for (const theme of READING_THEMES) {
+      if (theme.id === "obsidian") continue;
+      this.rendition.themes.register(
+        theme.id,
+        this.buildThemeRules(theme.background, theme.text, theme.link, theme.selection, fontFamily)
+      );
+    }
+
+    this.themesRegistered = true;
+  }
+
+  private applyTheme() {
+    if (!this.rendition) return;
+
+    const fontFamily = this.cssVar(
+      "--font-text",
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
+    );
+
+    this.registerAllThemes(fontFamily);
+
+    const { background, textColor, linkColor, selectionBg, accent } = this.resolveThemeColors();
+
+    if (this.readingTheme === "obsidian") {
+      this.rendition.themes.register(
+        "obsidian",
+        this.buildThemeRules(background, textColor, linkColor, selectionBg, fontFamily)
+      );
+    }
+
+    this.rendition.themes.select(this.readingTheme);
     this.rendition.themes.fontSize(`${this.fontSize}px`);
     this.accentColor = accent;
+
+    if (this.readerEl) {
+      this.readerEl.style.background = background;
+    }
   }
 
   private async loadTocData() {
@@ -1174,12 +1314,13 @@ export class EpubReaderView extends FileView {
     btn.title = `${noteTypeLabel(annotation.noteType)} · 查看/编辑想法`;
     btn.setAttribute("data-cfi", annotation.cfiRange);
     btn.setAttribute("data-id", annotation.id);
-    btn.textContent = noteTypeIcon(annotation.noteType);
+    btn.setAttribute("data-color", annotation.color);
+    const glyph = btn.createSpan({ cls: "epub-note-icon-glyph" });
+    glyph.textContent = noteTypeIcon(annotation.noteType);
     btn.setCssProps({
       width: `${iconSize}px`,
       height: `${iconSize}px`,
-      fontSize: `${Math.max(10, iconSize - 9)}px`,
-      lineHeight: `${iconSize - 2}px`,
+      "--epub-note-glyph-size": `${noteIconGlyphSize(iconSize)}px`,
       top: `${top}px`,
       left: `${left}px`,
     });
@@ -1611,8 +1752,18 @@ export class EpubReaderView extends FileView {
   updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
     this.fontSize = settings.fontSize;
+    const nextTheme = normalizeReadingTheme(settings.readingTheme);
+    const themeChanged = nextTheme !== this.readingTheme;
+    if (themeChanged) {
+      this.readingTheme = nextTheme;
+    }
     if (this.rendition) {
-      this.rendition.themes.fontSize(`${this.fontSize}px`);
+      if (themeChanged) {
+        this.applyTheme();
+        this.updateThemeToolbarActive();
+      } else {
+        this.rendition.themes.fontSize(`${this.fontSize}px`);
+      }
       this.scheduleHighlightSync();
     }
   }

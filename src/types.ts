@@ -1,3 +1,85 @@
+export type ReadingThemeId = "obsidian" | "white" | "yellow" | "green" | "sepia" | "dark";
+
+export interface ReadingThemeDef {
+  id: ReadingThemeId;
+  label: string;
+  /** obsidian 模式下为空，运行时读 CSS 变量 */
+  background: string;
+  text: string;
+  link: string;
+  selection: string;
+  /** 工具栏色块展示色 */
+  swatch: string;
+}
+
+export const READING_THEMES: ReadingThemeDef[] = [
+  {
+    id: "obsidian",
+    label: "跟随 Obsidian",
+    background: "",
+    text: "",
+    link: "",
+    selection: "",
+    swatch: "linear-gradient(135deg, #ffffff 50%, #1e1e1e 50%)",
+  },
+  {
+    id: "white",
+    label: "默认白",
+    background: "#FFFFFF",
+    text: "#333333",
+    link: "#576B95",
+    selection: "rgba(87, 107, 149, 0.25)",
+    swatch: "#FFFFFF",
+  },
+  {
+    id: "yellow",
+    label: "护眼黄",
+    background: "#FAF9DE",
+    text: "#333333",
+    link: "#576B95",
+    selection: "rgba(232, 179, 57, 0.35)",
+    swatch: "#FAF9DE",
+  },
+  {
+    id: "green",
+    label: "护眼绿",
+    background: "#E3EDCD",
+    text: "#333333",
+    link: "#3A7D44",
+    selection: "rgba(58, 166, 117, 0.3)",
+    swatch: "#E3EDCD",
+  },
+  {
+    id: "sepia",
+    label: "羊皮纸",
+    background: "#F4ECD8",
+    text: "#5C4B37",
+    link: "#8B6914",
+    selection: "rgba(139, 105, 20, 0.25)",
+    swatch: "#F4ECD8",
+  },
+  {
+    id: "dark",
+    label: "夜间",
+    background: "#1C1C1E",
+    text: "#A8A8A8",
+    link: "#7EB6FF",
+    selection: "rgba(123, 104, 238, 0.4)",
+    swatch: "#1C1C1E",
+  },
+];
+
+const READING_THEME_IDS = new Set<string>(READING_THEMES.map((t) => t.id));
+
+export function getReadingTheme(id: ReadingThemeId): ReadingThemeDef {
+  return READING_THEMES.find((t) => t.id === id) ?? READING_THEMES[0];
+}
+
+export function normalizeReadingTheme(raw: string | undefined): ReadingThemeId {
+  if (raw && READING_THEME_IDS.has(raw)) return raw as ReadingThemeId;
+  return "obsidian";
+}
+
 export interface EpubPluginSettings {
   excerptFolder: string;
   aiApiUrl: string;
@@ -6,6 +88,7 @@ export interface EpubPluginSettings {
   aiPromptTemplate: string;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
+  readingTheme: ReadingThemeId;
   /** 想法图标直径 (px) */
   noteIconSize: number;
   /** 相对高亮右缘的水平偏移 (px)，正值向右 */
@@ -22,6 +105,7 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   aiPromptTemplate: "请解释以下这段话的含义：\n\n{text}",
   defaultFlow: "paginated",
   fontSize: 16,
+  readingTheme: "obsidian",
   noteIconSize: 20,
   noteIconOffsetX: 2,
   noteIconOffsetY: 0,
@@ -131,14 +215,19 @@ export function noteTypeLabel(id?: NoteType): string {
 }
 
 export const NOTE_ICON_SIZE_MIN = 14;
-export const NOTE_ICON_SIZE_MAX = 30;
+export const NOTE_ICON_SIZE_MAX = 100;
 export const NOTE_ICON_OFFSET_X_MIN = -8;
-export const NOTE_ICON_OFFSET_X_MAX = 30;
+export const NOTE_ICON_OFFSET_X_MAX = 100;
 export const NOTE_ICON_OFFSET_Y_MIN = -8;
-export const NOTE_ICON_OFFSET_Y_MAX = 8;
+export const NOTE_ICON_OFFSET_Y_MAX = 10;
 
 export function clampNoteIconSize(value: number): number {
   return Math.min(NOTE_ICON_SIZE_MAX, Math.max(NOTE_ICON_SIZE_MIN, Math.round(value)));
+}
+
+/** Emoji glyph size inside the circular note icon button (≈68% of diameter). */
+export function noteIconGlyphSize(iconSize: number): number {
+  return Math.max(8, Math.round(clampNoteIconSize(iconSize) * 0.68));
 }
 
 export function clampNoteIconOffsetX(value: number): number {

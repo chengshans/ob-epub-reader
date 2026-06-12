@@ -1,5 +1,14 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ObEpubPlugin from "./main";
+import { READING_THEMES, ReadingThemeId } from "./types";
+import {
+  NOTE_ICON_OFFSET_X_MAX,
+  NOTE_ICON_OFFSET_X_MIN,
+  NOTE_ICON_OFFSET_Y_MAX,
+  NOTE_ICON_OFFSET_Y_MIN,
+  NOTE_ICON_SIZE_MAX,
+  NOTE_ICON_SIZE_MIN,
+} from "./types";
 
 export class EpubSettingsTab extends PluginSettingTab {
   plugin: ObEpubPlugin;
@@ -56,14 +65,29 @@ export class EpubSettingsTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName("默认阅读主题")
+      .setDesc("EPUB 正文区背景与文字配色")
+      .addDropdown((drop) => {
+        for (const theme of READING_THEMES) {
+          drop.addOption(theme.id, theme.label);
+        }
+        drop
+          .setValue(this.plugin.settings.readingTheme)
+          .onChange(async (value) => {
+            this.plugin.settings.readingTheme = value as ReadingThemeId;
+            await this.plugin.saveSettings();
+          });
+      });
+
     new Setting(containerEl).setName("想法图标").setHeading();
 
     new Setting(containerEl)
       .setName("图标大小")
-      .setDesc("原文想法图标的直径（14–28 px）")
+      .setDesc(`原文想法图标的直径（${NOTE_ICON_SIZE_MIN}–${NOTE_ICON_SIZE_MAX} px）`)
       .addSlider((slider) =>
         slider
-          .setLimits(14, 28, 1)
+          .setLimits(NOTE_ICON_SIZE_MIN, NOTE_ICON_SIZE_MAX, 1)
           .setValue(this.plugin.settings.noteIconSize)
           .setDynamicTooltip()
           .onChange(async (value) => {
@@ -74,10 +98,12 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("水平位置")
-      .setDesc("相对高亮右缘的偏移（-8 ~ +24 px，正值向右）")
+      .setDesc(
+        `相对高亮右缘的偏移（${NOTE_ICON_OFFSET_X_MIN} ~ +${NOTE_ICON_OFFSET_X_MAX} px，正值向右）`
+      )
       .addSlider((slider) =>
         slider
-          .setLimits(-8, 24, 1)
+          .setLimits(NOTE_ICON_OFFSET_X_MIN, NOTE_ICON_OFFSET_X_MAX, 1)
           .setValue(this.plugin.settings.noteIconOffsetX)
           .setDynamicTooltip()
           .onChange(async (value) => {
@@ -88,10 +114,12 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("垂直位置")
-      .setDesc("相对高亮垂直居中的偏移（-8 ~ +8 px，正值向下）")
+      .setDesc(
+        `相对高亮垂直居中的偏移（${NOTE_ICON_OFFSET_Y_MIN} ~ +${NOTE_ICON_OFFSET_Y_MAX} px，正值向下）`
+      )
       .addSlider((slider) =>
         slider
-          .setLimits(-8, 8, 1)
+          .setLimits(NOTE_ICON_OFFSET_Y_MIN, NOTE_ICON_OFFSET_Y_MAX, 1)
           .setValue(this.plugin.settings.noteIconOffsetY)
           .setDynamicTooltip()
           .onChange(async (value) => {

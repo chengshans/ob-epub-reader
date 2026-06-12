@@ -6,7 +6,7 @@ import { ProgressStore } from "./ProgressStore";
 import { AIService } from "./AIService";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme } from "./types";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 
 export default class ObEpubPlugin extends Plugin {
@@ -31,9 +31,13 @@ export default class ObEpubPlugin extends Plugin {
     await this.migrateProgressFromDataJson();
     // Fix legacy [回到原文](<obsidian://…>) links (once)
     await this.fixLegacyGotoLinksOnce();
+    // Convert remaining obsidian:// excerpt links to hash links (once, prevents click crash)
+    await this.migrateHashGotoLinksOnce();
 
     // Click「回到原文」/ callout → jump EPUB (works in split view)
-    registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi));
+    registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi), (annId, excerptPath) =>
+      this.annotationVaultStore.resolveGotoFromExcerpt(excerptPath, annId)
+    );
 
     // Register the reader view
     this.registerView(EPUB_READER_VIEW_TYPE, (leaf) => {
@@ -43,7 +47,11 @@ export default class ObEpubPlugin extends Plugin {
         this.annotationVaultStore,
         this.progressStore,
         this.aiService,
-        this.settings
+        this.settings,
+        async (themeId) => {
+          this.settings.readingTheme = themeId;
+          await this.saveSettings();
+        }
       );
     });
 
@@ -107,15 +115,19 @@ export default class ObEpubPlugin extends Plugin {
     // Deep-link: obsidian://ob-epub-goto?file=...&cfi=...
     // NOTE: Cannot register "open" — Obsidian core already owns that action.
     this.registerObsidianProtocolHandler("ob-epub-goto", async (params) => {
-      let filePath = params.file;
-      let cfi = params.cfi ?? "";
-      if (!filePath || typeof filePath !== "string") return;
+      try {
+        let filePath = params.file;
+        let cfi = params.cfi ?? "";
+        if (!filePath || typeof filePath !== "string") return;
 
-      // Recover from residual double-encoding in older links
-      filePath = decodeProtocolParam(filePath);
-      if (typeof cfi === "string") cfi = decodeProtocolParam(cfi);
+        filePath = decodeProtocolParam(filePath);
+        if (typeof cfi === "string") cfi = decodeProtocolParam(cfi);
 
-      await this.openEpubAtCfi(filePath, typeof cfi === "string" ? cfi : "");
+        await this.openEpubAtCfi(filePath, typeof cfi === "string" ? cfi : "");
+      } catch (err) {
+        console.error("ob-epub: protocol goto failed", err);
+        new Notice("无法跳转到 EPUB 原文");
+      }
     });
 
   }
@@ -143,6 +155,20 @@ export default class ObEpubPlugin extends Plugin {
       await this.saveData(data);
     } catch (err) {
       console.error("ob-epub: legacy goto link fix failed", err);
+    }
+  }
+
+  /** One-time: rewrite excerpt goto links to #^ann-id block refs. */
+  private async migrateHashGotoLinksOnce() {
+    try {
+      const data = (await this.loadData()) ?? {};
+      if (data.blockRefGotoLinksMigrated) return;
+      await this.annotationVaultStore.migrateRemainingObsidianGotoLinks();
+      data.blockRefGotoLinksMigrated = true;
+      data.hashGotoLinksMigrated = true;
+      await this.saveData(data);
+    } catch (err) {
+      console.error("ob-epub: block-ref goto link migration failed", err);
     }
   }
 
@@ -252,6 +278,7 @@ export default class ObEpubPlugin extends Plugin {
   async loadSettings() {
     const data = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings ?? {});
+    this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
   }
 
   async saveSettings() {
