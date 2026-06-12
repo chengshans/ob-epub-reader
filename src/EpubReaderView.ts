@@ -27,6 +27,12 @@ import {
   spineIndexFromLocation,
   TocSpineEntry,
 } from "./ChapterResolver";
+import {
+  isBlockedStylesheetHref,
+  readStylesheetHref,
+  sanitizeSectionHtml,
+  stripScriptsFromDocument,
+} from "./epubStylesheetInliner";
 
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
 
@@ -103,6 +109,7 @@ export class EpubReaderView extends FileView {
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private wheelAccum: number = 0;
   private wheelCooldown: boolean = false;
+  private bookGeneration = 0;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -169,6 +176,15 @@ export class EpubReaderView extends FileView {
   // FileView lifecycle: called by Obsidian when a file is opened in this view
   async onLoadFile(file: TFile): Promise<void> {
     await this.openBookWithSavedProgress(file);
+  }
+
+  private beginBookSession(): number {
+    this.bookGeneration += 1;
+    return this.bookGeneration;
+  }
+
+  private isBookSessionStale(generation: number): boolean {
+    return this.isClosing || generation !== this.bookGeneration;
   }
 
   private async openBookWithSavedProgress(file: TFile): Promise<void> {
@@ -378,7 +394,8 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private destroyBook() {
+  private destroyBook(invalidateSession = true) {
+    if (invalidateSession) this.bookGeneration += 1;
     this.safeCleanup("teardownReadingTimeTracking", () => this.teardownReadingTimeTracking());
     this.safeCleanup("dismissContextMenu", () => this.dismissContextMenu());
     this.safeCleanup("annotationWatcher", () => {
@@ -428,7 +445,8 @@ export class EpubReaderView extends FileView {
   private async loadBook(file: TFile, startCfi: string = "") {
     if (!this.readerEl) return;
     this.readerEl.empty();
-    this.destroyBook();
+    const generation = this.beginBookSession();
+    this.destroyBook(false);
 
     if (this.progressSaveTimer) {
       clearTimeout(this.progressSaveTimer);
@@ -443,15 +461,38 @@ export class EpubReaderView extends FileView {
 
     try {
       const arrayBuffer = await this.app.vault.adapter.readBinary(file.path);
+      if (this.isBookSessionStale(generation)) return;
       this.book = ePub(arrayBuffer as ArrayBuffer);
 
       await this.book.ready;
+      if (this.isBookSessionStale(generation)) return;
+
+      // Strip scripts at parse time; inline blob stylesheets before iframe srcdoc load.
+      this.book.spine.hooks.content.register((doc: Document) => {
+        if (this.isBookSessionStale(generation)) return;
+        stripScriptsFromDocument(doc);
+      });
+      await this.book.replacements();
+      if (this.isBookSessionStale(generation)) return;
+      this.book.spine.hooks.serialize.register(async (_output: string, section: { output?: string }) => {
+        if (this.isBookSessionStale(generation)) return;
+        const html = section.output ?? _output;
+        try {
+          const sanitized = await sanitizeSectionHtml(html);
+          if (!this.isBookSessionStale(generation)) section.output = sanitized;
+        } catch (err) {
+          console.warn("ob-epub: section sanitize failed", err);
+        }
+      });
+
       loadingEl.remove();
 
       await this.loadTocData();
+      if (this.isBookSessionStale(generation)) return;
 
       // 等一帧确保 readerEl 已有真实布局尺寸
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      if (this.isBookSessionStale(generation)) return;
 
       const rect = this.readerEl.getBoundingClientRect();
       const w = Math.max(rect.width || 600, 300);
@@ -491,7 +532,13 @@ export class EpubReaderView extends FileView {
 
       // Mouse wheel + keyboard navigation (bound inside each iframe document)
       this.rendition.hooks.content.register((contents: any) => {
-        this.attachContentNavigation(contents);
+        if (this.isBookSessionStale(generation)) return;
+        try {
+          this.attachContentNavigation(contents);
+          void this.inlineBlockedStylesheets(contents);
+        } catch (err) {
+          console.warn("ob-epub: content hook failed", err);
+        }
       });
 
       // Track location changes
@@ -501,11 +548,14 @@ export class EpubReaderView extends FileView {
         const percentage = this.extractPercentFromLocation(location);
         this.updateProgressBar(percentage);
         this.scheduleProgressSave(percentage);
-        this.scheduleHighlightSync();
+        if (!this.isNavigating) {
+          this.scheduleHighlightSync();
+        }
       });
 
       // Draw highlights only after epub.js finishes rendering the page iframe.
       this.rendition.on("rendered", () => {
+        if (this.isNavigating) return;
         if (this.highlightRedrawTimer) clearTimeout(this.highlightRedrawTimer);
         this.highlightRedrawTimer = setTimeout(() => {
           this.highlightRedrawTimer = null;
@@ -593,10 +643,43 @@ export class EpubReaderView extends FileView {
     } catch (err) {
       loadingEl.textContent = `加载失败: ${err}`;
       console.error("EPUB load error:", err);
+    } finally {
+      if (this.isBookSessionStale(generation)) {
+        loadingEl.remove();
+      }
     }
   }
 
   // ---------- Navigation: wheel + keyboard ----------
+
+  /** Obsidian CSP blocks blob:/data: stylesheet links in EPUB iframes. */
+  private async inlineBlockedStylesheets(contents: any): Promise<void> {
+    if (!contents?.document || !contents?.content || !contents?.window) return;
+    const doc: Document = contents.document;
+    stripScriptsFromDocument(doc);
+
+    const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
+    for (const node of links) {
+      const link = node as HTMLLinkElement;
+      const href = link.getAttribute("href");
+      if (!href || !isBlockedStylesheetHref(href)) continue;
+      try {
+        const css = await readStylesheetHref(href);
+        if (!css) {
+          link.remove();
+          continue;
+        }
+        const style = doc.createElement("style");
+        style.setAttribute("data-ob-epub-inlined", "1");
+        style.textContent = css;
+        link.parentNode?.insertBefore(style, link);
+        link.remove();
+      } catch (err) {
+        console.warn("ob-epub: inline stylesheet failed", href, err);
+        link.remove();
+      }
+    }
+  }
 
   private attachContentNavigation(contents: any) {
     const doc: Document | undefined = contents?.document;

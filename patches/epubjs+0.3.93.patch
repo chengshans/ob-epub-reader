@@ -1,8 +1,33 @@
 diff --git a/node_modules/epubjs/lib/contents.js b/node_modules/epubjs/lib/contents.js
-index 8392d87..43be818 100644
+index 8392d87..8846bef 100644
 --- a/node_modules/epubjs/lib/contents.js
 +++ b/node_modules/epubjs/lib/contents.js
-@@ -843,31 +843,7 @@ class Contents {
+@@ -714,6 +714,24 @@ class Contents {
+       if (!this.document) {
+         resolve(false);
+         return;
++      }
++
++      if (src && (src.indexOf("blob:") === 0 || src.indexOf("data:") === 0)) {
++        var xhr = new XMLHttpRequest();
++        xhr.open("GET", src);
++        xhr.responseType = "text";
++        xhr.onload = function () {
++          var styleEl = this.document.createElement("style");
++          styleEl.setAttribute("data-ob-epub-inlined", "1");
++          styleEl.textContent = xhr.responseText || "";
++          this.document.head.appendChild(styleEl);
++          resolve(true);
++        }.bind(this);
++        xhr.onerror = function () {
++          resolve(false);
++        };
++        xhr.send();
++        return;
+       } // Check if link already exists
+ 
+ 
+@@ -843,31 +861,7 @@ class Contents {
  
  
    addScript(src) {
@@ -35,6 +60,121 @@ index 8392d87..43be818 100644
    }
    /**
     * Add a class to the contents container
+diff --git a/node_modules/epubjs/lib/epubcfi.js b/node_modules/epubjs/lib/epubcfi.js
+index ec4122a..c2009e0 100644
+--- a/node_modules/epubjs/lib/epubcfi.js
++++ b/node_modules/epubjs/lib/epubcfi.js
+@@ -928,9 +928,7 @@ class EpubCFI {
+         range.setStart(missed.container, missed.offset);
+       }
+     } else {
+-      console.log("No startContainer found for", this.toString()); // No start found
+-
+-      return null;
++      return null; // No start found
+     }
+ 
+     if (endContainer) {
+diff --git a/node_modules/epubjs/lib/managers/views/iframe.js b/node_modules/epubjs/lib/managers/views/iframe.js
+index 00b69ac..66f1fb7 100644
+--- a/node_modules/epubjs/lib/managers/views/iframe.js
++++ b/node_modules/epubjs/lib/managers/views/iframe.js
+@@ -19,6 +19,16 @@ var _marksPane = require("marks-pane");
+ 
+ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+ 
++function sanitizeSrcdocHtml(html) {
++  return html.replace(/<[\w.-]*:?(script|iframe|object)\b[\s\S]*?<\/[\w.-]*:?\1>/gi, "").replace(/<[\w.-]*:?(script|iframe|object|embed)\b[^>]*\/?>/gi, "").replace(/\s[\w:.-]*on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/\ssrcdoc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "").replace(/\s([\w:.-]*(?:src|href)|formaction|action)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, function (match, _attrName, rawValue) {
++    var value = rawValue.replace(/^["']|["']$/g, "").trim().replace(/[\u0000-\u001F\u007F\s]+/g, "").toLowerCase();
++    return /^(javascript:|vbscript:|data:text\/html|data:application\/xhtml\+xml|data:image\/svg\+xml)/.test(value) ? "" : match;
++  }).replace(/\sstyle\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, function (match, rawValue) {
++    var value = rawValue.replace(/^["']|["']$/g, "");
++    return /(javascript:|vbscript:|expression\s*\()/i.test(value) ? "" : match;
++  });
++}
++
+ class IframeView {
+   constructor(section, options) {
+     this.settings = (0, _core.extend)({
+@@ -363,7 +373,7 @@ class IframeView {
+       this.iframe.src = this.blobUrl;
+       this.element.appendChild(this.iframe);
+     } else if (this.settings.method === "srcdoc") {
+-      this.iframe.srcdoc = contents;
++      this.iframe.srcdoc = sanitizeSrcdocHtml(contents);
+       this.element.appendChild(this.iframe);
+     } else {
+       this.element.appendChild(this.iframe);
+@@ -374,6 +384,7 @@ class IframeView {
+         return loaded;
+       }
+ 
++      contents = sanitizeSrcdocHtml(contents);
+       this.iframe.contentDocument.open(); // For Cordova windows platform
+ 
+       if (window.MSApp && MSApp.execUnsafeLocalFunction) {
+@@ -554,6 +565,9 @@ class IframeView {
+       "mix-blend-mode": "multiply"
+     }, styles);
+     let range = this.contents.range(cfiRange);
++    if (!range) {
++      return;
++    }
+ 
+     let emitter = () => {
+       this.emit(_constants.EVENTS.VIEWS.MARK_CLICKED, cfiRange, data);
+@@ -574,11 +588,11 @@ class IframeView {
+     };
+     h.element.setAttribute("ref", className);
+     h.element.addEventListener("click", emitter);
+-    h.element.addEventListener("touchstart", emitter);
++    h.element.addEventListener("touchstart", emitter, { passive: true });
+ 
+     if (cb) {
+       h.element.addEventListener("click", cb);
+-      h.element.addEventListener("touchstart", cb);
++      h.element.addEventListener("touchstart", cb, { passive: true });
+     }
+ 
+     return h;
+@@ -595,6 +609,9 @@ class IframeView {
+       "mix-blend-mode": "multiply"
+     }, styles);
+     let range = this.contents.range(cfiRange);
++    if (!range) {
++      return;
++    }
+ 
+     let emitter = () => {
+       this.emit(_constants.EVENTS.VIEWS.MARK_CLICKED, cfiRange, data);
+@@ -615,11 +632,11 @@ class IframeView {
+     };
+     h.element.setAttribute("ref", className);
+     h.element.addEventListener("click", emitter);
+-    h.element.addEventListener("touchstart", emitter);
++    h.element.addEventListener("touchstart", emitter, { passive: true });
+ 
+     if (cb) {
+       h.element.addEventListener("click", cb);
+-      h.element.addEventListener("touchstart", cb);
++      h.element.addEventListener("touchstart", cb, { passive: true });
+     }
+ 
+     return h;
+@@ -670,11 +687,11 @@ class IframeView {
+ 
+     if (cb) {
+       mark.addEventListener("click", cb);
+-      mark.addEventListener("touchstart", cb);
++      mark.addEventListener("touchstart", cb, { passive: true });
+     }
+ 
+     mark.addEventListener("click", emitter);
+-    mark.addEventListener("touchstart", emitter);
++    mark.addEventListener("touchstart", emitter, { passive: true });
+     this.placeMark(mark, range);
+     this.element.appendChild(mark);
+     this.marks[cfiRange] = {
 diff --git a/node_modules/epubjs/lib/rendition.js b/node_modules/epubjs/lib/rendition.js
 index 0dda80c..3efa9e7 100644
 --- a/node_modules/epubjs/lib/rendition.js
@@ -54,10 +194,37 @@ index 0dda80c..3efa9e7 100644
    /**
     * Hook to handle the document identifier before
 diff --git a/node_modules/epubjs/src/contents.js b/node_modules/epubjs/src/contents.js
-index 3effe72..3e26178 100644
+index 3effe72..5297abb 100644
 --- a/node_modules/epubjs/src/contents.js
 +++ b/node_modules/epubjs/src/contents.js
-@@ -818,32 +818,7 @@ class Contents {
+@@ -695,7 +695,25 @@ class Contents {
+ 			var ready = false;
+ 
+ 			if(!this.document) {
+-				resolve(false);
++			 resolve(false);
++			 return;
++			}
++
++			if (src && (src.indexOf("blob:") === 0 || src.indexOf("data:") === 0)) {
++				var xhr = new XMLHttpRequest();
++				xhr.open("GET", src);
++				xhr.responseType = "text";
++				xhr.onload = function() {
++					var styleEl = this.document.createElement("style");
++					styleEl.setAttribute("data-ob-epub-inlined", "1");
++					styleEl.textContent = xhr.responseText || "";
++					this.document.head.appendChild(styleEl);
++					resolve(true);
++				}.bind(this);
++				xhr.onerror = function() {
++					resolve(false);
++				};
++				xhr.send();
+ 				return;
+ 			}
+ 
+@@ -818,32 +836,7 @@ class Contents {
  	 * @returns {Promise} loaded
  	 */
  	addScript(src) {
@@ -91,6 +258,124 @@ index 3effe72..3e26178 100644
  	}
  
  	/**
+diff --git a/node_modules/epubjs/src/epubcfi.js b/node_modules/epubjs/src/epubcfi.js
+index 98a6b90..ed2abaf 100644
+--- a/node_modules/epubjs/src/epubcfi.js
++++ b/node_modules/epubjs/src/epubcfi.js
+@@ -969,7 +969,6 @@ class EpubCFI {
+ 				range.setStart(missed.container, missed.offset);
+ 			}
+ 		} else {
+-			console.log("No startContainer found for", this.toString());
+ 			// No start found
+ 			return null;
+ 		}
+diff --git a/node_modules/epubjs/src/managers/views/iframe.js b/node_modules/epubjs/src/managers/views/iframe.js
+index e20e54d..277b118 100644
+--- a/node_modules/epubjs/src/managers/views/iframe.js
++++ b/node_modules/epubjs/src/managers/views/iframe.js
+@@ -5,6 +5,22 @@ import Contents from "../../contents";
+ import { EVENTS } from "../../utils/constants";
+ import { Pane, Highlight, Underline } from "marks-pane";
+ 
++function sanitizeSrcdocHtml(html) {
++	return html
++		.replace(/<[\w.-]*:?(script|iframe|object)\b[\s\S]*?<\/[\w.-]*:?\1>/gi, "")
++		.replace(/<[\w.-]*:?(script|iframe|object|embed)\b[^>]*\/?>/gi, "")
++		.replace(/\s[\w:.-]*on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
++		.replace(/\ssrcdoc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
++		.replace(/\s([\w:.-]*(?:src|href)|formaction|action)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, function(match, _attrName, rawValue) {
++			var value = rawValue.replace(/^["']|["']$/g, "").trim().replace(/[\u0000-\u001F\u007F\s]+/g, "").toLowerCase();
++			return /^(javascript:|vbscript:|data:text\/html|data:application\/xhtml\+xml|data:image\/svg\+xml)/.test(value) ? "" : match;
++		})
++		.replace(/\sstyle\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, function(match, rawValue) {
++			var value = rawValue.replace(/^["']|["']$/g, "");
++			return /(javascript:|vbscript:|expression\s*\()/i.test(value) ? "" : match;
++		});
++}
++
+ class IframeView {
+ 	constructor(section, options) {
+ 		this.settings = extend({
+@@ -401,7 +417,7 @@ class IframeView {
+ 			this.iframe.src = this.blobUrl;
+ 			this.element.appendChild(this.iframe);
+ 		} else if(this.settings.method === "srcdoc"){
+-			this.iframe.srcdoc = contents;
++			this.iframe.srcdoc = sanitizeSrcdocHtml(contents);
+ 			this.element.appendChild(this.iframe);
+ 		} else {
+ 
+@@ -414,6 +430,7 @@ class IframeView {
+ 				return loaded;
+ 			}
+ 
++			contents = sanitizeSrcdocHtml(contents);
+ 			this.iframe.contentDocument.open();
+ 			// For Cordova windows platform
+ 			if(window.MSApp && MSApp.execUnsafeLocalFunction) {
+@@ -609,6 +626,9 @@ class IframeView {
+ 		}
+ 		const attributes = Object.assign({"fill": "yellow", "fill-opacity": "0.3", "mix-blend-mode": "multiply"}, styles);
+ 		let range = this.contents.range(cfiRange);
++		if (!range) {
++			return;
++		}
+ 
+ 		let emitter = () => {
+ 			this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data);
+@@ -627,11 +647,11 @@ class IframeView {
+ 
+ 		h.element.setAttribute("ref", className);
+ 		h.element.addEventListener("click", emitter);
+-		h.element.addEventListener("touchstart", emitter);
++		h.element.addEventListener("touchstart", emitter, { passive: true });
+ 
+ 		if (cb) {
+ 			h.element.addEventListener("click", cb);
+-			h.element.addEventListener("touchstart", cb);
++			h.element.addEventListener("touchstart", cb, { passive: true });
+ 		}
+ 		return h;
+ 	}
+@@ -642,6 +662,9 @@ class IframeView {
+ 		}
+ 		const attributes = Object.assign({"stroke": "black", "stroke-opacity": "0.3", "mix-blend-mode": "multiply"}, styles);
+ 		let range = this.contents.range(cfiRange);
++		if (!range) {
++			return;
++		}
+ 		let emitter = () => {
+ 			this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data);
+ 		};
+@@ -659,11 +682,11 @@ class IframeView {
+ 
+ 		h.element.setAttribute("ref", className);
+ 		h.element.addEventListener("click", emitter);
+-		h.element.addEventListener("touchstart", emitter);
++		h.element.addEventListener("touchstart", emitter, { passive: true });
+ 
+ 		if (cb) {
+ 			h.element.addEventListener("click", cb);
+-			h.element.addEventListener("touchstart", cb);
++			h.element.addEventListener("touchstart", cb, { passive: true });
+ 		}
+ 		return h;
+ 	}
+@@ -711,11 +734,11 @@ class IframeView {
+ 
+ 		if (cb) {
+ 			mark.addEventListener("click", cb);
+-			mark.addEventListener("touchstart", cb);
++			mark.addEventListener("touchstart", cb, { passive: true });
+ 		}
+ 
+ 		mark.addEventListener("click", emitter);
+-		mark.addEventListener("touchstart", emitter);
++		mark.addEventListener("touchstart", emitter, { passive: true });
+ 
+ 		this.placeMark(mark, range);
+ 
 diff --git a/node_modules/epubjs/src/rendition.js b/node_modules/epubjs/src/rendition.js
 index 14a21b4..b5fdc43 100644
 --- a/node_modules/epubjs/src/rendition.js

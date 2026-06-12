@@ -103,7 +103,7 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   aiApiKey: "",
   aiModel: "gpt-4o-mini",
   aiPromptTemplate: "请解释以下这段话的含义：\n\n{text}",
-  defaultFlow: "paginated",
+  defaultFlow: "scrolled",
   fontSize: 16,
   readingTheme: "obsidian",
   noteIconSize: 20,
