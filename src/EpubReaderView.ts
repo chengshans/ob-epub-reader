@@ -1,6 +1,7 @@
 import { FileView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
+import { cfiProgressMatches } from "./cfi/cfiMatch";
 import { ProgressStore, normalizeCfi, normalizePercent } from "./ProgressStore";
 import { AIService } from "./AIService";
 import {
@@ -29,9 +30,9 @@ import {
 } from "./ChapterResolver";
 import {
   isBlockedStylesheetHref,
+  prepareSectionHtmlForSpine,
   readStylesheetHref,
-  sanitizeSectionHtml,
-  stripScriptsFromDocument,
+  stripExecutableFromDocument,
 } from "./epubStylesheetInliner";
 
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
@@ -39,6 +40,7 @@ export const EPUB_READER_VIEW_TYPE = "epub-reader";
 const ANNOTATION_TYPE = "highlight";
 const HIGHLIGHT_CLASS = "epub-user-highlight";
 const NOTE_ICON_CLASS = "epub-note-icon";
+const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-icon";
 
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
@@ -470,7 +472,7 @@ export class EpubReaderView extends FileView {
       // Strip scripts at parse time; inline blob stylesheets before iframe srcdoc load.
       this.book.spine.hooks.content.register((doc: Document) => {
         if (this.isBookSessionStale(generation)) return;
-        stripScriptsFromDocument(doc);
+        stripExecutableFromDocument(doc);
       });
       await this.book.replacements();
       if (this.isBookSessionStale(generation)) return;
@@ -478,8 +480,8 @@ export class EpubReaderView extends FileView {
         if (this.isBookSessionStale(generation)) return;
         const html = section.output ?? _output;
         try {
-          const sanitized = await sanitizeSectionHtml(html);
-          if (!this.isBookSessionStale(generation)) section.output = sanitized;
+          const prepared = await prepareSectionHtmlForSpine(html);
+          if (!this.isBookSessionStale(generation)) section.output = prepared;
         } catch (err) {
           console.warn("ob-epub: section sanitize failed", err);
         }
@@ -489,6 +491,8 @@ export class EpubReaderView extends FileView {
 
       await this.loadTocData();
       if (this.isBookSessionStale(generation)) return;
+
+      this.applyPublicationReadingHints();
 
       // 等一帧确保 readerEl 已有真实布局尺寸
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
@@ -504,6 +508,7 @@ export class EpubReaderView extends FileView {
         width: w,
         height: h,
         allowScriptedContent: false,
+        ignoreClass: CFI_IGNORE_CLASSES,
       });
 
       // Apply font size
@@ -591,6 +596,7 @@ export class EpubReaderView extends FileView {
             } else {
               console.warn("ob-epub: resume timed out, keeping saved progress", resumeCfi);
               if (savedProgress) this.updateProgressBar(savedProgress.percent);
+              this.isBookInitializing = false;
             }
           }
         } catch (err) {
@@ -601,6 +607,7 @@ export class EpubReaderView extends FileView {
             console.error("ob-epub: fallback display failed", fallbackErr);
           }
           if (savedProgress) this.updateProgressBar(savedProgress.percent);
+          this.isBookInitializing = false;
         }
       } else {
         this.blockProgressSave = false;
@@ -656,7 +663,7 @@ export class EpubReaderView extends FileView {
   private async inlineBlockedStylesheets(contents: any): Promise<void> {
     if (!contents?.document || !contents?.content || !contents?.window) return;
     const doc: Document = contents.document;
-    stripScriptsFromDocument(doc);
+    stripExecutableFromDocument(doc);
 
     const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
     for (const node of links) {
@@ -914,6 +921,30 @@ export class EpubReaderView extends FileView {
     }
   }
 
+  /** Honor publication rendition metadata; user toolbar toggle still overrides later. */
+  private applyPublicationReadingHints(): void {
+    if (!this.book) return;
+
+    const meta = this.book.package?.metadata;
+    const pubFlow = meta?.flow;
+    if (pubFlow === "scrolled-doc" || pubFlow === "scrolled-continuous") {
+      this.flow = "scrolled";
+    } else if (pubFlow === "paginated") {
+      this.flow = "paginated";
+    } else {
+      this.flow = this.settings.defaultFlow;
+    }
+
+    const flowBtn = this.toolbarEl?.querySelector("#epub-flow-btn") as HTMLElement | null;
+    if (flowBtn) {
+      flowBtn.textContent = this.flow === "paginated" ? "📄 分页" : "📜 滚动";
+    }
+
+    if (meta?.layout === "pre-paginated") {
+      new Notice("此书为固定版式 EPUB，排版可能与专用阅读器有差异。");
+    }
+  }
+
   private async loadTocData() {
     if (!this.book) return;
 
@@ -1138,11 +1169,7 @@ export class EpubReaderView extends FileView {
   }
 
   private cfiRoughlyMatches(target: string, actual: string): boolean {
-    if (!target || !actual) return false;
-    if (target === actual) return true;
-    const targetSpine = target.match(/epubcfi\(\/6\/(\d+)!/)?.[1];
-    const actualSpine = actual.match(/epubcfi\(\/6\/(\d+)!/)?.[1];
-    return !!targetSpine && targetSpine === actualSpine;
+    return cfiProgressMatches(target, actual);
   }
 
   private waitForResumeCfi(targetCfi: string, timeoutMs: number): Promise<boolean> {

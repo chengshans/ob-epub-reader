@@ -33,7 +33,8 @@ function escapeStyleText(css: string): string {
   return css.replace(/<\/style/gi, "<\\/style");
 }
 
-const UNSAFE_TAGS = new Set(["script", "iframe", "object", "embed"]);
+const EXECUTABLE_TAGS = new Set(["script"]);
+const IFRAME_UNSAFE_TAGS = new Set(["script", "iframe", "object", "embed"]);
 const URL_ATTRS = new Set(["src", "href", "xlink:href", "formaction", "action"]);
 
 function elementLocalName(el: Element): string {
@@ -55,11 +56,11 @@ function isUnsafeUrl(value: string): boolean {
   );
 }
 
-function stripUnsafeAttributes(el: Element): void {
+function stripUnsafeAttributes(el: Element, removeSrcdoc: boolean): void {
   for (const attr of Array.from(el.attributes)) {
     const name = attrLocalName(attr.name);
     const localName = name.includes(":") ? name.split(":").pop() ?? name : name;
-    if (localName.startsWith("on") || localName === "srcdoc") {
+    if (localName.startsWith("on") || (removeSrcdoc && localName === "srcdoc")) {
       el.removeAttribute(attr.name);
       continue;
     }
@@ -73,30 +74,35 @@ function stripUnsafeAttributes(el: Element): void {
   }
 }
 
-/** Remove executable content from parsed section XML before serialize/srcdoc. */
-export function stripScriptsFromDocument(doc: Document): void {
+function stripTagsFromDocument(doc: Document, tags: Set<string>, removeSrcdoc: boolean): void {
   const all = Array.from(doc.getElementsByTagName("*"));
   for (let i = all.length - 1; i >= 0; i--) {
     const el = all[i];
-    if (UNSAFE_TAGS.has(elementLocalName(el))) {
+    if (tags.has(elementLocalName(el))) {
       el.parentNode?.removeChild(el);
       continue;
     }
-    stripUnsafeAttributes(el);
+    stripUnsafeAttributes(el, removeSrcdoc);
   }
 }
 
-/** Remove script tags and inline event handlers before iframe srcdoc load. */
-export function stripScriptsFromHtml(html: string): string {
+function stripTagsFromHtml(html: string, tags: RegExp, removeEmbedded: boolean): string {
   let result = html;
-  // Match executable tags regardless of casing / namespaced XHTML tags.
-  result = result.replace(/<[\w.-]*:?(script|iframe|object)\b[\s\S]*?<\/[\w.-]*:?\1>/gi, "");
-  result = result.replace(/<[\w.-]*:?(script|iframe|object|embed)\b[^>]*\/?>/gi, "");
+  if (removeEmbedded) {
+    result = result.replace(/<[\w.-]*:?(script|iframe|object)\b[\s\S]*?<\/[\w.-]*:?\1>/gi, "");
+    result = result.replace(/<[\w.-]*:?(script|iframe|object|embed)\b[^>]*\/?>/gi, "");
+  } else {
+    result = result.replace(/<[\w.-]*:?(script)\b[\s\S]*?<\/[\w.-]*:?\1>/gi, "");
+    result = result.replace(/<[\w.-]*:?(script)\b[^>]*\/?>/gi, "");
+  }
+  void tags;
   result = result.replace(/\s[\w:.-]*on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  result = result.replace(/\ssrcdoc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  if (removeEmbedded) {
+    result = result.replace(/\ssrcdoc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  }
   result = result.replace(
     /\s([\w:.-]*(?:src|href)|formaction|action)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
-    (match, attrName: string, rawValue: string) => {
+    (match, _attrName: string, rawValue: string) => {
       const unquoted = rawValue.replace(/^["']|["']$/g, "");
       return isUnsafeUrl(unquoted) ? "" : match;
     }
@@ -108,39 +114,62 @@ export function stripScriptsFromHtml(html: string): string {
   return result;
 }
 
-function hasParserError(doc: Document): boolean {
-  return !!doc.getElementsByTagName("parsererror").length;
-}
-
-function sanitizeHtmlWithDom(html: string): string {
-  const stripped = stripScriptsFromHtml(html);
-  try {
-    const doc = new DOMParser().parseFromString(stripped, "application/xhtml+xml");
-    if (!hasParserError(doc)) {
-      stripScriptsFromDocument(doc);
-      return new XMLSerializer().serializeToString(doc);
+/** Unwrap noscript fallback bodies when scripting is disabled (EPUB RS fallback). */
+export function unwrapNoscriptFallbacks(doc: Document): void {
+  for (const ns of Array.from(doc.querySelectorAll("noscript"))) {
+    const html = ns.textContent?.trim() ?? "";
+    if (!html) {
+      ns.remove();
+      continue;
     }
-  } catch {
-    /* fall back to HTML parsing below */
-  }
-
-  try {
-    const doc = new DOMParser().parseFromString(stripped, "text/html");
-    stripScriptsFromDocument(doc);
-    return doc.documentElement.outerHTML;
-  } catch {
-    return stripped;
+    const tpl = doc.createElement("div");
+    tpl.innerHTML = html;
+    const parent = ns.parentNode;
+    if (!parent) continue;
+    while (tpl.firstChild) {
+      parent.insertBefore(tpl.firstChild, ns);
+    }
+    parent.removeChild(ns);
   }
 }
 
-/** Sync strip for spine serialize hook — avoid async work during section render. */
-export function sanitizeSectionHtmlSync(html: string): string {
-  return sanitizeHtmlWithDom(html);
+/** Spine content hook: remove scripts and event handlers only (preserve structure for CFI). */
+export function stripExecutableFromDocument(doc: Document): void {
+  stripTagsFromDocument(doc, EXECUTABLE_TAGS, false);
+  unwrapNoscriptFallbacks(doc);
 }
 
-/** Inline blocked stylesheets and strip scripts for Obsidian CSP / sandbox. */
+/** Spine serialize: string-level script strip without removing iframe/embed/object. */
+export function stripExecutableFromHtml(html: string): string {
+  return stripTagsFromHtml(html, /script/i, false);
+}
+
+/**
+ * Iframe boundary: full sanitization before srcdoc / document.write.
+ * Keep in sync with `sanitizeSrcdocHtml` in patches/epubjs+0.3.93.patch.
+ */
+export function sanitizeIframeHtml(html: string): string {
+  return stripTagsFromHtml(html, /script|iframe|object|embed/i, true);
+}
+
+/** Spine serialize hook: minimal strip + inline blob/data stylesheets (no XMLSerializer). */
+export async function prepareSectionHtmlForSpine(html: string): Promise<string> {
+  return inlineStylesheetLinksInHtml(stripExecutableFromHtml(html));
+}
+
+/** @deprecated Use prepareSectionHtmlForSpine */
 export async function sanitizeSectionHtml(html: string): Promise<string> {
-  return inlineStylesheetLinksInHtml(sanitizeHtmlWithDom(html));
+  return prepareSectionHtmlForSpine(html);
+}
+
+/** @deprecated Use stripExecutableFromDocument */
+export function stripScriptsFromDocument(doc: Document): void {
+  stripExecutableFromDocument(doc);
+}
+
+/** @deprecated Use sanitizeIframeHtml */
+export function stripScriptsFromHtml(html: string): string {
+  return sanitizeIframeHtml(html);
 }
 
 /** Replace blob:/data: stylesheet links with inline style tags before iframe load. */

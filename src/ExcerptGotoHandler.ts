@@ -1,4 +1,5 @@
 import { App, MarkdownPostProcessorContext, MarkdownView, Notice, Plugin } from "obsidian";
+import { unescapeCfiString } from "./cfi/cfiString";
 
 function parseGotoQuery(query: string): { file: string; cfi: string } | null {
   try {
@@ -68,9 +69,9 @@ export function decodeProtocolParam(value: string): string {
     if (decoded.includes("%2F") || decoded.includes("%28")) {
       try { decoded = decodeURIComponent(decoded); } catch { /* keep */ }
     }
-    return decoded;
+    return unescapeCfiString(decoded);
   } catch {
-    return value;
+    return unescapeCfiString(value);
   }
 }
 

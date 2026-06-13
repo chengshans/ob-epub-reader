@@ -1,4 +1,5 @@
 import { App, normalizePath, TFile } from "obsidian";
+import { extractEpubCfiLiteral } from "./cfi/cfiString";
 import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, normalizeNoteType, NoteType, parseReadingTime } from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
@@ -57,8 +58,11 @@ export class AnnotationVaultStore {
 
   /** Extract CFI from a markdown annotation chunk. */
   private extractCfiFromChunk(text: string): string | null {
-    const commentMatch = text.match(/<!--\s*ob-epub-cfi:\s*(epubcfi\([\s\S]*?\))\s*-->/);
-    if (commentMatch) return commentMatch[1];
+    const commentMatch = text.match(/<!--\s*ob-epub-cfi:\s*([\s\S]*?)\s*-->/);
+    if (commentMatch) {
+      const literal = extractEpubCfiLiteral(commentMatch[1]);
+      if (literal) return literal;
+    }
 
     const linkMatch = text.match(
       /\[回到原文\]\(\s*(?:obsidian:\/\/ob-epub-goto\?|#ob-epub-goto\?)([^)\n]+)\)/
@@ -68,18 +72,25 @@ export class AnnotationVaultStore {
         const query = linkMatch[1].replace(/>$/, "");
         const params = new URLSearchParams(query);
         const cfi = params.get("cfi");
-        if (cfi) return cfi;
+        if (cfi) {
+          const literal = extractEpubCfiLiteral(cfi) ?? extractEpubCfiLiteral(decodeURIComponent(cfi));
+          if (literal) return literal;
+          return cfi;
+        }
       } catch {
         /* fall through */
       }
     }
 
-    const raw = text.match(/cfi=(epubcfi\([^)\s\n]+(?:,[^)\s\n]+)*\))/);
-    if (raw) {
-      try {
-        return decodeURIComponent(raw[1]);
-      } catch {
-        return raw[1];
+    const cfiIdx = text.indexOf("cfi=");
+    if (cfiIdx >= 0) {
+      const literal = extractEpubCfiLiteral(text.slice(cfiIdx + 4));
+      if (literal) {
+        try {
+          return decodeURIComponent(literal);
+        } catch {
+          return literal;
+        }
       }
     }
     return null;

@@ -1,6 +1,11 @@
 import { App, TFile, normalizePath } from "obsidian";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
+import { isCfiAhead } from "./cfi/compare";
+import { cfiSpineKey } from "./cfi/cfiMatch";
+import { isBalancedEpubCfi, unescapeCfiString } from "./cfi/cfiString";
 import { BookProgress, EpubPluginSettings } from "./types";
+
+export { cfiSpineKey } from "./cfi/cfiMatch";
 
 /** 旧版集中进度文件（仅用于一次性迁移读取） */
 const PROGRESS_FILENAME = "reading-progress.json";
@@ -9,16 +14,21 @@ const HIDDEN_PROGRESS_FILENAME = ".reading-progress.json";
 /** 将 epub.js 的 EpubCFI 对象或历史 JSON 对象统一为 CFI 字符串 */
 export function normalizeCfi(cfi: unknown): string {
   if (!cfi) return "";
-  if (typeof cfi === "string") return cfi;
-  if (typeof cfi === "object" && cfi !== null) {
+  let raw = "";
+  if (typeof cfi === "string") {
+    raw = cfi;
+  } else if (typeof cfi === "object" && cfi !== null) {
     const obj = cfi as { str?: unknown; toString?: () => string };
-    if (typeof obj.str === "string" && obj.str.startsWith("epubcfi(")) return obj.str;
-    if (typeof obj.toString === "function") {
+    if (typeof obj.str === "string" && obj.str.startsWith("epubcfi(")) raw = obj.str;
+    else if (typeof obj.toString === "function") {
       const s = obj.toString();
-      if (s.startsWith("epubcfi(")) return s;
+      if (s.startsWith("epubcfi(")) raw = s;
     }
   }
-  return "";
+  if (!raw) return "";
+  const trimmed = unescapeCfiString(raw.trim());
+  if (!trimmed.startsWith("epubcfi(") || !isBalancedEpubCfi(trimmed)) return "";
+  return trimmed;
 }
 
 /** epub.js 使用 0–1；兼容历史误存为 0–100 的数据 */
@@ -173,14 +183,14 @@ export class ProgressStore {
     const newKey = cfiSpineKey(cfiStr);
 
     if (normalizedPercent + 0.02 < existing.percent) {
-      if (!newKey || !existingKey || newKey <= existingKey) {
+      if (!isCfiAhead(existing.cfi, cfiStr) && (!newKey || !existingKey || newKey <= existingKey)) {
         return true;
       }
     }
 
     // 禁止用开头的 0% 覆盖已有有效进度（重启恢复失败时的典型场景）
     if (existing.percent > 0.01 && normalizedPercent < 0.01) {
-      if (!newKey || !existingKey || newKey <= existingKey) {
+      if (!isCfiAhead(existing.cfi, cfiStr) && (!newKey || !existingKey || newKey <= existingKey)) {
         return true;
       }
     }
@@ -313,10 +323,4 @@ export class ProgressStore {
       }
     }
   }
-}
-
-/** 提取 CFI 中的 spine 章节序号，用于比较阅读深度 */
-export function cfiSpineKey(cfi: string): number {
-  const match = cfi.match(/epubcfi\(\/6\/(\d+)!/);
-  return match ? Number(match[1]) : 0;
 }

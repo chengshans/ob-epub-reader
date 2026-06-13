@@ -7,7 +7,10 @@ import { AIService } from "./AIService";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
 import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme } from "./types";
+import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
+
+applyEpubjsCfiPatch();
 
 export default class ObEpubPlugin extends Plugin {
   settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
