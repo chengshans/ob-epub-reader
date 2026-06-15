@@ -1,6 +1,6 @@
 import { App, normalizePath, TFile } from "obsidian";
 import { extractEpubCfiLiteral } from "./cfi/cfiString";
-import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, normalizeNoteType, NoteType, parseReadingTime } from "./types";
+import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, normalizeNoteType, NoteType, parseReadingTime, resolveNoteTypes } from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
@@ -582,7 +582,7 @@ export class AnnotationVaultStore {
         if (line.trim() === "") continue;
         const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
         if (typeMatch) {
-          parsedNoteType = normalizeNoteType(typeMatch[1]);
+          parsedNoteType = normalizeNoteType(typeMatch[1], resolveNoteTypes(this.settings.noteTypes));
           continue;
         }
         if (CFI_COMMENT_RE.test(line.trim())) continue;

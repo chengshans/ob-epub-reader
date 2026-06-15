@@ -80,6 +80,62 @@ export function normalizeReadingTheme(raw: string | undefined): ReadingThemeId {
   return "obsidian";
 }
 
+// ---- Note types (想法类型) ----
+
+export type NoteType = "note" | "inspiration" | "practice" | "revisit" | "question";
+
+export interface NoteTypeDef {
+  id: NoteType;
+  label: string;
+  icon: string;
+}
+
+export const DEFAULT_NOTE_TYPES: NoteTypeDef[] = [
+  { id: "note", label: "做笔记", icon: "📝" },
+  { id: "inspiration", label: "灵感", icon: "💡" },
+  { id: "practice", label: "准备实践", icon: "✅" },
+  { id: "revisit", label: "反复看", icon: "🔁" },
+  { id: "question", label: "疑问", icon: "❓" },
+];
+
+/** @deprecated Use DEFAULT_NOTE_TYPES */
+export const NOTE_TYPES = DEFAULT_NOTE_TYPES;
+
+const NOTE_TYPE_LABEL_MAX = 20;
+const NOTE_TYPE_ICON_MAX = 8;
+
+function sanitizeNoteTypeDef(def: NoteTypeDef, fallback: NoteTypeDef): NoteTypeDef {
+  const label = def.label?.trim().slice(0, NOTE_TYPE_LABEL_MAX);
+  const icon = def.icon?.trim().slice(0, NOTE_TYPE_ICON_MAX);
+  return {
+    id: fallback.id,
+    label: label || fallback.label,
+    icon: icon || fallback.icon,
+  };
+}
+
+/** Merge stored settings with defaults; always returns exactly five fixed ids. */
+export function resolveNoteTypes(stored?: NoteTypeDef[]): NoteTypeDef[] {
+  return DEFAULT_NOTE_TYPES.map((fallback) => {
+    const custom = stored?.find((t) => t.id === fallback.id);
+    return sanitizeNoteTypeDef(custom ?? fallback, fallback);
+  });
+}
+
+export function normalizeNoteType(raw: string | undefined, types: NoteTypeDef[]): NoteType {
+  const ids = new Set(types.map((t) => t.id));
+  if (raw && ids.has(raw)) return raw as NoteType;
+  return "note";
+}
+
+export function noteTypeIcon(id: NoteType | undefined, types: NoteTypeDef[]): string {
+  return types.find((t) => t.id === (id ?? "note"))?.icon ?? DEFAULT_NOTE_TYPES[0].icon;
+}
+
+export function noteTypeLabel(id: NoteType | undefined, types: NoteTypeDef[]): string {
+  return types.find((t) => t.id === (id ?? "note"))?.label ?? DEFAULT_NOTE_TYPES[0].label;
+}
+
 export interface EpubPluginSettings {
   excerptFolder: string;
   aiApiUrl: string;
@@ -95,6 +151,8 @@ export interface EpubPluginSettings {
   noteIconOffsetX: number;
   /** 垂直偏移 (px)，正值向下 */
   noteIconOffsetY: number;
+  /** 五种想法类型的图标与显示名称（id 固定，仅可改 label / icon） */
+  noteTypes: NoteTypeDef[];
 }
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
@@ -109,6 +167,7 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   noteIconSize: 20,
   noteIconOffsetX: 2,
   noteIconOffsetY: 0,
+  noteTypes: DEFAULT_NOTE_TYPES.map((t) => ({ ...t })),
 };
 
 export interface BookProgress {
@@ -179,39 +238,6 @@ export const HIGHLIGHT_COLORS: HighlightColorDef[] = [
 
 export function colorHex(id: HighlightColor): string {
   return HIGHLIGHT_COLORS.find((c) => c.id === id)?.hex ?? "#e8b339";
-}
-
-// ---- Note types (想法类型) ----
-
-export type NoteType = "note" | "inspiration" | "practice" | "revisit" | "question";
-
-export interface NoteTypeDef {
-  id: NoteType;
-  label: string;
-  icon: string;
-}
-
-export const NOTE_TYPES: NoteTypeDef[] = [
-  { id: "note", label: "做笔记", icon: "📝" },
-  { id: "inspiration", label: "灵感", icon: "💡" },
-  { id: "practice", label: "准备实践", icon: "✅" },
-  { id: "revisit", label: "反复看", icon: "🔁" },
-  { id: "question", label: "疑问", icon: "❓" },
-];
-
-const NOTE_TYPE_IDS = new Set<string>(NOTE_TYPES.map((t) => t.id));
-
-export function normalizeNoteType(raw: string | undefined): NoteType {
-  if (raw && NOTE_TYPE_IDS.has(raw)) return raw as NoteType;
-  return "note";
-}
-
-export function noteTypeIcon(id?: NoteType): string {
-  return NOTE_TYPES.find((t) => t.id === (id ?? "note"))?.icon ?? "📝";
-}
-
-export function noteTypeLabel(id?: NoteType): string {
-  return NOTE_TYPES.find((t) => t.id === (id ?? "note"))?.label ?? "做笔记";
 }
 
 export const NOTE_ICON_SIZE_MIN = 14;

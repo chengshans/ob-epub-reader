@@ -1,5 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
-import { HighlightColor, HIGHLIGHT_COLORS, NOTE_TYPES, NoteType } from "./types";
+import { HighlightColor, HIGHLIGHT_COLORS, NoteType, NoteTypeDef } from "./types";
 
 interface NoteResult {
   note: string;
@@ -16,18 +16,21 @@ export class NoteInputModal extends Modal {
   private note: string;
   private color: HighlightColor;
   private noteType: NoteType;
+  private noteTypes: NoteTypeDef[];
   private onSubmit: (result: NoteResult) => void;
   private titleText: string;
 
   constructor(
     app: App,
     selectedText: string,
+    noteTypes: NoteTypeDef[],
     initial: { note?: string; color?: HighlightColor; noteType?: NoteType },
     onSubmit: (result: NoteResult) => void,
     titleText = "写下你的想法"
   ) {
     super(app);
     this.selectedText = selectedText;
+    this.noteTypes = noteTypes;
     this.note = initial.note ?? "";
     this.color = initial.color ?? "yellow";
     this.noteType = initial.noteType ?? "note";
@@ -81,7 +84,7 @@ export class NoteInputModal extends Modal {
     typeRow.createEl("span", { cls: "epub-note-colors-label", text: "想法类型" });
     const chips = typeRow.createDiv({ cls: "epub-note-type-chips" });
     const chipEls: Record<string, HTMLElement> = {};
-    for (const t of NOTE_TYPES) {
+    for (const t of this.noteTypes) {
       const chip = chips.createDiv({ cls: "epub-note-type-chip" });
       chip.setText(`${t.icon} ${t.label}`);
       chip.title = t.label;

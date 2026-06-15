@@ -20,6 +20,7 @@ import {
   clampNoteIconOffsetY,
   noteIconGlyphSize,
   normalizeReadingTheme,
+  resolveNoteTypes,
 } from "./types";
 import { NoteInputModal } from "./NoteInputModal";
 import {
@@ -132,6 +133,10 @@ export class EpubReaderView extends FileView {
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
     this.readingTheme = normalizeReadingTheme(settings.readingTheme);
+  }
+
+  private get resolvedNoteTypes() {
+    return resolveNoteTypes(this.settings.noteTypes);
   }
 
   getViewType(): string {
@@ -1421,12 +1426,12 @@ export class EpubReaderView extends FileView {
     const btn = document.createElement("button");
     btn.className = NOTE_ICON_CLASS;
     btn.type = "button";
-    btn.title = `${noteTypeLabel(annotation.noteType)} · 查看/编辑想法`;
+    btn.title = `${noteTypeLabel(annotation.noteType, this.resolvedNoteTypes)} · 查看/编辑想法`;
     btn.setAttribute("data-cfi", annotation.cfiRange);
     btn.setAttribute("data-id", annotation.id);
     btn.setAttribute("data-color", annotation.color);
     const glyph = btn.createSpan({ cls: "epub-note-icon-glyph" });
-    glyph.textContent = noteTypeIcon(annotation.noteType);
+    glyph.textContent = noteTypeIcon(annotation.noteType, this.resolvedNoteTypes);
     btn.setCssProps({
       width: `${iconSize}px`,
       height: `${iconSize}px`,
@@ -1518,6 +1523,7 @@ export class EpubReaderView extends FileView {
     new NoteInputModal(
       this.app,
       ann.text,
+      this.resolvedNoteTypes,
       { note: ann.note, color: ann.color, noteType: ann.noteType },
       async ({ note, color, noteType }) => {
         await this.annotationVaultStore.update(filePath, ann.id, {
@@ -1674,6 +1680,7 @@ export class EpubReaderView extends FileView {
     new NoteInputModal(
       this.app,
       text,
+      this.resolvedNoteTypes,
       { color: "yellow" },
       async ({ note, color, noteType }) => {
         const ann: Annotation = {
@@ -1808,7 +1815,7 @@ export class EpubReaderView extends FileView {
       if (ann.note) {
         head.createSpan({
           cls: "epub-note-item-type",
-          text: noteTypeLabel(ann.noteType),
+          text: noteTypeLabel(ann.noteType, this.resolvedNoteTypes),
         });
       }
 
@@ -1876,5 +1883,6 @@ export class EpubReaderView extends FileView {
       }
       this.scheduleHighlightSync();
     }
+    if (this.sidebarMode === "notes") void this.renderNotesPanel();
   }
 }

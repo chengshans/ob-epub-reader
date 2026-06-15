@@ -1,6 +1,12 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ObEpubPlugin from "./main";
-import { READING_THEMES, ReadingThemeId } from "./types";
+import {
+  DEFAULT_NOTE_TYPES,
+  NoteType,
+  READING_THEMES,
+  ReadingThemeId,
+  resolveNoteTypes,
+} from "./types";
 import {
   NOTE_ICON_OFFSET_X_MAX,
   NOTE_ICON_OFFSET_X_MIN,
@@ -16,6 +22,16 @@ export class EpubSettingsTab extends PluginSettingTab {
   constructor(app: App, plugin: ObEpubPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  private async patchNoteType(id: NoteType, patch: { label?: string; icon?: string }) {
+    const types = resolveNoteTypes(this.plugin.settings.noteTypes);
+    const idx = types.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    if (patch.icon !== undefined) types[idx] = { ...types[idx], icon: patch.icon };
+    if (patch.label !== undefined) types[idx] = { ...types[idx], label: patch.label };
+    this.plugin.settings.noteTypes = resolveNoteTypes(types);
+    await this.plugin.saveSettings();
   }
 
   display(): void {
@@ -79,6 +95,39 @@ export class EpubSettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
       });
+
+    new Setting(containerEl).setName("想法类型").setHeading();
+
+    new Setting(containerEl).setDesc(
+      "标注时可选择的五种想法分类；修改名称与图标后，新标注与已有标注的显示会同步更新"
+    );
+
+    const noteTypes = resolveNoteTypes(this.plugin.settings.noteTypes);
+    for (const def of noteTypes) {
+      const fallback = DEFAULT_NOTE_TYPES.find((t) => t.id === def.id)!;
+      new Setting(containerEl)
+        .setName(fallback.label)
+        .setDesc(`图标与显示名称（内部 ID: ${def.id}）`)
+        .addText((text) => {
+          text.inputEl.classList.add("ob-epub-note-type-icon-input");
+          text.setPlaceholder("📝").setValue(def.icon).onChange(async (value) => {
+            await this.patchNoteType(def.id, { icon: value });
+          });
+        })
+        .addText((text) => {
+          text.setPlaceholder(fallback.label).setValue(def.label).onChange(async (value) => {
+            await this.patchNoteType(def.id, { label: value });
+          });
+        });
+    }
+
+    new Setting(containerEl).addButton((btn) =>
+      btn.setButtonText("恢复默认想法类型").onClick(async () => {
+        this.plugin.settings.noteTypes = DEFAULT_NOTE_TYPES.map((t) => ({ ...t }));
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
 
     new Setting(containerEl).setName("想法图标").setHeading();
 

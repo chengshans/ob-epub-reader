@@ -792,6 +792,11 @@ a.ob-epub-goto-link {
 }
 
 /* ---- Plugin settings tab (sliders / controls contrast) ---- */
+.ob-epub-settings .setting-item-control input.ob-epub-note-type-icon-input {
+  width: 3.5em;
+  text-align: center;
+}
+
 .ob-epub-settings .setting-item-control input[type="range"] {
   -webkit-appearance: none;
   appearance: none;

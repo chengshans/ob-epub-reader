@@ -6,7 +6,7 @@ import { ProgressStore } from "./ProgressStore";
 import { AIService } from "./AIService";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme, resolveNoteTypes } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 
@@ -282,6 +282,7 @@ export default class ObEpubPlugin extends Plugin {
     const data = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings ?? {});
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
+    this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
   }
 
   async saveSettings() {
