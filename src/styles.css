@@ -340,6 +340,15 @@ a.ob-epub-goto-link {
   padding-top: 0;
 }
 
+.epub-confirm-delete.mod-cta {
+  background-color: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.epub-confirm-delete.mod-cta:hover {
+  background-color: var(--background-modifier-error-hover);
+}
+
 .epub-toc.is-hidden,
 .epub-notes.is-hidden {
   display: none;

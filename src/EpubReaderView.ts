@@ -1805,34 +1805,35 @@ export class EpubReaderView extends FileView {
     ).open();
   }
 
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  private highlightQuery(text: string, query: string): string {
-    const escaped = this.escapeHtml(text);
+  private appendHighlightedQuery(
+    el: HTMLElement,
+    text: string,
+    query: string
+  ): void {
     const trimmed = query.trim();
-    if (!trimmed) return escaped;
+    if (!trimmed) {
+      el.appendText(text);
+      return;
+    }
 
     const lower = text.toLowerCase();
     const qLower = trimmed.toLowerCase();
-    let result = "";
     let lastIndex = 0;
     let idx = lower.indexOf(qLower);
     while (idx !== -1) {
-      result += this.escapeHtml(text.slice(lastIndex, idx));
-      result += `<mark class="epub-notes-highlight">${this.escapeHtml(
-        text.slice(idx, idx + qLower.length)
-      )}</mark>`;
+      if (idx > lastIndex) {
+        el.appendText(text.slice(lastIndex, idx));
+      }
+      el.createEl("mark", {
+        cls: "epub-notes-highlight",
+        text: text.slice(idx, idx + qLower.length),
+      });
       lastIndex = idx + qLower.length;
       idx = lower.indexOf(qLower, lastIndex);
     }
-    result += this.escapeHtml(text.slice(lastIndex));
-    return result;
+    if (lastIndex < text.length) {
+      el.appendText(text.slice(lastIndex));
+    }
   }
 
   private isNotesFilterActive(): boolean {
@@ -2041,12 +2042,12 @@ export class EpubReaderView extends FileView {
         ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text;
       const quote = li.createDiv({ cls: "epub-note-item-text" });
       quote.addEventListener("click", jump);
-      quote.innerHTML = this.highlightQuery(quoteText, query);
+      this.appendHighlightedQuery(quote, quoteText, query);
 
       if (ann.note) {
         const note = li.createDiv({ cls: "epub-note-item-note" });
         note.addEventListener("click", jump);
-        note.innerHTML = this.highlightQuery(ann.note, query);
+        this.appendHighlightedQuery(note, ann.note, query);
       }
 
       const actions = li.createDiv({ cls: "epub-note-item-actions" });

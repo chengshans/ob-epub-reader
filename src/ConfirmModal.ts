@@ -1,16 +1,7 @@
 import { App, ButtonComponent, Modal, Setting } from "obsidian";
 
-/** Style a confirm button as destructive across Obsidian 1.12–1.13+. */
 function styleDestructiveButton(btn: ButtonComponent): ButtonComponent {
-  const extended = btn as ButtonComponent & {
-    setDestructive?: () => ButtonComponent;
-    setWarning?: () => ButtonComponent;
-  };
-  if (typeof extended.setDestructive === "function") {
-    extended.setDestructive();
-  } else if (typeof extended.setWarning === "function") {
-    extended.setWarning();
-  }
+  btn.buttonEl.addClass("epub-confirm-delete");
   return btn.setCta();
 }
 
