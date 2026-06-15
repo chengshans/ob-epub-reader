@@ -86,12 +86,12 @@ The reader toolbar offers six theme swatches for instant switching. **Settings �
 
 | Preview | Theme | Background | Description |
 | :--: | ----- | ---------- | ----------- |
-| ![Follow Obsidian](assets/readme-themes/obsidian.svg) | Follow Obsidian | Editor theme | Matches Obsidian editor colors; follows light/dark mode |
-| ![White](assets/readme-themes/white.svg) | White | `#FFFFFF` | White background, dark gray text — general reading |
-| ![Yellow](assets/readme-themes/yellow.svg) | Yellow | `#FAF9DE` | Warm pale yellow — easier on the eyes for long sessions |
-| ![Green](assets/readme-themes/green.svg) | Green | `#E3EDCD` | Soft green — classic eye-comfort mode |
-| ![Sepia](assets/readme-themes/sepia.svg) | Sepia | `#F4ECD8` | Warm brown tone — paper-like feel |
-| ![Dark](assets/readme-themes/dark.svg) | Dark | `#1C1C1E` | Dark gray background, light text — low-light reading |
+| ![Follow Obsidian](assets/readme-themes/obsidian.png) | Follow Obsidian | Editor theme | Matches Obsidian editor colors; follows light/dark mode |
+| ![White](assets/readme-themes/white.png) | White | `#FFFFFF` | White background, dark gray text — general reading |
+| ![Yellow](assets/readme-themes/yellow.png) | Yellow | `#FAF9DE` | Warm pale yellow — easier on the eyes for long sessions |
+| ![Green](assets/readme-themes/green.png) | Green | `#E3EDCD` | Soft green — classic eye-comfort mode |
+| ![Sepia](assets/readme-themes/sepia.png) | Sepia | `#F4ECD8` | Warm brown tone — paper-like feel |
+| ![Dark](assets/readme-themes/dark.png) | Dark | `#1C1C1E` | Dark gray background, light text — low-light reading |
 
 ### Note types and icons
 

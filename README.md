@@ -78,12 +78,12 @@
 
 | 演示 | 主题 | 背景色 | 说明 |
 | :--: | ---- | ------ | ---- |
-| ![跟随 Obsidian](assets/readme-themes/obsidian.svg) | 跟随 Obsidian | 随编辑器 | 正文配色与 Obsidian 编辑器一致，深浅模式自动跟随 |
-| ![默认白](assets/readme-themes/white.svg) | 默认白 | `#FFFFFF` | 白底深灰字，通用阅读 |
-| ![护眼黄](assets/readme-themes/yellow.svg) | 护眼黄 | `#FAF9DE` | 偏暖浅黄底，减轻长时间阅读疲劳 |
-| ![护眼绿](assets/readme-themes/green.svg) | 护眼绿 | `#E3EDCD` | 淡绿底，类似传统护眼模式 |
-| ![羊皮纸](assets/readme-themes/sepia.svg) | 羊皮纸 | `#F4ECD8` | 暖棕色调，仿纸质书观感 |
-| ![夜间](assets/readme-themes/dark.svg) | 夜间 | `#1C1C1E` | 深灰底浅字，适合暗光环境 |
+| ![跟随 Obsidian](assets/readme-themes/obsidian.png) | 跟随 Obsidian | 随编辑器 | 正文配色与 Obsidian 编辑器一致，深浅模式自动跟随 |
+| ![默认白](assets/readme-themes/white.png) | 默认白 | `#FFFFFF` | 白底深灰字，通用阅读 |
+| ![护眼黄](assets/readme-themes/yellow.png) | 护眼黄 | `#FAF9DE` | 偏暖浅黄底，减轻长时间阅读疲劳 |
+| ![护眼绿](assets/readme-themes/green.png) | 护眼绿 | `#E3EDCD` | 淡绿底，类似传统护眼模式 |
+| ![羊皮纸](assets/readme-themes/sepia.png) | 羊皮纸 | `#F4ECD8` | 暖棕色调，仿纸质书观感 |
+| ![夜间](assets/readme-themes/dark.png) | 夜间 | `#1C1C1E` | 深灰底浅字，适合暗光环境 |
 
 ### 想法类型与图标
 
