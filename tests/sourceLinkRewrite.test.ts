@@ -106,7 +106,7 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
 
     expect(countSourceLinks(result)).toBe(1);
     expect(result).not.toMatch(/^>\s*\[回到原文\]/m);
-    expect(result).toMatch(/\n\[回到原文\]\(#\^ann-test001\)\n$/);
+    expect(result).toMatch(/\n\[回到原文\]\(#\^ann-test001\)\n\n$/);
   });
 
   it("wraps source link block with blank lines (no blank between CFI comment and link)", () => {
@@ -118,7 +118,7 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     );
 
     expect(result).toMatch(/想法文字\n\n<!-- ob-epub-cfi:/);
-    expect(result).toMatch(/<!-- ob-epub-cfi:[^\n]+\n\[回到原文\]\(#\^ann-test001\)\n$/);
+    expect(result).toMatch(/<!-- ob-epub-cfi:[^\n]+\n\[回到原文\]\(#\^ann-test001\)\n\n$/);
     expect(result).not.toMatch(/<!-- ob-epub-cfi:[\s\S]*?\n\n\[回到原文\]/);
   });
 
@@ -131,7 +131,7 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
 
     expect(result).toMatch(/摘录正文第二行\n\n\[\[books\/demo\.epub#cfi=/);
-    expect(result).toMatch(/\|回到原文\]\]\n$/);
+    expect(result).toMatch(/\|回到原文\]\]\n\n$/);
   });
 
   it("converts block-ref with CFI comment to wiki link", () => {
@@ -144,7 +144,7 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
 
     expect(countSourceLinks(result)).toBe(1);
     expect(result).toMatch(/\n\n\[\[books\/demo\.epub#cfi=/);
-    expect(result).toMatch(/\|回到原文\]\]\n$/);
+    expect(result).toMatch(/\|回到原文\]\]\n\n$/);
     expect(countCfiComments(result)).toBe(0);
   });
 

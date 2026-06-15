@@ -172,14 +172,14 @@ export class AnnotationVaultStore {
   }
 
   /**
-   * CFI comment (optional) + goto link, with a blank line before the block and after the link.
+   * CFI comment (optional) + goto link, with blank lines before the block and after the link.
    * No blank line between CFI comment and link when both are present.
    */
   private formatSourceLinkBlock(linkLine: string, cfiRange?: string): string {
     const inner = cfiRange
       ? `${this.buildCfiComment(cfiRange)}\n${linkLine}`
       : linkLine;
-    return `\n\n${inner}\n`;
+    return `\n\n${inner}\n\n`;
   }
 
   /** Remove all goto link lines and optional CFI comments from an annotation chunk. */
