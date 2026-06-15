@@ -1,4 +1,18 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, ButtonComponent, Modal, Setting } from "obsidian";
+
+/** Style a confirm button as destructive across Obsidian 1.12–1.13+. */
+function styleDestructiveButton(btn: ButtonComponent): ButtonComponent {
+  const extended = btn as ButtonComponent & {
+    setDestructive?: () => ButtonComponent;
+    setWarning?: () => ButtonComponent;
+  };
+  if (typeof extended.setDestructive === "function") {
+    extended.setDestructive();
+  } else if (typeof extended.setWarning === "function") {
+    extended.setWarning();
+  }
+  return btn.setCta();
+}
 
 /**
  * Lightweight confirmation dialog with cancel / confirm actions.
@@ -36,13 +50,14 @@ export class ConfirmModal extends Modal {
         btn.setButtonText("取消").onClick(() => this.close())
       )
       .addButton((btn) =>
-        btn
-          .setButtonText(this.confirmLabel)
-          .setDestructive()
-          .onClick(() => {
-            this.close();
-            this.onConfirm();
-          })
+        styleDestructiveButton(btn.setButtonText(this.confirmLabel)).onClick(() => {
+          this.onConfirm();
+          this.close();
+        })
       );
+  }
+
+  onClose() {
+    this.contentEl.empty();
   }
 }
