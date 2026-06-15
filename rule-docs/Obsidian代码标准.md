@@ -51,8 +51,38 @@ ob-epub/
 | `vault.getFileByPath()` | 1.5.7 |
 | `workspace.getLeaf()` | 0.16.0 |
 | `workspace.revealLeaf()` | 1.7.2 |
+| `ButtonComponent.setDestructive()` | **1.13.0**（本项目目标 1.12.7，**禁用**) |
 
 新增高版本 API 时，同步提升 `manifest.json` 的 `minAppVersion`，并在 `versions.json` 中为**新版本号**写入对应值；历史条目保留不改。
+
+### 2.4 曾踩坑记录（v1.3.11 → v1.3.12）
+
+#### innerHTML 赋值
+
+```typescript
+// ❌ 触发 Unsafe assignment to innerHTML
+quote.innerHTML = this.highlightQuery(quoteText, query);
+
+// ✅ 用 DOM API 逐段构建
+private appendHighlightedQuery(el: HTMLElement, text: string, query: string): void {
+  const trimmed = query.trim();
+  if (!trimmed) { el.appendText(text); return; }
+  // ... 匹配段用 el.createEl("mark", { cls: "epub-notes-highlight", text: slice })
+}
+```
+
+#### 高版本 Button API
+
+```typescript
+// ❌ setDestructive 为 1.13 API；运行时检测仍会被 lint 报错，且 1.12 上会导致按钮失效
+btn.setDestructive().setCta();
+
+// ✅ setCta + CSS 类，全版本兼容
+btn.buttonEl.addClass("epub-confirm-delete");
+btn.setCta();
+```
+
+参考：`src/ConfirmModal.ts`、`src/EpubReaderView.ts`（v1.3.12）。
 
 ### 2.3 版本号发布
 
@@ -259,6 +289,7 @@ npm run build       # 生产构建
 | 规则 | 说明 |
 |------|------|
 | `no-unsupported-api` | API 版本 ≤ `minAppVersion` |
+| `no-innerHTML` | 禁止 `innerHTML` 赋值，用 `appendText` / `createEl` / `DOMParser` |
 | `no-static-styles-assignment` | 不用 `el.style.xxx =` |
 | 设置页标题 | 使用 `Setting.setHeading()` |
 | `no-plugin-name-in-settings-headings` | 分组标题不含插件名 |
@@ -300,6 +331,8 @@ PLUGIN_DIR="/path/to/.obsidian/plugins/ob-epub-reader" npm run build
 
 提交 PR 或发版前逐项确认：
 
+- [ ] 无 `innerHTML` 赋值；动态内容用 `appendText` / `createEl` / `DOMParser`
+- [ ] 无超出 `minAppVersion` 的 Obsidian API（尤其 `setDestructive` 等 1.13+ API）
 - [ ] `minAppVersion` 与新增 API 一致
 - [ ] `versions.json` 已更新新版本条目
 - [ ] 无 `el.style.*` 直接赋值；动态样式用 `setCssProps` / CSS 类
