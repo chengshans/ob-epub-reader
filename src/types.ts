@@ -136,8 +136,30 @@ export function noteTypeLabel(id: NoteType | undefined, types: NoteTypeDef[]): s
   return types.find((t) => t.id === (id ?? "note"))?.label ?? DEFAULT_NOTE_TYPES[0].label;
 }
 
+/** 摘录中「回到原文」链接的写入格式 */
+export type SourceLinkFormat = "block-ref" | "wiki-link";
+
+export const SOURCE_LINK_FORMATS: { id: SourceLinkFormat; label: string; desc: string }[] = [
+  {
+    id: "block-ref",
+    label: "块引用（推荐）",
+    desc: "[回到原文](#^ann-id)，CFI 存在 HTML 注释中，链接短且稳定",
+  },
+  {
+    id: "wiki-link",
+    label: "Wiki 链接",
+    desc: "[[书名.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]，便于跨笔记引用",
+  },
+];
+
+export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
+  return value === "wiki-link" ? "wiki-link" : "block-ref";
+}
+
 export interface EpubPluginSettings {
   excerptFolder: string;
+  /** 新标注与转换时使用的「回到原文」链接格式 */
+  sourceLinkFormat: SourceLinkFormat;
   aiApiUrl: string;
   aiApiKey: string;
   aiModel: string;
@@ -157,6 +179,7 @@ export interface EpubPluginSettings {
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
   excerptFolder: "epub-books/anno",
+  sourceLinkFormat: "block-ref",
   aiApiUrl: "https://api.openai.com/v1",
   aiApiKey: "",
   aiModel: "gpt-4o-mini",

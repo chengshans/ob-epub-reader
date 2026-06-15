@@ -6,9 +6,10 @@ import { ProgressStore } from "./ProgressStore";
 import { AIService } from "./AIService";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme, resolveNoteTypes } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
+import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
 
 applyEpubjsCfiPatch();
 
@@ -20,6 +21,7 @@ export default class ObEpubPlugin extends Plugin {
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
   private lastGotoKey = "";
   private lastGotoAt = 0;
+  private unpatchEpubWikiLinks: (() => void) | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -40,6 +42,10 @@ export default class ObEpubPlugin extends Plugin {
     // Click「回到原文」/ callout → jump EPUB (works in split view)
     registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi), (annId, excerptPath) =>
       this.annotationVaultStore.resolveGotoFromExcerpt(excerptPath, annId)
+    );
+
+    this.unpatchEpubWikiLinks = patchEpubWikiLinkNavigation(this.app, (file, cfi) =>
+      this.openEpubAtCfi(file, cfi)
     );
 
     // Register the reader view
@@ -283,6 +289,7 @@ export default class ObEpubPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings ?? {});
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
+    this.settings.sourceLinkFormat = normalizeSourceLinkFormat(this.settings.sourceLinkFormat);
   }
 
   async saveSettings() {
@@ -302,6 +309,8 @@ export default class ObEpubPlugin extends Plugin {
   }
 
   onunload() {
+    this.unpatchEpubWikiLinks?.();
+    this.unpatchEpubWikiLinks = null;
     try {
       this.app.workspace.detachLeavesOfType(BOOKSHELF_VIEW_TYPE);
       this.app.workspace.detachLeavesOfType(EPUB_READER_VIEW_TYPE);

@@ -1,6 +1,24 @@
 import { App, normalizePath, TFile } from "obsidian";
 import { extractEpubCfiLiteral } from "./cfi/cfiString";
-import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, HighlightColor, HIGHLIGHT_COLORS, normalizeNoteType, NoteType, parseReadingTime, resolveNoteTypes } from "./types";
+import {
+  buildEpubWikiLink,
+  extractCfiFromWikiLink,
+  GOTO_WIKI_LINK_LINE_RE,
+  GOTO_WIKI_LINK_RE,
+  isSourceLinkLine,
+} from "./epubSubpath";
+import {
+  Annotation,
+  BookProgress,
+  EpubPluginSettings,
+  formatReadingTime,
+  HighlightColor,
+  HIGHLIGHT_COLORS,
+  normalizeNoteType,
+  NoteType,
+  parseReadingTime,
+  resolveNoteTypes,
+} from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
@@ -10,8 +28,8 @@ import { Annotation, BookProgress, EpubPluginSettings, formatReadingTime, Highli
 //
 // 可选的想法文字
 //
-// [回到原文](#^ann-xxx)
-// <!-- ob-epub-cfi: epubcfi(...) -->
+// [回到原文](#^ann-xxx)  或  [[book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]
+// <!-- ob-epub-cfi: epubcfi(...) -->  （块引用格式时写入）
 //
 // ---
 //
@@ -82,6 +100,9 @@ export class AnnotationVaultStore {
       }
     }
 
+    const wikiCfi = extractCfiFromWikiLink(text);
+    if (wikiCfi) return wikiCfi;
+
     const cfiIdx = text.indexOf("cfi=");
     if (cfiIdx >= 0) {
       const literal = extractEpubCfiLiteral(text.slice(cfiIdx + 4));
@@ -129,13 +150,53 @@ export class AnnotationVaultStore {
     );
   }
 
-  /** Vault block-ref link — safe to click; CFI lives in <!-- ob-epub-cfi --> comment. */
-  private buildSourceLink(annId: string): string {
-    return `[回到原文](#^${annId})`;
+  /** Build goto link line according to settings.sourceLinkFormat. */
+  private buildSourceLink(ann: Annotation, epubFilePath: string): string {
+    if (this.settings.sourceLinkFormat === "wiki-link") {
+      return buildEpubWikiLink(epubFilePath, {
+        cfiRange: ann.cfiRange,
+        text: ann.text.slice(0, 500),
+        chapter: ann.chapter,
+        color: ann.color,
+      });
+    }
+    return `[回到原文](#^${ann.id})`;
+  }
+
+  private usesCfiComment(): boolean {
+    return this.settings.sourceLinkFormat === "block-ref";
   }
 
   private buildCfiComment(cfiRange: string): string {
     return `<!-- ob-epub-cfi: ${cfiRange} -->`;
+  }
+
+  /**
+   * CFI comment (optional) + goto link, with a blank line before the block and after the link.
+   * No blank line between CFI comment and link when both are present.
+   */
+  private formatSourceLinkBlock(linkLine: string, cfiRange?: string): string {
+    const inner = cfiRange
+      ? `${this.buildCfiComment(cfiRange)}\n${linkLine}`
+      : linkLine;
+    return `\n\n${inner}\n`;
+  }
+
+  /** Remove all goto link lines and optional CFI comments from an annotation chunk. */
+  private stripAllGotoLinksFromChunk(
+    chunk: string,
+    opts: { removeCfiComment: boolean }
+  ): string {
+    let updated = chunk;
+    if (opts.removeCfiComment) {
+      updated = updated.replace(/<!--\s*ob-epub-cfi:[\s\S]*?-->\n?/g, "");
+    }
+    updated = updated.replace(GOTO_WIKI_LINK_LINE_RE, "");
+    updated = updated.replace(GOTO_WIKI_LINK_RE, "");
+    updated = updated.replace(/^>?\s*\[回到原文\]\([^)\n]+\)\s*$/gm, "");
+    updated = updated.replace(/\[回到原文\]\([^)\n]+\)/g, "");
+    updated = updated.replace(/^>\s*$/gm, "");
+    return updated;
   }
 
   /** Strip legacy angle-bracket wrappers and other broken link syntax. */
@@ -152,29 +213,81 @@ export class AnnotationVaultStore {
     if (epubSource) {
       result = this.repairBrokenGotoLines(result, epubSource);
     }
-    result = this.rewriteGotoLinksToBlockRefs(result);
+    result = this.rewriteGotoLinksToCurrentFormat(result, epubSource);
     return result;
   }
 
-  /** Replace all goto link formats with #^ann-id and ensure CFI HTML comment exists. */
-  rewriteGotoLinksToBlockRefs(content: string): string {
+  /** Replace goto links in all chunks to match the current sourceLinkFormat setting. */
+  rewriteGotoLinksToCurrentFormat(content: string, epubSource?: string): string {
     const chunks = content.split(/\n---\n/);
-    const rewritten = chunks.map((chunk) => {
-      const annId = chunk.match(/\^(ann-[a-z0-9-]+)/i)?.[1];
-      if (!annId) return chunk;
-
-      let updated = chunk;
-      const legacyCfi = this.extractCfiFromLegacyLink(chunk);
-      if (legacyCfi && !updated.includes("<!-- ob-epub-cfi:")) {
-        updated = updated.replace(
-          /(\n\[回到原文\]\([^)\n]+\))/,
-          `\n${this.buildCfiComment(legacyCfi)}$1`
-        );
-      }
-
-      return updated.replace(/\[回到原文\]\([^)\n]+\)/g, this.buildSourceLink(annId));
-    });
+    const rewritten = chunks.map((chunk) => this.rewriteChunkGotoLinks(chunk, epubSource));
     return rewritten.join("\n---\n");
+  }
+
+  private rewriteChunkGotoLinks(chunk: string, epubSource?: string): string {
+    const annId = chunk.match(/\^(ann-[a-z0-9-]+)/i)?.[1];
+    if (!annId) return chunk;
+
+    const legacyCfi = this.extractCfiFromLegacyLink(chunk) ?? extractCfiFromWikiLink(chunk);
+    const existingCfi = this.extractCfiFromChunk(chunk) ?? legacyCfi;
+
+    if (this.settings.sourceLinkFormat === "block-ref") {
+      const body = this.stripAllGotoLinksFromChunk(chunk, { removeCfiComment: true });
+      const link = `[回到原文](#^${annId})`;
+      return `${body.trimEnd()}${this.formatSourceLinkBlock(link, existingCfi ?? undefined)}`;
+    }
+
+    if (!epubSource || !existingCfi) return chunk;
+
+    const body = this.stripAllGotoLinksFromChunk(chunk, { removeCfiComment: true });
+    const ann = this.parseSingleChunkAnnotation(chunk, epubSource, annId, existingCfi);
+    const wikiLine = ann
+      ? this.buildSourceLink(ann, epubSource)
+      : buildEpubWikiLink(epubSource, { cfiRange: existingCfi }, "回到原文");
+    return `${body.trimEnd()}${this.formatSourceLinkBlock(wikiLine)}`;
+  }
+
+  /** One-time migration: replace legacy goto links with block refs. */
+  rewriteGotoLinksToBlockRefs(content: string): string {
+    const prev = this.settings.sourceLinkFormat;
+    this.settings = { ...this.settings, sourceLinkFormat: "block-ref" };
+    const result = this.rewriteGotoLinksToCurrentFormat(content);
+    this.settings = { ...this.settings, sourceLinkFormat: prev };
+    return result;
+  }
+
+  private parseSingleChunkAnnotation(
+    chunk: string,
+    epubFilePath: string,
+    annId: string,
+    cfiRange: string
+  ): Annotation | null {
+    const list = this.parseContent(`${chunk}\n---\n`, epubFilePath);
+    const found = list.find((a) => a.id === annId);
+    if (found) return found;
+    return { id: annId, cfiRange, text: "", color: "yellow", chapter: "", created: new Date().toISOString() };
+  }
+
+  /** Rewrite all excerpt files to use the current sourceLinkFormat. Returns files updated. */
+  async convertAllExcerptSourceLinks(): Promise<number> {
+    const folder = this.settings.excerptFolder.replace(/\/$/, "");
+    const prefix = folder ? `${folder}/` : "";
+    const files = this.app.vault
+      .getMarkdownFiles()
+      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+
+    let updated = 0;
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const epubSource = this.extractEpubSourceFromFrontmatter(content);
+      const converted = this.rewriteGotoLinksToCurrentFormat(content, epubSource);
+      if (converted !== content) {
+        this.pauseWatch();
+        await this.app.vault.modify(file, converted);
+        updated += 1;
+      }
+    }
+    return updated;
   }
 
   private extractCfiFromLegacyLink(text: string): string | null {
@@ -211,7 +324,10 @@ export class AnnotationVaultStore {
         /^(?!.*\[回到原文\]).*\.epub&cfi=(epubcfi\([^)\n]+)>?\s*$/gm,
         (_line, cfi: string) => {
           const clean = cfi.replace(/>$/, "");
-          return `${this.buildCfiComment(clean)}\n${this.buildSourceLink(annId)}`;
+          return `${this.buildCfiComment(clean)}\n${this.buildSourceLink(
+            { id: annId, cfiRange: clean, text: "", color: "yellow", chapter: "", created: "" },
+            epubSource
+          )}`;
         }
       );
 
@@ -221,7 +337,10 @@ export class AnnotationVaultStore {
           const params = new URLSearchParams(query.replace(/>$/, ""));
           const cfi = params.get("cfi");
           if (!cfi) return _line;
-          return `${this.buildCfiComment(cfi)}\n${this.buildSourceLink(annId)}`;
+          return `${this.buildCfiComment(cfi)}\n${this.buildSourceLink(
+            { id: annId, cfiRange: cfi, text: "", color: "yellow", chapter: "", created: "" },
+            epubSource
+          )}`;
         }
       );
       return updated;
@@ -504,16 +623,14 @@ export class AnnotationVaultStore {
     const dateStr = this.formatDate(new Date(ann.created));
     const headerLine = `> [!${CALLOUT_PREFIX}|${ann.color}] ${ann.chapter} · ${dateStr} ^${ann.id}`;
     const textLines = ann.text.split("\n").map((l) => `> ${l}`).join("\n");
-    const sourceLink = this.buildSourceLink(ann.id);
-    const cfiComment = this.buildCfiComment(ann.cfiRange);
-
-    const parts: string[] = [headerLine, textLines, ``];
+    const sourceLink = this.buildSourceLink(ann, epubFilePath);
+    const parts: string[] = [headerLine, textLines];
     if (ann.note) {
-      parts.push(`<!-- ob-epub-note-type: ${ann.noteType ?? "note"} -->`);
-      parts.push(ann.note, ``);
+      parts.push("", `<!-- ob-epub-note-type: ${ann.noteType ?? "note"} -->`, ann.note);
     }
-    parts.push(cfiComment, sourceLink, ``, `---`, ``);
-    return parts.join("\n");
+    const body = parts.join("\n");
+    const cfiRange = this.usesCfiComment() ? ann.cfiRange : undefined;
+    return `${body}${this.formatSourceLinkBlock(sourceLink, cfiRange)}---\n\n`;
   }
 
   // ── Block parsing ─────────────────────────────────────────────────────────
@@ -578,7 +695,7 @@ export class AnnotationVaultStore {
           continue;
         }
         if (!pastQuote) continue;
-        if (/^\[回到原文\]/.test(line.trim())) continue;
+        if (isSourceLinkLine(line)) continue;
         if (line.trim() === "") continue;
         const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
         if (typeMatch) {

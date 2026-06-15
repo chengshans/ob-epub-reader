@@ -1,5 +1,10 @@
-import { App, MarkdownPostProcessorContext, MarkdownView, Notice, Plugin } from "obsidian";
+import { App, MarkdownPostProcessorContext, MarkdownView, Notice, Plugin, TFile } from "obsidian";
 import { unescapeCfiString } from "./cfi/cfiString";
+import {
+  collectEpubLinkCandidates,
+  isEpubWikiLinkAnchor,
+  parseWikiEpubLinkText,
+} from "./epubSubpath";
 
 function parseGotoQuery(query: string): { file: string; cfi: string } | null {
   try {
@@ -103,7 +108,7 @@ function findExcerptPathForElement(app: App, el: HTMLElement): string | null {
 function getAnchorRawHref(anchor: HTMLAnchorElement): string {
   const dataHref = anchor.getAttribute("data-href") ?? anchor.dataset?.href ?? "";
   const attrHref = anchor.getAttribute("href") ?? "";
-  return attrHref || dataHref;
+  return dataHref || attrHref;
 }
 
 /** Read goto target from wired dataset or legacy URL forms. */
@@ -111,8 +116,8 @@ export function getAnchorGotoHref(anchor: HTMLAnchorElement): string {
   if (anchor.dataset.obEpubGotoFile && anchor.dataset.obEpubGotoCfi) {
     return `#^${anchor.dataset.obEpubGotoAnnId ?? "wired"}`;
   }
-  const raw = getAnchorRawHref(anchor);
-  if (raw) return raw;
+  const candidates = collectEpubLinkCandidates(anchor);
+  if (candidates.length > 0) return candidates[0];
   try {
     const resolved = anchor.href ?? "";
     if (resolved.includes("ob-epub-goto") || extractAnnBlockRefId(resolved)) return resolved;
@@ -122,15 +127,38 @@ export function getAnchorGotoHref(anchor: HTMLAnchorElement): string {
   return "";
 }
 
-function parseAnchorGoto(anchor: HTMLAnchorElement): { file: string; cfi: string } | null {
+function resolveEpubPath(app: App, path: string, sourcePath?: string): string | null {
+  const resolved = app.metadataCache.getFirstLinkpathDest(path, sourcePath ?? "");
+  if (resolved instanceof TFile && resolved.extension === "epub") return resolved.path;
+
+  const direct = app.vault.getAbstractFileByPath(path);
+  if (direct instanceof TFile && direct.extension === "epub") return direct.path;
+
+  return null;
+}
+
+function parseAnchorGoto(
+  anchor: HTMLAnchorElement,
+  app?: App,
+  sourcePath?: string
+): { file: string; cfi: string } | null {
   if (anchor.dataset.obEpubGotoFile && anchor.dataset.obEpubGotoCfi) {
     return { file: anchor.dataset.obEpubGotoFile, cfi: anchor.dataset.obEpubGotoCfi };
   }
+
+  if (app) {
+    for (const candidate of collectEpubLinkCandidates(anchor)) {
+      const wiki = parseWikiEpubLinkText(candidate, (path) => resolveEpubPath(app, path, sourcePath));
+      if (wiki) return wiki;
+    }
+  }
+
   return parseObEpubGotoUrl(getAnchorGotoHref(anchor));
 }
 
 function isObEpubGotoAnchor(anchor: HTMLAnchorElement): boolean {
   if (anchor.dataset.obEpubGotoWired === "1") return true;
+  if (isEpubWikiLinkAnchor(anchor)) return true;
   const raw = getAnchorRawHref(anchor);
   if (extractAnnBlockRefId(raw)) return true;
   if (raw.includes("ob-epub-goto") || raw.includes("obsidian://ob-epub-goto")) return true;
@@ -150,20 +178,21 @@ function isGotoLinkElement(el: HTMLAnchorElement): boolean {
   return text === "回到原文";
 }
 
+/** @returns true when navigation was handled (or async handler started). */
 function dispatchGoto(
   anchor: HTMLAnchorElement,
   goto: (file: string, cfi: string) => Promise<void>,
   resolveAnn: GotoResolver | undefined,
   app: App
-): void {
-  const parsed = parseAnchorGoto(anchor);
+): boolean {
+  const excerptPath = findExcerptPathForElement(app, anchor) ?? undefined;
+  const parsed = parseAnchorGoto(anchor, app, excerptPath);
   if (parsed) {
     void goto(parsed.file, parsed.cfi);
-    return;
+    return true;
   }
 
   const annId = extractAnnBlockRefId(getAnchorRawHref(anchor));
-  const excerptPath = findExcerptPathForElement(app, anchor);
   if (annId && excerptPath && resolveAnn) {
     void resolveAnn(annId, excerptPath).then((resolved) => {
       if (resolved) {
@@ -173,11 +202,17 @@ function dispatchGoto(
         new Notice("无法解析「回到原文」链接，请重新标注");
       }
     });
-    return;
+    return true;
+  }
+
+  // Wiki EPUB link: defer to workspace.openLinkText (patched in main.ts).
+  if (isEpubWikiLinkAnchor(anchor)) {
+    return false;
   }
 
   console.error("ob-epub: failed to parse goto link", getAnchorGotoHref(anchor));
   new Notice("无法解析「回到原文」链接，请重新标注或检查摘录格式");
+  return true;
 }
 
 function tryHandleGotoClick(
@@ -190,7 +225,8 @@ function tryHandleGotoClick(
 
   const anchor = target.closest("a") as HTMLAnchorElement | null;
   if (anchor && isGotoLinkElement(anchor)) {
-    dispatchGoto(anchor, goto, resolveAnn, app);
+    const handled = dispatchGoto(anchor, goto, resolveAnn, app);
+    if (!handled) return false;
     return true;
   }
 
@@ -198,7 +234,8 @@ function tryHandleGotoClick(
   if (callout && !target.closest("a")) {
     const link = findGotoLinkNear(callout);
     if (link) {
-      dispatchGoto(link, goto, resolveAnn, app);
+      const handled = dispatchGoto(link, goto, resolveAnn, app);
+      if (!handled) return false;
       return true;
     }
   }
@@ -281,7 +318,7 @@ async function wireGotoAnchor(
 ): Promise<void> {
   if (anchor.dataset.obEpubGotoWired === "1") return;
 
-  const wired = parseAnchorGoto(anchor);
+  const wired = parseAnchorGoto(anchor, app, excerptPath);
   if (wired) {
     applyGotoWire(anchor, wired, goto);
     return;
@@ -311,7 +348,7 @@ async function wireObEpubCallouts(
     if (!gotoLink) continue;
 
     await wireGotoAnchor(gotoLink, goto, resolveAnn, excerptPath, app);
-    const parsed = parseAnchorGoto(gotoLink);
+    const parsed = parseAnchorGoto(gotoLink, app, excerptPath);
     if (!parsed) continue;
 
     container.dataset.obEpubGotoWired = "1";
@@ -341,7 +378,7 @@ function findGotoLinkNear(container: HTMLElement): HTMLAnchorElement | null {
     const nested = Array.from(sibling.querySelectorAll("a")).find((a) =>
       isGotoLinkElement(a as HTMLAnchorElement)
     ) as HTMLAnchorElement | undefined;
-    if (direct || nested) return direct ?? nested;
+    if (direct || nested) return direct ?? nested ?? null;
   }
   return null;
 }

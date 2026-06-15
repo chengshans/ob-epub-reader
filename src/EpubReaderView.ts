@@ -2,6 +2,7 @@ import { FileView, Notice, TFile, WorkspaceLeaf } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { cfiProgressMatches } from "./cfi/cfiMatch";
+import { parseEpubSubpath } from "./epubSubpath";
 import { ProgressStore, normalizeCfi, normalizePercent } from "./ProgressStore";
 import { AIService } from "./AIService";
 import {
@@ -161,6 +162,21 @@ export class EpubReaderView extends FileView {
 
   getIcon(): string {
     return "book-open";
+  }
+
+  setEphemeralState(state: Record<string, unknown>): void {
+    super.setEphemeralState(state);
+    const subpath = state?.subpath as string | undefined;
+    if (!subpath?.includes("cfi=")) return;
+
+    const params = parseEpubSubpath(subpath.startsWith("#") ? subpath : `#${subpath}`);
+    if (!params?.cfi) return;
+
+    if (this.rendition) {
+      void this.navigateToCfi(params.cfi);
+    } else {
+      this.pendingCfi = params.cfi;
+    }
   }
 
   async onOpen() {
@@ -543,10 +559,8 @@ export class EpubReaderView extends FileView {
       });
 
       // Click on an existing drawn line / note → edit menu
-      this.rendition.on("markClicked", async (cfiRange: string) => {
-        if (!this.file) return;
-        const ann = await this.annotationVaultStore.getByCfi(this.file.path, cfiRange);
-        if (ann) this.showAnnotationMenu(ann);
+      this.rendition.on("markClicked", (cfiRange: string, data?: { id?: string }) => {
+        void this.handleHighlightMarkClick(data?.id ?? "", cfiRange);
       });
 
       // Mouse wheel + keyboard navigation (bound inside each iframe document)
@@ -1388,7 +1402,6 @@ export class EpubReaderView extends FileView {
         }
       }
     }
-
   }
 
   private syncAllDisplayedHighlights() {
@@ -1564,9 +1577,7 @@ export class EpubReaderView extends FileView {
       ANNOTATION_TYPE,
       annotation.cfiRange,
       { id: annotation.id },
-      (err: Error | null) => {
-        if (err) console.warn("drawLine failed:", annotation.id, err.message);
-      },
+      undefined,
       HIGHLIGHT_CLASS,
       {
         fill: hex,
@@ -1579,6 +1590,28 @@ export class EpubReaderView extends FileView {
     } else {
       this.scheduleHighlightSync();
     }
+  }
+
+  private async handleHighlightMarkClick(annId: string, cfiRange: string) {
+    if (!this.file) return;
+    const ann = await this.resolveAnnotationForMark(annId, cfiRange);
+    if (ann) this.showAnnotationMenu(ann);
+  }
+
+  private async resolveAnnotationForMark(
+    annId: string,
+    cfiRange: string
+  ): Promise<Annotation | null> {
+    if (!this.file) return null;
+
+    if (annId) {
+      const cached = this.cachedHighlights.find((a) => a.id === annId);
+      if (cached) return cached;
+      const byId = await this.annotationVaultStore.getById(this.file.path, annId);
+      if (byId) return byId;
+    }
+
+    return this.annotationVaultStore.getByCfi(this.file.path, cfiRange);
   }
 
   private removeDrawnLine(cfiRange: string) {

@@ -27,8 +27,8 @@
 - **阅读进度** — 自动保存位置，摘录 frontmatter 记录进度百分比、章节与阅读时长
 - **文本高亮与标注** — 选中文字后可画线（黄/红/绿/蓝/紫）或添加想法
 - **五种想法类型** — 做笔记、灵感、准备实践、反复看、疑问；可在设置中自定义名称与图标
-- **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，含「回到原文」跳转链接
-- **深度链接** — 支持 `obsidian://ob-epub-goto?file=...&cfi=...` 从笔记跳回 EPUB 原文
+- **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，含可配置的「回到原文」跳转链接（块引用或 Wiki 链接）
+- **深度链接** — 块引用 `#^ann-id` 或 Wiki 链接 `#cfi=...` 从摘录跳回 EPUB 原文；旧版 `obsidian://ob-epub-goto` 链接会在首次加载时自动迁移
 - **AI 集成** — 选中文字后调用 OpenAI 兼容 API，将解读写入摘录文件
 - **阅读模式** — 分页 / 滚动，可调字体大小
 - **阅读主题** — 跟随 Obsidian、默认白、护眼黄、护眼绿、羊皮纸、夜间（工具栏可切换，设置中可设默认）
@@ -49,7 +49,7 @@
 3. 摘录写入 `{摘录文件夹}/《书名》摘录.md`
 4. 点击原文旁的想法图标，或侧栏标注列表，可查看、编辑或删除标注
 
-摘录块示例：
+摘录块示例（默认 **块引用** 格式）：
 
 ```markdown
 > [!ob-epub|yellow] 第三章 · 2026-06-09 12:00 ^ann-abc123
@@ -58,19 +58,32 @@
 <!-- ob-epub-note-type: inspiration -->
 可选的想法文字
 
-<!-- ob-epub-cfi: epubcfi(...)/2/4[chap01ref]!/4/2/1:0 -->
-[回到原文](obsidian://ob-epub-goto?file=books%2Fexample.epub&cfi=epubcfi(...))
+<!-- ob-epub-cfi: epubcfi(/6/14!/4/2,/1:0,/1:42) -->
+[回到原文](#^ann-abc123)
 
 ---
 ```
 
-### AI 解读
-
-**推荐使用 [Claudian](https://github.com/YishenTu/claudian)**：内置 AI 适合段落级的一键释义；若需要多轮对话、结合 Vault 上下文深化理解，或调用 Claude Code / Codex 等代理读写笔记，推荐安装 Obsidian 社区插件 [Claudian](https://github.com/YishenTu/claudian)。EPUB 摘录以 Markdown 保存在 Vault 中，可在 Claudian 侧栏直接引用《书名》摘录.md，与 AI 共读、整理想法、扩展笔记。
+链接块前后各留一行空行；CFI 注释与 `[回到原文]` 之间不加空行。`^ann-abc123` 与 callout 标题中的块 ID 一致，点击链接即可跳回 EPUB 对应位置。
 
 ### 回到原文
 
-摘录文件中的「回到原文」链接、或 `ob-epub` callout 点击后，会跳转到 EPUB 阅读器的对应位置（分屏模式下同样有效）。
+摘录中的 **回到原文** 链接、或点击 `ob-epub` callout，会跳转到 EPUB 阅读器的对应位置（分屏模式下同样有效）。
+
+**链接格式**（**设置 → 回到原文链接格式**）：
+
+| 格式 | 示例 | 说明 |
+|------|------|------|
+| **块引用（推荐）** | `[回到原文](#^ann-id)` | CFI 写在 `<!-- ob-epub-cfi: epubcfi(...) -->` 注释中，链接短、稳定，Obsidian 渲染一致 |
+| **Wiki 链接** | `[[书名.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | 便于在其他笔记中引用同一 EPUB 位置 |
+
+新标注按当前所选格式写入。已有摘录可在设置中切换格式后，点击 **转换已有摘录链接 → 立即转换** 批量重写。
+
+> 旧版 `obsidian://ob-epub-goto?file=...&cfi=...` 链接会在插件首次加载时自动迁移为块引用格式。
+
+### AI 解读
+
+**推荐使用 [Claudian](https://github.com/YishenTu/claudian)**：内置 AI 适合段落级的一键释义；若需要多轮对话、结合 Vault 上下文深化理解，或调用 Claude Code / Codex 等代理读写笔记，推荐安装 Obsidian 社区插件 [Claudian](https://github.com/YishenTu/claudian)。EPUB 摘录以 Markdown 保存在 Vault 中，可在 Claudian 侧栏直接引用《书名》摘录.md，与 AI 共读、整理想法、扩展笔记。
 
 ### 阅读主题
 
@@ -106,6 +119,8 @@
 | 选项 | 说明 | 默认值 |
 |------|------|--------|
 | 摘录文件夹 | 摘录 Markdown 保存目录（进度写入各书 frontmatter） | `epub-books/anno` |
+| 回到原文链接格式 | 块引用（推荐）或 Wiki 链接；见上文 | 块引用 |
+| 转换已有摘录链接 | 按当前格式批量重写摘录文件夹内所有《书名》摘录.md | — |
 | 默认阅读模式 | 分页 / 滚动 | 滚动 |
 | 默认字体大小 | 内容区字号（px） | 16 |
 | 默认阅读主题 | 跟随 Obsidian / 默认白 / 护眼黄 / 护眼绿 / 羊皮纸 / 夜间 | 跟随 Obsidian |

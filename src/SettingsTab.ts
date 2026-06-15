@@ -1,10 +1,11 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type ObEpubPlugin from "./main";
 import {
   DEFAULT_NOTE_TYPES,
   NoteType,
   READING_THEMES,
   ReadingThemeId,
+  SOURCE_LINK_FORMATS,
   resolveNoteTypes,
 } from "./types";
 import {
@@ -51,6 +52,44 @@ export class EpubSettingsTab extends PluginSettingTab {
             this.plugin.settings.excerptFolder = value || "epub-books/anno";
             await this.plugin.saveSettings();
           })
+      );
+
+    new Setting(containerEl)
+      .setName("回到原文链接格式")
+      .setDesc(
+        SOURCE_LINK_FORMATS.find((f) => f.id === this.plugin.settings.sourceLinkFormat)?.desc ??
+          "摘录文件中跳转链接的写入格式"
+      )
+      .addDropdown((drop) => {
+        for (const fmt of SOURCE_LINK_FORMATS) {
+          drop.addOption(fmt.id, fmt.label);
+        }
+        drop
+          .setValue(this.plugin.settings.sourceLinkFormat)
+          .onChange(async (value) => {
+            this.plugin.settings.sourceLinkFormat =
+              value === "wiki-link" ? "wiki-link" : "block-ref";
+            await this.plugin.saveSettings();
+            this.display();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("转换已有摘录链接")
+      .setDesc("按上方所选格式，批量重写摘录文件夹内所有《书名》摘录.md 中的跳转链接")
+      .addButton((btn) =>
+        btn.setButtonText("立即转换").onClick(async () => {
+          btn.setDisabled(true);
+          try {
+            const count = await this.plugin.annotationVaultStore.convertAllExcerptSourceLinks();
+            new Notice(count > 0 ? `已更新 ${count} 个摘录文件` : "没有需要转换的摘录文件");
+          } catch (err) {
+            console.error("ob-epub: convert excerpt links failed", err);
+            new Notice("转换摘录链接失败，请查看控制台");
+          } finally {
+            btn.setDisabled(false);
+          }
+        })
       );
 
     new Setting(containerEl)
