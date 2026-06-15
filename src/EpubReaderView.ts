@@ -9,6 +9,7 @@ import {
   EpubOpenBridge,
   Annotation,
   HighlightColor,
+  NoteType,
   HIGHLIGHT_COLORS,
   READING_THEMES,
   ReadingThemeId,
@@ -23,6 +24,7 @@ import {
   resolveNoteTypes,
 } from "./types";
 import { NoteInputModal } from "./NoteInputModal";
+import { ConfirmModal } from "./ConfirmModal";
 import {
   buildTocSpineIndex,
   resolveChapterLabel,
@@ -85,6 +87,12 @@ export class EpubReaderView extends FileView {
   private pendingNavigateCfi: string | null = null;
   private highlightsInitialLoaded = false;
   private notesPanelRenderGen = 0;
+  private notesSearchQuery = "";
+  private notesColorFilter = new Set<HighlightColor>();
+  private notesTypeFilter: NoteType | "highlight-only" | null = null;
+  private notesListEl: HTMLElement | null = null;
+  private notesCountEl: HTMLElement | null = null;
+  private notesSearchInputEl: HTMLInputElement | null = null;
   private isClosing = false;
 
   // Reading time tracking
@@ -420,6 +428,7 @@ export class EpubReaderView extends FileView {
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
     this.tocSpineEntries = [];
+    if (invalidateSession) this.resetNotesFilters();
 
     this.safeCleanup("resizeObserver", () => {
       this.resizeObserver?.disconnect();
@@ -1753,9 +1762,9 @@ export class EpubReaderView extends FileView {
     });
 
     const delBtn = menu.createEl("button", { cls: "epub-ctx-btn is-danger", text: "🗑 删除" });
-    delBtn.addEventListener("click", async () => {
+    delBtn.addEventListener("click", () => {
       this.dismissContextMenu();
-      await this.removeAnnotation(ann.id, ann.cfiRange);
+      this.confirmDeleteAnnotation(ann);
     });
 
     document.body.appendChild(menu);
@@ -1776,10 +1785,299 @@ export class EpubReaderView extends FileView {
     new Notice("🗑 标注已删除");
   }
 
+  private resetNotesFilters() {
+    this.notesSearchQuery = "";
+    this.notesColorFilter = new Set();
+    this.notesTypeFilter = null;
+    this.notesListEl = null;
+    this.notesCountEl = null;
+    this.notesSearchInputEl = null;
+  }
+
+  private confirmDeleteAnnotation(ann: Annotation) {
+    const preview =
+      ann.text.length > 60 ? ann.text.slice(0, 60) + "…" : ann.text;
+    new ConfirmModal(
+      this.app,
+      "删除标注",
+      `确定删除这条标注？\n「${preview}」`,
+      () => void this.removeAnnotation(ann.id, ann.cfiRange)
+    ).open();
+  }
+
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  private highlightQuery(text: string, query: string): string {
+    const escaped = this.escapeHtml(text);
+    const trimmed = query.trim();
+    if (!trimmed) return escaped;
+
+    const lower = text.toLowerCase();
+    const qLower = trimmed.toLowerCase();
+    let result = "";
+    let lastIndex = 0;
+    let idx = lower.indexOf(qLower);
+    while (idx !== -1) {
+      result += this.escapeHtml(text.slice(lastIndex, idx));
+      result += `<mark class="epub-notes-highlight">${this.escapeHtml(
+        text.slice(idx, idx + qLower.length)
+      )}</mark>`;
+      lastIndex = idx + qLower.length;
+      idx = lower.indexOf(qLower, lastIndex);
+    }
+    result += this.escapeHtml(text.slice(lastIndex));
+    return result;
+  }
+
+  private isNotesFilterActive(): boolean {
+    return (
+      this.notesSearchQuery.trim().length > 0 ||
+      this.notesColorFilter.size > 0 ||
+      this.notesTypeFilter !== null
+    );
+  }
+
+  private filterNotesList(list: Annotation[]): Annotation[] {
+    const query = this.notesSearchQuery.trim().toLowerCase();
+    return list.filter((ann) => {
+      if (this.notesColorFilter.size > 0 && !this.notesColorFilter.has(ann.color)) {
+        return false;
+      }
+      if (this.notesTypeFilter === "highlight-only" && ann.note) return false;
+      if (
+        this.notesTypeFilter &&
+        this.notesTypeFilter !== "highlight-only"
+      ) {
+        if (!ann.note || ann.noteType !== this.notesTypeFilter) return false;
+      }
+      if (query) {
+        const hay = `${ann.text} ${ann.note ?? ""} ${ann.chapter}`.toLowerCase();
+        if (!hay.includes(query)) return false;
+      }
+      return true;
+    });
+  }
+
+  private updateNotesCount(total: number, filtered: number) {
+    if (!this.notesCountEl) return;
+    if (this.isNotesFilterActive() && filtered !== total) {
+      this.notesCountEl.setText(`共 ${filtered} / ${total} 条`);
+    } else {
+      this.notesCountEl.setText(`共 ${filtered} 条`);
+    }
+  }
+
+  private refreshNotesListView(allList: Annotation[]) {
+    const filtered = this.filterNotesList(allList);
+    this.updateNotesCount(allList.length, filtered.length);
+    this.renderNotesList(allList, filtered);
+  }
+
+  private buildNotesToolbar(parent: HTMLElement) {
+    const toolbar = parent.createDiv({ cls: "epub-notes-toolbar" });
+
+    const search = toolbar.createEl("input", {
+      cls: "epub-notes-search",
+      type: "search",
+      attr: { placeholder: "搜索标注…" },
+    });
+    search.value = this.notesSearchQuery;
+    this.notesSearchInputEl = search;
+    search.addEventListener("input", () => {
+      const caret = search.selectionStart ?? search.value.length;
+      this.notesSearchQuery = search.value;
+      this.refreshNotesListView(this.cachedHighlights);
+      search.focus();
+      search.setSelectionRange(caret, caret);
+    });
+
+    const colorRow = toolbar.createDiv({ cls: "epub-notes-filter-row" });
+    const allColorBtn = colorRow.createEl("button", {
+      cls: "epub-notes-filter-all",
+      text: "全部",
+    });
+    allColorBtn.title = "清除颜色与类型筛选";
+    allColorBtn.toggleClass(
+      "is-active",
+      this.notesColorFilter.size === 0 && this.notesTypeFilter === null
+    );
+    allColorBtn.addEventListener("click", () => {
+      this.notesColorFilter.clear();
+      this.notesTypeFilter = null;
+      this.syncNotesToolbarState(toolbar);
+      this.refreshNotesListView(this.cachedHighlights);
+    });
+
+    const dots = colorRow.createDiv({ cls: "epub-color-dots" });
+    for (const c of HIGHLIGHT_COLORS) {
+      const dot = dots.createDiv({ cls: "epub-color-dot" });
+      dot.setAttribute("data-color", c.id);
+      dot.title = c.label;
+      if (this.notesColorFilter.has(c.id)) dot.addClass("is-active");
+      dot.addEventListener("click", () => {
+        if (this.notesColorFilter.has(c.id)) {
+          this.notesColorFilter.delete(c.id);
+        } else {
+          this.notesColorFilter.add(c.id);
+        }
+        this.syncNotesToolbarState(toolbar);
+        this.refreshNotesListView(this.cachedHighlights);
+      });
+    }
+
+    const typeRow = toolbar.createDiv({ cls: "epub-notes-type-row" });
+    const allTypeChip = typeRow.createEl("button", {
+      cls: "epub-note-type-chip",
+      text: "全部",
+    });
+    if (this.notesTypeFilter === null) allTypeChip.addClass("is-active");
+    allTypeChip.addEventListener("click", () => {
+      this.notesTypeFilter = null;
+      this.syncNotesToolbarState(toolbar);
+      this.refreshNotesListView(this.cachedHighlights);
+    });
+
+    const highlightChip = typeRow.createEl("button", {
+      cls: "epub-note-type-chip",
+      text: "仅画线",
+    });
+    if (this.notesTypeFilter === "highlight-only") highlightChip.addClass("is-active");
+    highlightChip.addEventListener("click", () => {
+      this.notesTypeFilter =
+        this.notesTypeFilter === "highlight-only" ? null : "highlight-only";
+      this.syncNotesToolbarState(toolbar);
+      this.refreshNotesListView(this.cachedHighlights);
+    });
+
+    for (const t of this.resolvedNoteTypes) {
+      const chip = typeRow.createEl("button", {
+        cls: "epub-note-type-chip",
+        text: `${t.icon} ${t.label}`,
+      });
+      if (this.notesTypeFilter === t.id) chip.addClass("is-active");
+      chip.addEventListener("click", () => {
+        this.notesTypeFilter = this.notesTypeFilter === t.id ? null : t.id;
+        this.syncNotesToolbarState(toolbar);
+        this.refreshNotesListView(this.cachedHighlights);
+      });
+    }
+
+    this.notesCountEl = toolbar.createDiv({ cls: "epub-notes-count" });
+    this.notesListEl = parent.createDiv({ cls: "epub-notes-list-wrap" });
+  }
+
+  private syncNotesToolbarState(toolbar: HTMLElement) {
+    const allColorBtn = toolbar.querySelector(".epub-notes-filter-all");
+    allColorBtn?.toggleClass(
+      "is-active",
+      this.notesColorFilter.size === 0 && this.notesTypeFilter === null
+    );
+
+    toolbar.querySelectorAll(".epub-color-dots .epub-color-dot").forEach((dot) => {
+      const color = dot.getAttribute("data-color") as HighlightColor;
+      dot.toggleClass("is-active", this.notesColorFilter.has(color));
+    });
+
+    const chips = toolbar.querySelectorAll(".epub-notes-type-row .epub-note-type-chip");
+    chips.forEach((chip, i) => {
+      if (i === 0) {
+        chip.toggleClass("is-active", this.notesTypeFilter === null);
+      } else if (i === 1) {
+        chip.toggleClass("is-active", this.notesTypeFilter === "highlight-only");
+      } else {
+        const typeDef = this.resolvedNoteTypes[i - 2];
+        chip.toggleClass("is-active", this.notesTypeFilter === typeDef?.id);
+      }
+    });
+  }
+
+  private renderNotesList(allList: Annotation[], filtered: Annotation[]) {
+    if (!this.notesListEl) return;
+    this.notesListEl.empty();
+
+    if (allList.length === 0) {
+      this.notesListEl.createDiv({
+        cls: "epub-notes-empty",
+        text: "暂无标注。选中文字后点击颜色画线或写想法。",
+      });
+      return;
+    }
+
+    if (filtered.length === 0) {
+      this.notesListEl.createDiv({
+        cls: "epub-notes-empty",
+        text: "没有匹配的标注。",
+      });
+      return;
+    }
+
+    const ul = this.notesListEl.createEl("ul", { cls: "epub-notes-list" });
+    const sorted = [...filtered].sort((a, b) => b.created.localeCompare(a.created));
+    const query = this.notesSearchQuery;
+
+    for (const ann of sorted) {
+      const li = ul.createEl("li", { cls: "epub-note-item is-clickable" });
+      const jump = () => void this.navigateToCfi(ann.cfiRange);
+
+      const head = li.createDiv({ cls: "epub-note-item-head" });
+      head.addEventListener("click", jump);
+      const dot = head.createDiv({ cls: "epub-color-dot is-static" });
+      dot.setAttribute("data-color", ann.color);
+      head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
+      if (ann.note) {
+        head.createSpan({
+          cls: "epub-note-item-type",
+          text: noteTypeLabel(ann.noteType, this.resolvedNoteTypes),
+        });
+      }
+
+      const quoteText =
+        ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text;
+      const quote = li.createDiv({ cls: "epub-note-item-text" });
+      quote.addEventListener("click", jump);
+      quote.innerHTML = this.highlightQuery(quoteText, query);
+
+      if (ann.note) {
+        const note = li.createDiv({ cls: "epub-note-item-note" });
+        note.addEventListener("click", jump);
+        note.innerHTML = this.highlightQuery(ann.note, query);
+      }
+
+      const actions = li.createDiv({ cls: "epub-note-item-actions" });
+      const jumpBtn = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
+      jumpBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void this.navigateToCfi(ann.cfiRange);
+      });
+      const editBtn = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.openNoteEditor(ann, "编辑标注", false);
+      });
+      const delBtn = actions.createEl("button", {
+        cls: "epub-note-action is-danger",
+        text: "删除",
+      });
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.confirmDeleteAnnotation(ann);
+      });
+    }
+  }
+
   private async renderNotesPanel() {
     if (!this.notesEl) return;
     const gen = ++this.notesPanelRenderGen;
     this.notesEl.empty();
+    this.notesListEl = null;
+    this.notesCountEl = null;
+    this.notesSearchInputEl = null;
 
     let list = this.cachedHighlights;
     if (list.length === 0 && this.file) {
@@ -1798,47 +2096,8 @@ export class EpubReaderView extends FileView {
     }
     if (gen !== this.notesPanelRenderGen) return;
 
-    if (list.length === 0) {
-      this.notesEl.createDiv({ cls: "epub-notes-empty", text: "暂无标注。选中文字后点击颜色画线或写想法。" });
-      return;
-    }
-
-    const ul = this.notesEl.createEl("ul", { cls: "epub-notes-list" });
-    const sorted = [...list].sort((a, b) => b.created.localeCompare(a.created));
-    for (const ann of sorted) {
-      const li = ul.createEl("li", { cls: "epub-note-item" });
-
-      const head = li.createDiv({ cls: "epub-note-item-head" });
-      const dot = head.createDiv({ cls: "epub-color-dot is-static" });
-      dot.setAttribute("data-color", ann.color);
-      head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
-      if (ann.note) {
-        head.createSpan({
-          cls: "epub-note-item-type",
-          text: noteTypeLabel(ann.noteType, this.resolvedNoteTypes),
-        });
-      }
-
-      const quote = li.createDiv({ cls: "epub-note-item-text" });
-      quote.setText(ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text);
-
-      if (ann.note) {
-        const note = li.createDiv({ cls: "epub-note-item-note" });
-        note.setText(ann.note);
-      }
-
-      const actions = li.createDiv({ cls: "epub-note-item-actions" });
-      const jump = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
-      jump.addEventListener("click", () => {
-        void this.navigateToCfi(ann.cfiRange);
-      });
-      const edit = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
-      edit.addEventListener("click", () => {
-        this.openNoteEditor(ann, "编辑标注", false);
-      });
-      const del = actions.createEl("button", { cls: "epub-note-action is-danger", text: "删除" });
-      del.addEventListener("click", () => this.removeAnnotation(ann.id, ann.cfiRange));
-    }
+    this.buildNotesToolbar(this.notesEl);
+    this.refreshNotesListView(list);
   }
 
   private async runAI() {
