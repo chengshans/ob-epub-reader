@@ -122,12 +122,11 @@ export function unwrapNoscriptFallbacks(doc: Document): void {
       ns.remove();
       continue;
     }
-    const tpl = doc.createElement("div");
-    tpl.innerHTML = html;
+    const parsed = new DOMParser().parseFromString(stripExecutableFromHtml(html), "text/html");
     const parent = ns.parentNode;
     if (!parent) continue;
-    while (tpl.firstChild) {
-      parent.insertBefore(tpl.firstChild, ns);
+    while (parsed.body.firstChild) {
+      parent.insertBefore(doc.importNode(parsed.body.firstChild, true), ns);
     }
     parent.removeChild(ns);
   }
