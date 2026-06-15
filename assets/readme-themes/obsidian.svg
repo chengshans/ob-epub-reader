@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="24" viewBox="0 0 56 24" role="img" aria-label="Follow Obsidian">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#1e1e1e"/>
+      <stop offset="100%" stop-color="#1e1e1e"/>
+    </linearGradient>
+  </defs>
+  <rect width="56" height="24" rx="4" fill="url(#g)" stroke="#cccccc" stroke-width="1"/>
+</svg>
