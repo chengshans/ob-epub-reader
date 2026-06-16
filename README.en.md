@@ -75,7 +75,7 @@ Click **回到原文** in an excerpt file, or click an `ob-epub` callout, to jum
 | Format | Example | Notes |
 |--------|---------|-------|
 | **Block reference (recommended)** | `[回到原文](#^ann-id)` | CFI stored in `<!-- ob-epub-cfi: epubcfi(...) -->`; short, stable links with consistent Obsidian rendering |
-| **Wiki link** | `[[Book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | EPUB++ style; handy for linking to the same EPUB location from other notes |
+| **Wiki link** | `[[Book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | CFI-only params; handy for linking to the same EPUB location from other notes |
 
 New annotations use the selected format. To rewrite existing excerpts, switch the format in settings, then click **Convert existing excerpt links → Convert now**.
 

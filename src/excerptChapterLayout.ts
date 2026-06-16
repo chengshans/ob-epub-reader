@@ -1,0 +1,187 @@
+import { compareCfi } from "./cfi/compare";
+import type { Annotation } from "./types";
+
+export const UNKNOWN_CHAPTER = "未知章节";
+
+export const CHAPTER_TOC_START = "<!-- ob-epub-chapter-toc-start -->";
+export const CHAPTER_TOC_END = "<!-- ob-epub-chapter-toc-end -->";
+export const CHAPTER_BODY_START = "<!-- ob-epub-chapter-body-start -->";
+export const CHAPTER_BODY_END = "<!-- ob-epub-chapter-body-end -->";
+
+const OB_EPUB_BLOCK_RE = /^>\s*\[!ob-epub\|/m;
+
+export function normalizeChapterName(chapter: string): string {
+  const trimmed = chapter.trim();
+  return trimmed || UNKNOWN_CHAPTER;
+}
+
+export function groupAnnotationsByChapter(annotations: Annotation[]): Map<string, Annotation[]> {
+  const groups = new Map<string, Annotation[]>();
+  for (const ann of annotations) {
+    const key = normalizeChapterName(ann.chapter);
+    const list = groups.get(key);
+    if (list) {
+      list.push(ann);
+    } else {
+      groups.set(key, [ann]);
+    }
+  }
+  return groups;
+}
+
+/** Minimum CFI in a chapter group (reading-order sort key). */
+export function chapterSortKey(annotations: Annotation[]): string {
+  if (annotations.length === 0) return "";
+  let best = annotations[0].cfiRange;
+  for (let i = 1; i < annotations.length; i++) {
+    if (compareCfi(annotations[i].cfiRange, best) < 0) {
+      best = annotations[i].cfiRange;
+    }
+  }
+  return best;
+}
+
+export function sortAnnotationsByCfi(annotations: Annotation[]): Annotation[] {
+  return [...annotations].sort((a, b) => compareCfi(a.cfiRange, b.cfiRange));
+}
+
+export function sortChapterNames(
+  chapterNames: string[],
+  groups: Map<string, Annotation[]>,
+  tocLabels?: string[]
+): string[] {
+  const tocOrder = new Map<string, number>();
+  if (tocLabels) {
+    for (let i = 0; i < tocLabels.length; i++) {
+      const label = tocLabels[i].trim();
+      if (label && !tocOrder.has(label)) {
+        tocOrder.set(label, i);
+      }
+    }
+  }
+
+  return [...chapterNames].sort((a, b) => {
+    if (a === UNKNOWN_CHAPTER && b !== UNKNOWN_CHAPTER) return 1;
+    if (b === UNKNOWN_CHAPTER && a !== UNKNOWN_CHAPTER) return -1;
+
+    const oa = tocOrder.get(a);
+    const ob = tocOrder.get(b);
+    if (oa != null && ob != null) return oa - ob;
+    if (oa != null) return -1;
+    if (ob != null) return 1;
+
+    const groupA = groups.get(a) ?? [];
+    const groupB = groups.get(b) ?? [];
+    return compareCfi(chapterSortKey(groupA), chapterSortKey(groupB));
+  });
+}
+
+export function buildChapterTocMarkdown(chapters: string[], counts: Map<string, number>): string {
+  const lines = [CHAPTER_TOC_START, "## 章节目录", ""];
+  for (const chapter of chapters) {
+    const count = counts.get(chapter) ?? 0;
+    lines.push(`- [[#${chapter}|${chapter}]]（${count}）`);
+  }
+  lines.push(CHAPTER_TOC_END, "");
+  return lines.join("\n");
+}
+
+export function buildGroupedAnnotationBody(
+  annotations: Annotation[],
+  renderBlock: (ann: Annotation) => string,
+  tocLabels?: string[]
+): string {
+  if (annotations.length === 0) return "";
+
+  const groups = groupAnnotationsByChapter(annotations);
+  const chapters = sortChapterNames([...groups.keys()], groups, tocLabels);
+  const counts = new Map<string, number>();
+  for (const [chapter, list] of groups) {
+    counts.set(chapter, list.length);
+  }
+
+  const parts: string[] = [buildChapterTocMarkdown(chapters, counts), CHAPTER_BODY_START];
+
+  for (const chapter of chapters) {
+    const list = sortAnnotationsByCfi(groups.get(chapter) ?? []);
+    parts.push(`## ${chapter}`, "");
+    for (const ann of list) {
+      parts.push(renderBlock(ann).trimEnd());
+    }
+  }
+
+  parts.push(CHAPTER_BODY_END);
+  return parts.join("\n");
+}
+
+/** Preamble: content before plugin-managed chapter region. */
+export function extractExcerptPreamble(content: string): string {
+  const tocStart = content.indexOf(CHAPTER_TOC_START);
+  if (tocStart >= 0) {
+    return content.slice(0, tocStart);
+  }
+  const blockMatch = content.match(OB_EPUB_BLOCK_RE);
+  if (blockMatch?.index != null) {
+    return content.slice(0, blockMatch.index);
+  }
+  return content;
+}
+
+/** Suffix: content after the last ob-epub annotation block (or after body-end marker). */
+export function extractExcerptSuffix(content: string): string {
+  const bodyEndIdx = content.indexOf(CHAPTER_BODY_END);
+  if (bodyEndIdx >= 0) {
+    return content.slice(bodyEndIdx + CHAPTER_BODY_END.length);
+  }
+
+  const chunks = content.split(/\n---\n/);
+  let lastEnd = 0;
+  let searchFrom = 0;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const trimmed = chunks[i].trim();
+    if (!OB_EPUB_BLOCK_RE.test(trimmed)) continue;
+
+    const chunkStart = content.indexOf(chunks[i], searchFrom);
+    if (chunkStart < 0) continue;
+
+    let chunkEnd = chunkStart + chunks[i].length;
+    if (i < chunks.length - 1) {
+      const sep = content.indexOf("\n---\n", chunkEnd);
+      if (sep >= 0) chunkEnd = sep + "\n---\n".length;
+    }
+    lastEnd = Math.max(lastEnd, chunkEnd);
+    searchFrom = chunkStart + 1;
+  }
+
+  if (lastEnd === 0) return "";
+  return content.slice(lastEnd);
+}
+
+/** Split excerpt file into preamble, annotations region markers, and trailing suffix. */
+export function splitExcerptRegions(content: string): {
+  preamble: string;
+  suffix: string;
+} {
+  return {
+    preamble: extractExcerptPreamble(content),
+    suffix: extractExcerptSuffix(content),
+  };
+}
+
+export function composeExcerptContent(
+  preamble: string,
+  groupedBody: string,
+  suffix: string
+): string {
+  const parts: string[] = [];
+  const pre = preamble.trimEnd();
+  if (pre) parts.push(pre);
+  if (groupedBody.trim()) parts.push(groupedBody.trimEnd());
+  const suf = suffix.trimStart();
+  if (suf) {
+    if (parts.length > 0) parts.push("");
+    parts.push(suf);
+  }
+  return parts.join("\n\n") + (parts.length > 0 ? "\n" : "");
+}

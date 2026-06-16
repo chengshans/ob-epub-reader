@@ -38,6 +38,8 @@ export default class ObEpubPlugin extends Plugin {
     await this.fixLegacyGotoLinksOnce();
     // Convert remaining obsidian:// excerpt links to hash links (once, prevents click crash)
     await this.migrateHashGotoLinksOnce();
+    // Strip legacy text/chapter/color from wiki goto links (once)
+    await this.migrateVerboseWikiLinksOnce();
 
     // Click「回到原文」/ callout → jump EPUB (works in split view)
     registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi), (annId, excerptPath) =>
@@ -178,6 +180,19 @@ export default class ObEpubPlugin extends Plugin {
       await this.saveData(data);
     } catch (err) {
       console.error("ob-epub: block-ref goto link migration failed", err);
+    }
+  }
+
+  /** One-time: strip text/chapter/color params from verbose wiki goto links. */
+  private async migrateVerboseWikiLinksOnce() {
+    try {
+      const data = (await this.loadData()) ?? {};
+      if (data.wikiLinkParamsSlimmed) return;
+      await this.annotationVaultStore.slimVerboseWikiLinksInVault();
+      data.wikiLinkParamsSlimmed = true;
+      await this.saveData(data);
+    } catch (err) {
+      console.error("ob-epub: wiki link slim migration failed", err);
     }
   }
 

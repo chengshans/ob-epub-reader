@@ -14,17 +14,18 @@ export function splitWikiLinkText(linktext: string): { path: string; subpath: st
 /** Input for building EPUB++-style wiki links from annotation CFI. */
 export interface EpubWikiLinkInput {
   cfiRange: string;
+}
+
+/** Legacy optional fields still parsed from old links; not written to new links. */
+export interface EpubSubpathMeta {
   text?: string;
   chapter?: string;
   color?: string;
 }
 
 /** Parsed subpath — `cfi` is always a full `epubcfi(...)` for navigation. */
-export interface EpubSubpathParams {
+export interface EpubSubpathParams extends EpubSubpathMeta {
   cfi: string;
-  text?: string;
-  chapter?: string;
-  color?: string;
 }
 
 /** Parse `#cfi=/6/14!/4/2/1:0&end=...&text=...` (EPUB++ style) or legacy `#cfi=epubcfi(...)`. */
@@ -52,14 +53,11 @@ export function parseEpubSubpath(subpath: string): EpubSubpathParams | null {
   return { cfi: navigateCfi, ...meta };
 }
 
-/** Build EPUB++ fragment: `#cfi=/6/14!/4/2/1:0&end=...&text=...` (no epubcfi wrapper). */
+/** Build EPUB++ fragment: `#cfi=/6/14!/4/2/1:0&end=...` (no epubcfi wrapper). */
 export function buildEpubSubpath(input: EpubWikiLinkInput): string {
   const wire = compactCfiToWire(input.cfiRange);
   const parts: string[] = [`cfi=${wire.cfi}`];
   if (wire.end) parts.push(`end=${wire.end}`);
-  if (input.text) parts.push(`text=${encodeURIComponent(input.text)}`);
-  if (input.chapter) parts.push(`chapter=${encodeURIComponent(input.chapter)}`);
-  if (input.color) parts.push(`color=${encodeURIComponent(input.color)}`);
   return `#${parts.join("&")}`;
 }
 
@@ -79,6 +77,25 @@ export const GOTO_WIKI_LINK_RE = /\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]/g;
 /** Line-anchored variant for stripping standalone wiki link lines. */
 export const GOTO_WIKI_LINK_LINE_RE =
   /^>?\s*\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]\s*$/gm;
+
+const WIKI_GOTO_LINK_RE = /\[\[([^\]|]+\.epub)#(.+)\|回到原文\]\]/i;
+
+/** Strip legacy `text` / `chapter` / `color` params from wiki goto links. */
+export function slimWikiGotoLink(link: string): string | null {
+  const match = link.match(WIKI_GOTO_LINK_RE);
+  if (!match) return null;
+
+  const parsed = parseEpubSubpath(`#${match[2]}`);
+  if (!parsed?.cfi) return null;
+
+  const slim = buildEpubWikiLink(match[1], { cfiRange: parsed.cfi });
+  return slim === link ? null : slim;
+}
+
+/** Replace verbose wiki goto links in excerpt markdown with cfi/end-only form. */
+export function slimWikiGotoLinksInContent(content: string): string {
+  return content.replace(GOTO_WIKI_LINK_RE, (link) => slimWikiGotoLink(link) ?? link);
+}
 
 /** Extract navigate CFI from wiki link markdown. */
 export function extractCfiFromWikiLink(text: string): string | null {

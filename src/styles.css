@@ -4,7 +4,7 @@
 .callout[data-callout="ob-epub"] {
   --callout-icon: pencil;
   --callout-color: 232, 179, 57;
-  --callout-background-alpha: 0.5;
+  --callout-background-alpha: 0.3;
 }
 
 .callout[data-callout="ob-epub"][data-callout-metadata="yellow"] {
@@ -368,6 +368,65 @@ a.ob-epub-goto-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.epub-notes-chapter {
+  list-style: none;
+}
+
+.epub-notes-chapter.is-current .epub-notes-chapter-head {
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 6px;
+}
+
+.epub-notes-chapter-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  cursor: pointer;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.epub-notes-chapter-head:hover {
+  background: var(--background-modifier-hover);
+}
+
+.epub-notes-chapter-toggle {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.epub-notes-chapter-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epub-notes-chapter-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.epub-notes-chapter-items {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.epub-notes-chapter-items.is-collapsed {
+  display: none;
 }
 
 .epub-note-item {

@@ -10,11 +10,17 @@ import {
   resolveExcerptFolder,
 } from "./excerptFolder";
 import {
+  buildGroupedAnnotationBody,
+  composeExcerptContent,
+  splitExcerptRegions,
+} from "./excerptChapterLayout";
+import {
   buildEpubWikiLink,
   extractCfiFromWikiLink,
   GOTO_WIKI_LINK_LINE_RE,
   GOTO_WIKI_LINK_RE,
   isSourceLinkLine,
+  slimWikiGotoLinksInContent,
 } from "./epubSubpath";
 import {
   Annotation,
@@ -177,12 +183,7 @@ export class AnnotationVaultStore {
   /** Build goto link line according to settings.sourceLinkFormat. */
   private buildSourceLink(ann: Annotation, epubFilePath: string): string {
     if (this.settings.sourceLinkFormat === "wiki-link") {
-      return buildEpubWikiLink(epubFilePath, {
-        cfiRange: ann.cfiRange,
-        text: ann.text.slice(0, 500),
-        chapter: ann.chapter,
-        color: ann.color,
-      });
+      return buildEpubWikiLink(epubFilePath, { cfiRange: ann.cfiRange });
     }
     return `[回到原文](#^${ann.id})`;
   }
@@ -237,6 +238,7 @@ export class AnnotationVaultStore {
     if (epubSource) {
       result = this.repairBrokenGotoLines(result, epubSource);
     }
+    result = slimWikiGotoLinksInContent(result);
     result = this.rewriteGotoLinksToCurrentFormat(result, epubSource);
     return result;
   }
@@ -586,6 +588,20 @@ export class AnnotationVaultStore {
     }
   }
 
+  /** One-time: strip verbose text/chapter/color params from wiki goto links. */
+  async slimVerboseWikiLinksInVault(): Promise<void> {
+    const files = this.listExcerptMarkdownFiles();
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const slimmed = slimWikiGotoLinksInContent(content);
+      if (slimmed !== content) {
+        this.pauseWatch();
+        await this.app.vault.modify(file, slimmed);
+      }
+    }
+  }
+
   /** Convert any legacy goto links to #^ann-id block refs with CFI comments. */
   async migrateRemainingObsidianGotoLinks(): Promise<void> {
     const files = this.listExcerptMarkdownFiles();
@@ -793,14 +809,41 @@ export class AnnotationVaultStore {
     return annotations;
   }
 
+  /** Rebuild grouped chapter layout while preserving preamble and trailing suffix. */
+  recomposeExcerptFromContent(
+    content: string,
+    epubFilePath: string,
+    annotations: Annotation[]
+  ): string {
+    const { preamble, suffix } = splitExcerptRegions(content);
+    const groupedBody = buildGroupedAnnotationBody(annotations, (ann) =>
+      this.buildBlock(ann, epubFilePath)
+    );
+    return composeExcerptContent(preamble, groupedBody, suffix);
+  }
+
+  private async recomposeExcerptFile(
+    epubFilePath: string,
+    originalContent: string,
+    annotations: Annotation[]
+  ): Promise<void> {
+    const newContent = this.recomposeExcerptFromContent(
+      originalContent,
+      epubFilePath,
+      annotations
+    );
+    this.pauseWatch();
+    await this.writeContent(epubFilePath, newContent);
+  }
+
   // ── Public CRUD ───────────────────────────────────────────────────────────
 
   async add(epubFilePath: string, ann: Annotation): Promise<void> {
-    const file = await this.ensureFile(epubFilePath);
-    const current = await this.app.vault.read(file);
-    const block = this.buildBlock(ann, epubFilePath);
-    this.pauseWatch();
-    await this.app.vault.modify(file, current + "\n" + block);
+    await this.ensureFile(epubFilePath);
+    const current = await this.readContent(epubFilePath);
+    const annotations = this.parseContent(current, epubFilePath);
+    annotations.push(ann);
+    await this.recomposeExcerptFile(epubFilePath, current, annotations);
   }
 
   async update(epubFilePath: string, id: string, patch: Partial<Annotation>): Promise<void> {
@@ -838,20 +881,11 @@ export class AnnotationVaultStore {
     replaceIdx: number,
     replacement: Annotation | null
   ): Promise<void> {
-    // Keep everything before the first ob-epub block (frontmatter + heading)
-    const firstBlockMatch = originalContent.match(/^>\s*\[!ob-epub\|/m);
-    const preamble = firstBlockMatch
-      ? originalContent.slice(0, firstBlockMatch.index)
-      : originalContent;
-
     const nextAnnotations = annotations
       .map((a, i) => (i === replaceIdx ? replacement : a))
       .filter((a): a is Annotation => a !== null);
 
-    const blocks = nextAnnotations.map((a) => this.buildBlock(a, epubFilePath)).join("\n");
-    const newContent = preamble.trimEnd() + "\n\n" + blocks;
-    this.pauseWatch();
-    await this.writeContent(epubFilePath, newContent);
+    await this.recomposeExcerptFile(epubFilePath, originalContent, nextAnnotations);
   }
 
   async getByFile(epubFilePath: string): Promise<Annotation[]> {
@@ -954,11 +988,14 @@ export class AnnotationVaultStore {
       if (toMigrate.length === 0) continue;
 
       const file = await this.ensureFile(epubFilePath);
-      let current = await this.app.vault.read(file);
-      for (const ann of toMigrate) {
-        current += "\n" + this.buildBlock(ann as Annotation, epubFilePath);
-      }
-      await this.app.vault.modify(file, current);
+      const current = await this.app.vault.read(file);
+      const merged = [
+        ...this.parseContent(content, epubFilePath),
+        ...toMigrate.map((a) => a as Annotation),
+      ];
+      const newContent = this.recomposeExcerptFromContent(current, epubFilePath, merged);
+      this.pauseWatch();
+      await this.app.vault.modify(file, newContent);
     }
   }
 }

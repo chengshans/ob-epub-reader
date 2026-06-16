@@ -134,6 +134,22 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     expect(result).toMatch(/\|回到原文\]\]\n\n$/);
   });
 
+  it("converts verbose wiki link to slim wiki link", () => {
+    const store = createStore("wiki-link");
+    const verbose =
+      `[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42&text=abc&chapter=第三章&color=yellow|回到原文]]`;
+    const chunk = makeSampleChunk({ links: [verbose] });
+    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+
+    expect(countSourceLinks(result)).toBe(1);
+    expect(result).toContain(
+      "[[books/demo.epub#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|回到原文]]"
+    );
+    expect(result).not.toContain("&text=");
+    expect(result).not.toContain("&chapter=");
+    expect(result).not.toContain("&color=");
+  });
+
   it("converts block-ref with CFI comment to wiki link", () => {
     const store = createStore("wiki-link");
     const chunk = makeSampleChunk({

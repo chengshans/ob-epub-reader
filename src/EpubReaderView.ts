@@ -33,6 +33,11 @@ import {
   TocSpineEntry,
 } from "./ChapterResolver";
 import {
+  groupAnnotationsByChapter,
+  normalizeChapterName,
+  sortChapterNames,
+} from "./excerptChapterLayout";
+import {
   isBlockedStylesheetHref,
   prepareSectionHtmlForSpine,
   readStylesheetHref,
@@ -94,6 +99,7 @@ export class EpubReaderView extends FileView {
   private notesListEl: HTMLElement | null = null;
   private notesCountEl: HTMLElement | null = null;
   private notesSearchInputEl: HTMLInputElement | null = null;
+  private notesChapterCollapsed = new Set<string>();
   private isClosing = false;
 
   // Reading time tracking
@@ -997,6 +1003,7 @@ export class EpubReaderView extends FileView {
     const resolved = resolveChapterLabel(this.tocSpineEntries, spineIndex);
     if (resolved) {
       this.currentChapter = resolved;
+      this.notesChapterCollapsed.delete(normalizeChapterName(resolved));
     }
   }
 
@@ -1822,6 +1829,7 @@ export class EpubReaderView extends FileView {
     this.notesSearchQuery = "";
     this.notesColorFilter = new Set();
     this.notesTypeFilter = null;
+    this.notesChapterCollapsed.clear();
     this.notesListEl = null;
     this.notesCountEl = null;
     this.notesSearchInputEl = null;
@@ -2031,6 +2039,55 @@ export class EpubReaderView extends FileView {
     });
   }
 
+  private renderNoteItem(parent: HTMLElement, ann: Annotation, query: string) {
+    const li = parent.createEl("li", { cls: "epub-note-item is-clickable" });
+    const jump = () => void this.navigateToCfi(ann.cfiRange);
+
+    const head = li.createDiv({ cls: "epub-note-item-head" });
+    head.addEventListener("click", jump);
+    const dot = head.createDiv({ cls: "epub-color-dot is-static" });
+    dot.setAttribute("data-color", ann.color);
+    head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
+    if (ann.note) {
+      head.createSpan({
+        cls: "epub-note-item-type",
+        text: noteTypeLabel(ann.noteType, this.resolvedNoteTypes),
+      });
+    }
+
+    const quoteText =
+      ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text;
+    const quote = li.createDiv({ cls: "epub-note-item-text" });
+    quote.addEventListener("click", jump);
+    this.appendHighlightedQuery(quote, quoteText, query);
+
+    if (ann.note) {
+      const note = li.createDiv({ cls: "epub-note-item-note" });
+      note.addEventListener("click", jump);
+      this.appendHighlightedQuery(note, ann.note, query);
+    }
+
+    const actions = li.createDiv({ cls: "epub-note-item-actions" });
+    const jumpBtn = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
+    jumpBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.navigateToCfi(ann.cfiRange);
+    });
+    const editBtn = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.openNoteEditor(ann, "编辑标注", false);
+    });
+    const delBtn = actions.createEl("button", {
+      cls: "epub-note-action is-danger",
+      text: "删除",
+    });
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.confirmDeleteAnnotation(ann);
+    });
+  }
+
   private renderNotesList(allList: Annotation[], filtered: Annotation[]) {
     if (!this.notesListEl) return;
     this.notesListEl.empty();
@@ -2052,56 +2109,48 @@ export class EpubReaderView extends FileView {
     }
 
     const ul = this.notesListEl.createEl("ul", { cls: "epub-notes-list" });
-    const sorted = [...filtered].sort((a, b) => b.created.localeCompare(a.created));
+    const groups = groupAnnotationsByChapter(filtered);
+    const tocLabels = this.tocSpineEntries.map((e) => e.label);
+    const chapters = sortChapterNames([...groups.keys()], groups, tocLabels);
     const query = this.notesSearchQuery;
+    const currentChapter = normalizeChapterName(this.currentChapter);
 
-    for (const ann of sorted) {
-      const li = ul.createEl("li", { cls: "epub-note-item is-clickable" });
-      const jump = () => void this.navigateToCfi(ann.cfiRange);
+    for (const chapter of chapters) {
+      const chapterAnns = [...(groups.get(chapter) ?? [])].sort((a, b) =>
+        b.created.localeCompare(a.created)
+      );
+      if (chapterAnns.length === 0) continue;
 
-      const head = li.createDiv({ cls: "epub-note-item-head" });
-      head.addEventListener("click", jump);
-      const dot = head.createDiv({ cls: "epub-color-dot is-static" });
-      dot.setAttribute("data-color", ann.color);
-      head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
-      if (ann.note) {
-        head.createSpan({
-          cls: "epub-note-item-type",
-          text: noteTypeLabel(ann.noteType, this.resolvedNoteTypes),
-        });
+      const collapsed = this.notesChapterCollapsed.has(chapter);
+      const chapterLi = ul.createEl("li", { cls: "epub-notes-chapter" });
+      if (chapter === currentChapter) chapterLi.addClass("is-current");
+
+      const chapterHead = chapterLi.createDiv({ cls: "epub-notes-chapter-head" });
+      chapterHead.createSpan({
+        cls: "epub-notes-chapter-toggle",
+        text: collapsed ? "▶" : "▼",
+      });
+      chapterHead.createSpan({ cls: "epub-notes-chapter-label", text: chapter });
+      chapterHead.createSpan({
+        cls: "epub-notes-chapter-count",
+        text: String(chapterAnns.length),
+      });
+
+      const itemsUl = chapterLi.createEl("ul", { cls: "epub-notes-chapter-items" });
+      if (collapsed) itemsUl.addClass("is-collapsed");
+
+      chapterHead.addEventListener("click", () => {
+        if (this.notesChapterCollapsed.has(chapter)) {
+          this.notesChapterCollapsed.delete(chapter);
+        } else {
+          this.notesChapterCollapsed.add(chapter);
+        }
+        this.refreshNotesListView(this.cachedHighlights);
+      });
+
+      for (const ann of chapterAnns) {
+        this.renderNoteItem(itemsUl, ann, query);
       }
-
-      const quoteText =
-        ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text;
-      const quote = li.createDiv({ cls: "epub-note-item-text" });
-      quote.addEventListener("click", jump);
-      this.appendHighlightedQuery(quote, quoteText, query);
-
-      if (ann.note) {
-        const note = li.createDiv({ cls: "epub-note-item-note" });
-        note.addEventListener("click", jump);
-        this.appendHighlightedQuery(note, ann.note, query);
-      }
-
-      const actions = li.createDiv({ cls: "epub-note-item-actions" });
-      const jumpBtn = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
-      jumpBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        void this.navigateToCfi(ann.cfiRange);
-      });
-      const editBtn = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
-      editBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.openNoteEditor(ann, "编辑标注", false);
-      });
-      const delBtn = actions.createEl("button", {
-        cls: "epub-note-action is-danger",
-        text: "删除",
-      });
-      delBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.confirmDeleteAnnotation(ann);
-      });
     }
   }
 
