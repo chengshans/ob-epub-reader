@@ -1,30 +1,43 @@
 /* ========== EPUB Marginalia Plugin Styles ========== */
 
 /* ---- ob-epub callout colors (keep in sync with HIGHLIGHT_COLORS in types.ts) ---- */
+/* EPUB 正文高亮：SVG fill + fill-opacity 0.38（见 EpubReaderView.drawLine） */
+/* 摘录 callout：Obsidian 不保证识别 --callout-background-alpha，须显式 background-color */
 .callout[data-callout="ob-epub"] {
   --callout-icon: pencil;
   --callout-color: 232, 179, 57;
-  --callout-background-alpha: 0.3;
+  --callout-border-width: 0;
+  --callout-border-opacity: 0;
+  background-color: rgba(var(--callout-color), var(--ob-epub-excerpt-callout-opacity, 0.2));
+}
+
+.callout[data-callout="ob-epub"] .callout-content {
+  background-color: transparent;
 }
 
 .callout[data-callout="ob-epub"][data-callout-metadata="yellow"] {
   --callout-color: 232, 179, 57;
+  background-color: rgba(232, 179, 57, var(--ob-epub-excerpt-callout-opacity, 0.2));
 }
 
 .callout[data-callout="ob-epub"][data-callout-metadata="red"] {
   --callout-color: 224, 83, 61;
+  background-color: rgba(224, 83, 61, var(--ob-epub-excerpt-callout-opacity, 0.2));
 }
 
 .callout[data-callout="ob-epub"][data-callout-metadata="green"] {
   --callout-color: 58, 166, 117;
+  background-color: rgba(58, 166, 117, var(--ob-epub-excerpt-callout-opacity, 0.2));
 }
 
 .callout[data-callout="ob-epub"][data-callout-metadata="blue"] {
   --callout-color: 59, 130, 196;
+  background-color: rgba(59, 130, 196, var(--ob-epub-excerpt-callout-opacity, 0.2));
 }
 
 .callout[data-callout="ob-epub"][data-callout-metadata="purple"] {
   --callout-color: 139, 92, 246;
+  background-color: rgba(139, 92, 246, var(--ob-epub-excerpt-callout-opacity, 0.2));
 }
 
 /* Excerpt callout: click to jump back to EPUB in split view */
@@ -37,6 +50,8 @@
   box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
+.ob-epub-goto-callout .callout-title a,
+.ob-epub-goto-callout .callout-title-inner a,
 a.ob-epub-goto-link {
   cursor: pointer;
 }
@@ -105,6 +120,33 @@ a.ob-epub-goto-link {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border-hover);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.epub-highlight-opacity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 14px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-hover);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.epub-highlight-opacity-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.epub-highlight-opacity-range {
+  width: 72px;
+  height: 4px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  accent-color: var(--interactive-accent);
 }
 
 .epub-theme-swatch {
@@ -249,6 +291,31 @@ a.ob-epub-goto-link {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.epub-notes-toolbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.epub-notes-collapse-all {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.epub-notes-collapse-all:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 .epub-notes-search {
   width: 100%;
   box-sizing: border-box;
@@ -296,7 +363,10 @@ a.ob-epub-goto-link {
 .epub-notes-count {
   font-size: 11px;
   color: var(--text-muted);
-  padding-top: 2px;
+  padding-top: 0;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .epub-notes-list-wrap {

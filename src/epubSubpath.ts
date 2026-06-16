@@ -71,35 +71,44 @@ export function buildEpubWikiLink(
   return `[[${epubPath}#${fragment}|${alias}]]`;
 }
 
-/** Match plugin goto wiki links; CFI wire form may contain `]` (e.g. `[calibre_pb_0]`). */
-export const GOTO_WIKI_LINK_RE = /\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]/g;
+/** Match EPUB wiki links in markdown; CFI wire form may contain `]` (e.g. `[calibre_pb_0]`). */
+export const EPUB_WIKI_LINK_MD_RE = /\[\[[^\]]+\.epub#cfi=.+\|[^\]]+\]\]/g;
 
-/** Line-anchored variant for stripping standalone wiki link lines. */
-export const GOTO_WIKI_LINK_LINE_RE =
+/** Legacy standalone goto wiki links with alias「回到原文」. */
+export const LEGACY_GOTO_WIKI_LINK_RE = /\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]/g;
+
+/** @deprecated use LEGACY_GOTO_WIKI_LINK_RE */
+export const GOTO_WIKI_LINK_RE = LEGACY_GOTO_WIKI_LINK_RE;
+
+/** Line-anchored variant for stripping standalone legacy wiki goto lines. */
+export const LEGACY_GOTO_WIKI_LINK_LINE_RE =
   /^>?\s*\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]\s*$/gm;
 
-const WIKI_GOTO_LINK_RE = /\[\[([^\]|]+\.epub)#(.+)\|回到原文\]\]/i;
+/** @deprecated use LEGACY_GOTO_WIKI_LINK_LINE_RE */
+export const GOTO_WIKI_LINK_LINE_RE = LEGACY_GOTO_WIKI_LINK_LINE_RE;
 
-/** Strip legacy `text` / `chapter` / `color` params from wiki goto links. */
+const LEGACY_WIKI_GOTO_PARSE_RE = /\[\[([^\]|]+\.epub)#(.+)\|回到原文\]\]/i;
+
+/** Strip legacy `text` / `chapter` / `color` params from legacy wiki goto links. */
 export function slimWikiGotoLink(link: string): string | null {
-  const match = link.match(WIKI_GOTO_LINK_RE);
+  const match = link.match(LEGACY_WIKI_GOTO_PARSE_RE);
   if (!match) return null;
 
   const parsed = parseEpubSubpath(`#${match[2]}`);
   if (!parsed?.cfi) return null;
 
-  const slim = buildEpubWikiLink(match[1], { cfiRange: parsed.cfi });
+  const slim = buildEpubWikiLink(match[1], { cfiRange: parsed.cfi }, "回到原文");
   return slim === link ? null : slim;
 }
 
-/** Replace verbose wiki goto links in excerpt markdown with cfi/end-only form. */
+/** Replace verbose legacy wiki goto links in excerpt markdown with cfi/end-only form. */
 export function slimWikiGotoLinksInContent(content: string): string {
-  return content.replace(GOTO_WIKI_LINK_RE, (link) => slimWikiGotoLink(link) ?? link);
+  return content.replace(LEGACY_GOTO_WIKI_LINK_RE, (link) => slimWikiGotoLink(link) ?? link);
 }
 
-/** Extract navigate CFI from wiki link markdown. */
+/** Extract navigate CFI from any EPUB wiki link markdown in text. */
 export function extractCfiFromWikiLink(text: string): string | null {
-  const match = text.match(/\[\[[^\]]+\.epub#(.+)\|回到原文\]\]/i);
+  const match = text.match(/\[\[[^\]]+\.epub#(.+)\|[^\]]+\]\]/i);
   if (!match) return null;
   const parsed = parseEpubSubpath(`#${match[1]}`);
   return parsed?.cfi ?? null;

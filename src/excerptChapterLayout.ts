@@ -10,6 +10,19 @@ export const CHAPTER_BODY_END = "<!-- ob-epub-chapter-body-end -->";
 
 const OB_EPUB_BLOCK_RE = /^>\s*\[!ob-epub\|/m;
 
+/** Annotation block separator: blank line above and below `---`. */
+export const EXCERPT_CHUNK_SEPARATOR = "\n\n---\n\n";
+
+/** Split excerpt content on `---` (tolerates legacy single-newline separators). */
+export function splitExcerptChunks(content: string): string[] {
+  return content.split(/\n+---\n+/);
+}
+
+export function joinExcerptChunks(chunks: string[]): string {
+  if (chunks.length === 0) return "";
+  return chunks.map((c) => c.trim()).join(EXCERPT_CHUNK_SEPARATOR);
+}
+
 export function normalizeChapterName(chapter: string): string {
   const trimmed = chapter.trim();
   return trimmed || UNKNOWN_CHAPTER;
@@ -101,12 +114,17 @@ export function buildGroupedAnnotationBody(
   }
 
   const parts: string[] = [buildChapterTocMarkdown(chapters, counts), CHAPTER_BODY_START];
+  let needSeparator = false;
 
   for (const chapter of chapters) {
     const list = sortAnnotationsByCfi(groups.get(chapter) ?? []);
     parts.push(`## ${chapter}`, "");
     for (const ann of list) {
+      if (needSeparator) {
+        parts.push(EXCERPT_CHUNK_SEPARATOR);
+      }
       parts.push(renderBlock(ann).trimEnd());
+      needSeparator = true;
     }
   }
 
@@ -134,7 +152,7 @@ export function extractExcerptSuffix(content: string): string {
     return content.slice(bodyEndIdx + CHAPTER_BODY_END.length);
   }
 
-  const chunks = content.split(/\n---\n/);
+  const chunks = splitExcerptChunks(content);
   let lastEnd = 0;
   let searchFrom = 0;
 
@@ -147,8 +165,12 @@ export function extractExcerptSuffix(content: string): string {
 
     let chunkEnd = chunkStart + chunks[i].length;
     if (i < chunks.length - 1) {
-      const sep = content.indexOf("\n---\n", chunkEnd);
-      if (sep >= 0) chunkEnd = sep + "\n---\n".length;
+      const sep = content.indexOf(EXCERPT_CHUNK_SEPARATOR, chunkEnd);
+      if (sep >= 0) chunkEnd = sep + EXCERPT_CHUNK_SEPARATOR.length;
+      else {
+        const legacySep = content.indexOf("\n---\n", chunkEnd);
+        if (legacySep >= 0) chunkEnd = legacySep + "\n---\n".length;
+      }
     }
     lastEnd = Math.max(lastEnd, chunkEnd);
     searchFrom = chunkStart + 1;

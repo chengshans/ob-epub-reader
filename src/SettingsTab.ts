@@ -3,10 +3,13 @@ import type ObEpubPlugin from "./main";
 import { ExcerptCheckModal } from "./ExcerptCheckModal";
 import {
   DEFAULT_NOTE_TYPES,
+  HIGHLIGHT_OPACITY_MAX,
+  HIGHLIGHT_OPACITY_MIN,
   NoteType,
   READING_THEMES,
   ReadingThemeId,
   SOURCE_LINK_FORMATS,
+  clampHighlightOpacity,
   resolveNoteTypes,
 } from "./types";
 import {
@@ -60,7 +63,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     excerptFolderSetting.descEl.createEl("br");
     excerptFolderSetting.descEl.createSpan({
       cls: "ob-epub-settings-warn",
-      text: "移动 EPUB 或文件夹后，需手动更新摘录 frontmatter 中的 epub-source 为新路径，否则「回到原文」链接会失效",
+      text: "移动 EPUB 或文件夹后，需手动更新摘录 frontmatter 中的 epub-source 为新路径，否则标题跳转链接会失效",
     });
 
     new Setting(containerEl)
@@ -89,10 +92,10 @@ export class EpubSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("回到原文链接格式")
+      .setName("摘录标题跳转格式")
       .setDesc(
         SOURCE_LINK_FORMATS.find((f) => f.id === this.plugin.settings.sourceLinkFormat)?.desc ??
-          "摘录文件中跳转链接的写入格式"
+          "摘录 callout 标题内嵌跳转链接的写入格式"
       )
       .addDropdown((drop) => {
         for (const fmt of SOURCE_LINK_FORMATS) {
@@ -107,6 +110,24 @@ export class EpubSettingsTab extends PluginSettingTab {
             this.display();
           });
       });
+
+    new Setting(containerEl)
+      .setName("摘录 callout 背景透明度")
+      .setDesc("控制《书名》摘录.md 中 ob-epub callout 背景浓淡")
+      .addSlider((slider) =>
+        slider
+          .setLimits(
+            Math.round(HIGHLIGHT_OPACITY_MIN * 100),
+            Math.round(HIGHLIGHT_OPACITY_MAX * 100),
+            1
+          )
+          .setValue(Math.round(this.plugin.settings.excerptCalloutOpacity * 100))
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.excerptCalloutOpacity = value / 100;
+            await this.plugin.saveSettings();
+          })
+      );
 
     new Setting(containerEl)
       .setName("转换已有摘录链接")
@@ -152,6 +173,24 @@ export class EpubSettingsTab extends PluginSettingTab {
           .setDynamicTooltip()
           .onChange(async (value) => {
             this.plugin.settings.fontSize = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("EPUB 高亮透明度")
+      .setDesc("控制阅读器内画线/高亮层的透明度")
+      .addSlider((slider) =>
+        slider
+          .setLimits(
+            Math.round(HIGHLIGHT_OPACITY_MIN * 100),
+            Math.round(HIGHLIGHT_OPACITY_MAX * 100),
+            1
+          )
+          .setValue(Math.round(this.plugin.settings.epubHighlightOpacity * 100))
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.epubHighlightOpacity = value / 100;
             await this.plugin.saveSettings();
           })
       );

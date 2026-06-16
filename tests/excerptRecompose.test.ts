@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { App } from "obsidian";
 import { AnnotationVaultStore } from "../src/AnnotationVaultStore";
 import {
+  EXCERPT_CHUNK_SEPARATOR,
   CHAPTER_BODY_END,
   CHAPTER_TOC_START,
 } from "../src/excerptChapterLayout";
 import { DEFAULT_SETTINGS, type Annotation } from "../src/types";
+import { buildCalloutHeaderLine } from "../src/excerptHeader";
 
 const EPUB_SOURCE = "books/demo.epub";
 const SAMPLE_CFI = "epubcfi(/6/14!/4/2,/1:0,/1:42)";
@@ -24,19 +26,17 @@ function makeFlatExcerpt(): string {
     "",
     "# 《demo》摘录",
     "",
-    "> [!ob-epub|yellow] 语言的萎缩 · 2026-06-16 08:22:26 ^ann-1",
+    "> [!ob-epub|yellow] [语言的萎缩 · 2026-06-16 08:22:26](#^ann-1) ^ann-1",
     "> 第一条摘录",
     "",
     `<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`,
-    "[回到原文](#^ann-1)",
     "",
     "---",
     "",
-    "> [!ob-epub|purple] 时间与贫血 · 2026-06-16 11:03:10 ^ann-2",
+    "> [!ob-epub|purple] [时间与贫血 · 2026-06-16 11:03:10](#^ann-2) ^ann-2",
     "> 第二条摘录",
     "",
     `<!-- ob-epub-cfi: ${CFI_B} -->`,
-    "[回到原文](#^ann-2)",
     "",
     "---",
     "",
@@ -70,16 +70,30 @@ describe("recomposeExcerptFromContent", () => {
     expect(result.indexOf("## 语言的萎缩")).toBeLessThan(result.indexOf("## 时间与贫血"));
   });
 
-  it("preserves block-ref links and CFI comments", () => {
+  it("preserves title block-ref links and CFI comments", () => {
     const store = createStore();
     const flat = makeFlatExcerpt();
     const annotations = parseAnnotations(store, flat);
     const result = store.recomposeExcerptFromContent(flat, EPUB_SOURCE, annotations);
 
-    expect(result).toContain("[回到原文](#^ann-1)");
-    expect(result).toContain("[回到原文](#^ann-2)");
+    const expected1 = buildCalloutHeaderLine(
+      annotations.find((a) => a.id === "ann-1")!,
+      EPUB_SOURCE,
+      "block-ref",
+      () => "2026-06-16 08:22:26"
+    );
+    expect(result).toContain(expected1);
+    expect(result).not.toContain("[回到原文]");
     expect(result).toContain(`<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`);
     expect(result).toContain(`<!-- ob-epub-cfi: ${CFI_B} -->`);
+  });
+
+  it("recomposed blocks use blank lines around --- separators", () => {
+    const store = createStore();
+    const flat = makeFlatExcerpt();
+    const annotations = parseAnnotations(store, flat);
+    const result = store.recomposeExcerptFromContent(flat, EPUB_SOURCE, annotations);
+    expect(result).toContain(EXCERPT_CHUNK_SEPARATOR);
   });
 
   it("preserves AI suffix after regroup", () => {

@@ -20,6 +20,9 @@ import {
   clampNoteIconSize,
   clampNoteIconOffsetX,
   clampNoteIconOffsetY,
+  clampHighlightOpacity,
+  HIGHLIGHT_OPACITY_MIN,
+  HIGHLIGHT_OPACITY_MAX,
   noteIconGlyphSize,
   normalizeReadingTheme,
   resolveNoteTypes,
@@ -63,6 +66,7 @@ export class EpubReaderView extends FileView {
   private readingTheme: ReadingThemeId;
   private themesRegistered = false;
   private onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>;
+  private onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
   private contextMenuContentDoc: Document | null = null;
@@ -99,6 +103,7 @@ export class EpubReaderView extends FileView {
   private notesListEl: HTMLElement | null = null;
   private notesCountEl: HTMLElement | null = null;
   private notesSearchInputEl: HTMLInputElement | null = null;
+  private notesCollapseAllBtn: HTMLElement | null = null;
   private notesChapterCollapsed = new Set<string>();
   private isClosing = false;
 
@@ -116,6 +121,7 @@ export class EpubReaderView extends FileView {
   // Layout elements
   private toolbarEl: HTMLElement | null = null;
   private themeSwatchesEl: HTMLElement | null = null;
+  private highlightOpacityRangeEl: HTMLInputElement | null = null;
   private sidebarEl: HTMLElement | null = null;
   private tocEl: HTMLElement | null = null;
   private notesEl: HTMLElement | null = null;
@@ -136,7 +142,8 @@ export class EpubReaderView extends FileView {
     progressStore: ProgressStore,
     aiService: AIService,
     settings: EpubPluginSettings,
-    onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>
+    onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>,
+    onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>
   ) {
     super(leaf);
     this.openBridge = openBridge;
@@ -145,6 +152,7 @@ export class EpubReaderView extends FileView {
     this.aiService = aiService;
     this.settings = settings;
     this.onReadingThemeChange = onReadingThemeChange;
+    this.onEpubHighlightOpacityChange = onEpubHighlightOpacityChange;
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
     this.readingTheme = normalizeReadingTheme(settings.readingTheme);
@@ -365,6 +373,7 @@ export class EpubReaderView extends FileView {
     fontSizeUp.addEventListener("click", () => this.changeFontSize(2));
 
     this.buildThemeToolbar(toolbar);
+    this.buildHighlightOpacityToolbar(toolbar);
 
     // Flow toggle
     const flowBtn = toolbar.createEl("button", {
@@ -821,6 +830,45 @@ export class EpubReaderView extends FileView {
       const id = (el as HTMLElement).dataset.theme;
       el.toggleClass("is-active", id === this.readingTheme);
     });
+  }
+
+  private buildHighlightOpacityToolbar(toolbar: HTMLElement) {
+    const group = toolbar.createDiv({ cls: "epub-highlight-opacity" });
+    const label = group.createSpan({ cls: "epub-highlight-opacity-label", text: "高亮" });
+    label.title = "高亮透明度";
+
+    const range = group.createEl("input", {
+      cls: "epub-highlight-opacity-range",
+      type: "range",
+      attr: {
+        min: String(Math.round(HIGHLIGHT_OPACITY_MIN * 100)),
+        max: String(Math.round(HIGHLIGHT_OPACITY_MAX * 100)),
+        step: "1",
+      },
+    });
+    this.highlightOpacityRangeEl = range;
+    this.syncHighlightOpacityToolbar();
+
+    range.addEventListener("input", () => {
+      const opacity = clampHighlightOpacity(Number(range.value) / 100);
+      this.settings.epubHighlightOpacity = opacity;
+      range.title = `高亮透明度 ${Math.round(opacity * 100)}%`;
+      void this.refreshHighlights();
+    });
+    range.addEventListener("change", () => {
+      const opacity = clampHighlightOpacity(Number(range.value) / 100);
+      if (this.onEpubHighlightOpacityChange) {
+        void this.onEpubHighlightOpacityChange(opacity);
+      }
+    });
+  }
+
+  private syncHighlightOpacityToolbar() {
+    if (!this.highlightOpacityRangeEl) return;
+    const opacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
+    const percent = Math.round(opacity * 100);
+    this.highlightOpacityRangeEl.value = String(percent);
+    this.highlightOpacityRangeEl.title = `高亮透明度 ${percent}%`;
   }
 
   private async setReadingTheme(id: ReadingThemeId) {
@@ -1588,7 +1636,7 @@ export class EpubReaderView extends FileView {
       HIGHLIGHT_CLASS,
       {
         fill: hex,
-        "fill-opacity": "0.38",
+        "fill-opacity": String(clampHighlightOpacity(this.settings.epubHighlightOpacity)),
         "mix-blend-mode": "normal",
       }
     );
@@ -1833,6 +1881,7 @@ export class EpubReaderView extends FileView {
     this.notesListEl = null;
     this.notesCountEl = null;
     this.notesSearchInputEl = null;
+    this.notesCollapseAllBtn = null;
   }
 
   private confirmDeleteAnnotation(ann: Annotation) {
@@ -1918,11 +1967,59 @@ export class EpubReaderView extends FileView {
   private refreshNotesListView(allList: Annotation[]) {
     const filtered = this.filterNotesList(allList);
     this.updateNotesCount(allList.length, filtered.length);
+    this.syncNotesCollapseAllButton(allList);
     this.renderNotesList(allList, filtered);
+  }
+
+  private getVisibleNoteChapters(list: Annotation[]): string[] {
+    const filtered = this.filterNotesList(list);
+    const groups = groupAnnotationsByChapter(filtered);
+    const tocLabels = this.tocSpineEntries.map((e) => e.label);
+    return sortChapterNames([...groups.keys()], groups, tocLabels);
+  }
+
+  private areAllNoteChaptersCollapsed(list: Annotation[]): boolean {
+    const chapters = this.getVisibleNoteChapters(list);
+    if (chapters.length === 0) return false;
+    return chapters.every((chapter) => this.notesChapterCollapsed.has(chapter));
+  }
+
+  private toggleAllNotesChaptersCollapse(list: Annotation[]) {
+    const chapters = this.getVisibleNoteChapters(list);
+    const collapse = !this.areAllNoteChaptersCollapsed(list);
+    for (const chapter of chapters) {
+      if (collapse) {
+        this.notesChapterCollapsed.add(chapter);
+      } else {
+        this.notesChapterCollapsed.delete(chapter);
+      }
+    }
+    this.refreshNotesListView(list);
+  }
+
+  private syncNotesCollapseAllButton(list: Annotation[]) {
+    if (!this.notesCollapseAllBtn) return;
+    const chapters = this.getVisibleNoteChapters(list);
+    const show = chapters.length > 1;
+    this.notesCollapseAllBtn.toggleVisibility(show);
+    if (!show) return;
+    const allCollapsed = this.areAllNoteChaptersCollapsed(list);
+    this.notesCollapseAllBtn.setText(allCollapsed ? "▶ 展开全部" : "▼ 折叠全部");
+    this.notesCollapseAllBtn.title = allCollapsed ? "展开全部章节" : "折叠全部章节";
   }
 
   private buildNotesToolbar(parent: HTMLElement) {
     const toolbar = parent.createDiv({ cls: "epub-notes-toolbar" });
+
+    const head = toolbar.createDiv({ cls: "epub-notes-toolbar-head" });
+    this.notesCollapseAllBtn = head.createEl("button", {
+      cls: "epub-notes-collapse-all",
+      text: "▼ 折叠全部",
+    });
+    this.notesCollapseAllBtn.title = "折叠全部章节";
+    this.notesCollapseAllBtn.addEventListener("click", () => {
+      this.toggleAllNotesChaptersCollapse(this.cachedHighlights);
+    });
 
     const search = toolbar.createEl("input", {
       cls: "epub-notes-search",
@@ -2010,7 +2107,8 @@ export class EpubReaderView extends FileView {
       });
     }
 
-    this.notesCountEl = toolbar.createDiv({ cls: "epub-notes-count" });
+    this.notesCountEl = head.createDiv({ cls: "epub-notes-count" });
+    this.syncNotesCollapseAllButton(this.cachedHighlights);
     this.notesListEl = parent.createDiv({ cls: "epub-notes-list-wrap" });
   }
 
@@ -2161,6 +2259,7 @@ export class EpubReaderView extends FileView {
     this.notesListEl = null;
     this.notesCountEl = null;
     this.notesSearchInputEl = null;
+    this.notesCollapseAllBtn = null;
 
     let list = this.cachedHighlights;
     if (list.length === 0 && this.file) {
@@ -2210,6 +2309,7 @@ export class EpubReaderView extends FileView {
   // Called when settings change
   updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
+    this.syncHighlightOpacityToolbar();
     this.fontSize = settings.fontSize;
     const nextTheme = normalizeReadingTheme(settings.readingTheme);
     const themeChanged = nextTheme !== this.readingTheme;
@@ -2223,7 +2323,7 @@ export class EpubReaderView extends FileView {
       } else {
         this.rendition.themes.fontSize(`${this.fontSize}px`);
       }
-      this.scheduleHighlightSync();
+      void this.refreshHighlights();
     }
     if (this.sidebarMode === "notes") void this.renderNotesPanel();
   }

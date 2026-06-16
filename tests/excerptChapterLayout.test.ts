@@ -7,6 +7,7 @@ import {
   CHAPTER_TOC_END,
   CHAPTER_TOC_START,
   composeExcerptContent,
+  EXCERPT_CHUNK_SEPARATOR,
   extractExcerptPreamble,
   extractExcerptSuffix,
   groupAnnotationsByChapter,
@@ -97,6 +98,7 @@ describe("buildGroupedAnnotationBody", () => {
     expect(body).toContain(CHAPTER_BODY_END);
     expect(body.indexOf("## 语言的萎缩")).toBeLessThan(body.indexOf("## 时间与贫血"));
     expect(body.indexOf("BLOCK:ann-1")).toBeLessThan(body.indexOf("BLOCK:ann-2"));
+    expect(body).toContain(EXCERPT_CHUNK_SEPARATOR);
   });
 });
 

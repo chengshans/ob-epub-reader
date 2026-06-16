@@ -12,13 +12,18 @@ import {
 import {
   buildGroupedAnnotationBody,
   composeExcerptContent,
+  joinExcerptChunks,
+  splitExcerptChunks,
   splitExcerptRegions,
 } from "./excerptChapterLayout";
 import {
-  buildEpubWikiLink,
+  buildCalloutHeaderLine,
+  hasLegacyStandaloneGotoLink,
+  parseCalloutHeader,
+  resolveAnnotationId,
+} from "./excerptHeader";
+import {
   extractCfiFromWikiLink,
-  GOTO_WIKI_LINK_LINE_RE,
-  GOTO_WIKI_LINK_RE,
   isSourceLinkLine,
   slimWikiGotoLinksInContent,
 } from "./epubSubpath";
@@ -37,14 +42,14 @@ import {
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
-// > [!ob-epub|yellow] 第三章 · 2026-05-23 18:15:42 ^ann-abc123
-// > 原文内容第一行
-// > 原文内容第二行
+// block-ref:
+// > [!ob-epub|yellow] [第三章 · 2026-05-23 18:15:42](#^ann-abc123) ^ann-abc123
+// > 原文内容…
+// <!-- ob-epub-cfi: epubcfi(...) -->
 //
-// 可选的想法文字
-//
-// [回到原文](#^ann-xxx)  或  [[book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]
-// <!-- ob-epub-cfi: epubcfi(...) -->  （块引用格式时写入）
+// wiki-link:
+// > [!ob-epub|yellow] [[book.epub#cfi=/6/14!/4/2/1:0&end=...|第三章 · 2026-05-23 18:15:42]]
+// > 原文内容…
 //
 // ---
 //
@@ -167,61 +172,37 @@ export class AnnotationVaultStore {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
-  private parseLocalDateTime(value: string): Date {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2})(?::(\d{2}))?$/);
-    if (!match) return new Date(value);
-    return new Date(
-      Number(match[1]),
-      Number(match[2]) - 1,
-      Number(match[3]),
-      Number(match[4]),
-      Number(match[5]),
-      Number(match[6] ?? 0)
-    );
-  }
-
-  /** Build goto link line according to settings.sourceLinkFormat. */
-  private buildSourceLink(ann: Annotation, epubFilePath: string): string {
-    if (this.settings.sourceLinkFormat === "wiki-link") {
-      return buildEpubWikiLink(epubFilePath, { cfiRange: ann.cfiRange });
-    }
-    return `[回到原文](#^${ann.id})`;
-  }
-
-  private usesCfiComment(): boolean {
-    return this.settings.sourceLinkFormat === "block-ref";
+  /** Hidden CFI comment with a blank line before it (separator adds blank line before ---). */
+  private formatCfiMetadataBlock(cfiRange: string): string {
+    return `\n\n${this.buildCfiComment(cfiRange)}`;
   }
 
   private buildCfiComment(cfiRange: string): string {
     return `<!-- ob-epub-cfi: ${cfiRange} -->`;
   }
 
-  /**
-   * CFI comment (optional) + goto link, with blank lines before the block and after the link.
-   * No blank line between CFI comment and link when both are present.
-   */
-  private formatSourceLinkBlock(linkLine: string, cfiRange?: string): string {
-    const inner = cfiRange
-      ? `${this.buildCfiComment(cfiRange)}\n${linkLine}`
-      : linkLine;
-    return `\n\n${inner}\n\n`;
-  }
-
-  /** Remove all goto link lines and optional CFI comments from an annotation chunk. */
-  private stripAllGotoLinksFromChunk(
+  private isChunkInCurrentTitleFormat(
     chunk: string,
-    opts: { removeCfiComment: boolean }
-  ): string {
-    let updated = chunk;
-    if (opts.removeCfiComment) {
-      updated = updated.replace(/<!--\s*ob-epub-cfi:[\s\S]*?-->\n?/g, "");
+    ann: Annotation,
+    epubSource?: string
+  ): boolean {
+    if (hasLegacyStandaloneGotoLink(chunk)) return false;
+
+    const headerMatch = chunk.match(/^>\s*\[!ob-epub\|([a-z]+)\]\s+(.+)$/m);
+    if (!headerMatch) return false;
+
+    const expectedHeader = buildCalloutHeaderLine(
+      ann,
+      epubSource ?? "",
+      this.settings.sourceLinkFormat,
+      (d) => this.formatDate(d)
+    );
+    if (headerMatch[2].trim() !== expectedHeader) return false;
+
+    if (this.settings.sourceLinkFormat === "block-ref") {
+      return chunk.includes(this.buildCfiComment(ann.cfiRange));
     }
-    updated = updated.replace(GOTO_WIKI_LINK_LINE_RE, "");
-    updated = updated.replace(GOTO_WIKI_LINK_RE, "");
-    updated = updated.replace(/^>?\s*\[回到原文\]\([^)\n]+\)\s*$/gm, "");
-    updated = updated.replace(/\[回到原文\]\([^)\n]+\)/g, "");
-    updated = updated.replace(/^>\s*$/gm, "");
-    return updated;
+    return !chunk.includes("<!-- ob-epub-cfi:");
   }
 
   /** Strip legacy angle-bracket wrappers and other broken link syntax. */
@@ -245,32 +226,76 @@ export class AnnotationVaultStore {
 
   /** Replace goto links in all chunks to match the current sourceLinkFormat setting. */
   rewriteGotoLinksToCurrentFormat(content: string, epubSource?: string): string {
-    const chunks = content.split(/\n---\n/);
+    const chunks = splitExcerptChunks(content);
     const rewritten = chunks.map((chunk) => this.rewriteChunkGotoLinks(chunk, epubSource));
-    return rewritten.join("\n---\n");
+    return joinExcerptChunks(rewritten);
   }
 
   private rewriteChunkGotoLinks(chunk: string, epubSource?: string): string {
-    const annId = chunk.match(/\^(ann-[a-z0-9-]+)/i)?.[1];
-    if (!annId) return chunk;
+    const trimmed = chunk.trim();
+    if (!trimmed || !/\[!ob-epub\|/i.test(trimmed)) return chunk;
 
-    const legacyCfi = this.extractCfiFromLegacyLink(chunk) ?? extractCfiFromWikiLink(chunk);
-    const existingCfi = this.extractCfiFromChunk(chunk) ?? legacyCfi;
+    const ann = this.parseObEpubChunk(trimmed, epubSource ?? "");
+    if (!ann) return chunk;
+    if (this.settings.sourceLinkFormat === "wiki-link" && !epubSource) return chunk;
 
-    if (this.settings.sourceLinkFormat === "block-ref") {
-      const body = this.stripAllGotoLinksFromChunk(chunk, { removeCfiComment: true });
-      const link = `[回到原文](#^${annId})`;
-      return `${body.trimEnd()}${this.formatSourceLinkBlock(link, existingCfi ?? undefined)}`;
+    if (this.isChunkInCurrentTitleFormat(trimmed, ann, epubSource)) return chunk;
+
+    return this.buildBlock(ann, epubSource ?? "").trimEnd();
+  }
+
+  /** Parse one ob-epub annotation block; assigns stable id from CFI when ^ann-id is absent. */
+  private parseObEpubChunk(trimmed: string, epubFilePath: string): Annotation | null {
+    const headerMatch = trimmed.match(/^>\s*\[!ob-epub\|([a-z]+)\]\s+(.+)$/m);
+    if (!headerMatch) return null;
+
+    const color = headerMatch[1] as HighlightColor;
+    if (!HIGHLIGHT_COLORS.find((c) => c.id === color)) return null;
+
+    const parsedHeader = parseCalloutHeader(headerMatch[2], trimmed);
+    if (!parsedHeader) return null;
+
+    const cfiRange = this.extractCfiFromChunk(trimmed);
+    if (!cfiRange) return null;
+
+    const id = resolveAnnotationId(parsedHeader.annId, cfiRange);
+    const { chapter, createdIso } = parsedHeader;
+
+    const lines = trimmed.split("\n");
+    const textLines: string[] = [];
+    for (const line of lines) {
+      if (!line.startsWith(">")) continue;
+      const stripped = line.replace(/^>\s?/, "");
+      if (stripped.startsWith(`[!${CALLOUT_PREFIX}`)) continue;
+      if (/^\^ann-/.test(stripped)) continue;
+      if (/^\[回到原文\]\(/.test(stripped)) continue;
+      textLines.push(stripped);
     }
+    const text = textLines.join("\n").trim();
 
-    if (!epubSource || !existingCfi) return chunk;
+    const noteLines: string[] = [];
+    let parsedNoteType: NoteType | undefined;
+    let pastQuote = false;
+    for (const line of lines) {
+      if (line.startsWith(">")) {
+        pastQuote = true;
+        continue;
+      }
+      if (!pastQuote) continue;
+      if (isSourceLinkLine(line)) continue;
+      if (line.trim() === "") continue;
+      const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
+      if (typeMatch) {
+        parsedNoteType = normalizeNoteType(typeMatch[1], resolveNoteTypes(this.settings.noteTypes));
+        continue;
+      }
+      if (CFI_COMMENT_RE.test(line.trim())) continue;
+      noteLines.push(line);
+    }
+    const note = noteLines.join("\n").trim() || undefined;
+    const noteType = note ? (parsedNoteType ?? "note") : undefined;
 
-    const body = this.stripAllGotoLinksFromChunk(chunk, { removeCfiComment: true });
-    const ann = this.parseSingleChunkAnnotation(chunk, epubSource, annId, existingCfi);
-    const wikiLine = ann
-      ? this.buildSourceLink(ann, epubSource)
-      : buildEpubWikiLink(epubSource, { cfiRange: existingCfi }, "回到原文");
-    return `${body.trimEnd()}${this.formatSourceLinkBlock(wikiLine)}`;
+    return { id, cfiRange, text, color, note, noteType, chapter, created: createdIso };
   }
 
   /** One-time migration: replace legacy goto links with block refs. */
@@ -288,9 +313,8 @@ export class AnnotationVaultStore {
     annId: string,
     cfiRange: string
   ): Annotation | null {
-    const list = this.parseContent(`${chunk}\n---\n`, epubFilePath);
-    const found = list.find((a) => a.id === annId);
-    if (found) return found;
+    const parsed = this.parseObEpubChunk(chunk.trim(), epubFilePath);
+    if (parsed) return parsed;
     return { id: annId, cfiRange, text: "", color: "yellow", chapter: "", created: new Date().toISOString() };
   }
 
@@ -408,7 +432,7 @@ export class AnnotationVaultStore {
 
   /** Repair bare ".epub&cfi=…" lines that leaked outside markdown links. */
   private repairBrokenGotoLines(content: string, epubSource: string): string {
-    const chunks = content.split(/\n---\n/);
+    const chunks = splitExcerptChunks(content);
     const repaired = chunks.map((chunk) => {
       const annId = chunk.match(/\^(ann-[a-z0-9-]+)/i)?.[1];
       if (!annId) return chunk;
@@ -417,10 +441,7 @@ export class AnnotationVaultStore {
         /^(?!.*\[回到原文\]).*\.epub&cfi=(epubcfi\([^)\n]+)>?\s*$/gm,
         (_line, cfi: string) => {
           const clean = cfi.replace(/>$/, "");
-          return `${this.buildCfiComment(clean)}\n${this.buildSourceLink(
-            { id: annId, cfiRange: clean, text: "", color: "yellow", chapter: "", created: "" },
-            epubSource
-          )}`;
+          return this.buildCfiComment(clean);
         }
       );
 
@@ -430,15 +451,12 @@ export class AnnotationVaultStore {
           const params = new URLSearchParams(query.replace(/>$/, ""));
           const cfi = params.get("cfi");
           if (!cfi) return _line;
-          return `${this.buildCfiComment(cfi)}\n${this.buildSourceLink(
-            { id: annId, cfiRange: cfi, text: "", color: "yellow", chapter: "", created: "" },
-            epubSource
-          )}`;
+          return this.buildCfiComment(cfi);
         }
       );
       return updated;
     });
-    return repaired.join("\n---\n");
+    return joinExcerptChunks(repaired);
   }
 
   private extractFrontmatterBody(content: string): string | null {
@@ -625,7 +643,7 @@ export class AnnotationVaultStore {
     if (!(mdFile instanceof TFile)) return null;
 
     const content = await this.app.vault.read(mdFile);
-    const chunks = content.split(/\n---\n/);
+    const chunks = splitExcerptChunks(content);
 
     for (const chunk of chunks) {
       if (!chunk.includes(`^${annId}`)) continue;
@@ -715,17 +733,24 @@ export class AnnotationVaultStore {
   // ── Block serialisation ───────────────────────────────────────────────────
 
   private buildBlock(ann: Annotation, epubFilePath: string): string {
-    const dateStr = this.formatDate(new Date(ann.created));
-    const headerLine = `> [!${CALLOUT_PREFIX}|${ann.color}] ${ann.chapter} · ${dateStr} ^${ann.id}`;
+    const headerContent = buildCalloutHeaderLine(
+      ann,
+      epubFilePath,
+      this.settings.sourceLinkFormat,
+      (d) => this.formatDate(d)
+    );
+    const headerLine = `> [!${CALLOUT_PREFIX}|${ann.color}] ${headerContent}`;
     const textLines = ann.text.split("\n").map((l) => `> ${l}`).join("\n");
-    const sourceLink = this.buildSourceLink(ann, epubFilePath);
     const parts: string[] = [headerLine, textLines];
     if (ann.note) {
       parts.push("", `<!-- ob-epub-note-type: ${ann.noteType ?? "note"} -->`, ann.note);
     }
     const body = parts.join("\n");
-    const cfiRange = this.usesCfiComment() ? ann.cfiRange : undefined;
-    return `${body}${this.formatSourceLinkBlock(sourceLink, cfiRange)}---\n\n`;
+    const metadataBlock =
+      this.settings.sourceLinkFormat === "block-ref"
+        ? this.formatCfiMetadataBlock(ann.cfiRange)
+        : "";
+    return `${body}${metadataBlock}`;
   }
 
   // ── Block parsing ─────────────────────────────────────────────────────────
@@ -738,72 +763,14 @@ export class AnnotationVaultStore {
     const annotations: Annotation[] = [];
 
     // Split by the `---` separator (with optional surrounding newlines)
-    const chunks = content.split(/\n---\n/);
+    const chunks = splitExcerptChunks(content);
 
     for (const chunk of chunks) {
       const trimmed = chunk.trim();
       if (!trimmed) continue;
 
-      // Header line: > [!ob-epub|COLOR] CHAPTER · DATE ^ID
-      const headerMatch = trimmed.match(
-        /^>\s*\[!ob-epub\|([a-z]+)\]\s+(.*?)(?:\s+\^(ann-[^\s\n]+))?\s*$/m
-      );
-      if (!headerMatch) continue;
-
-      const color = headerMatch[1] as HighlightColor;
-      if (!HIGHLIGHT_COLORS.find((c) => c.id === color)) continue;
-
-      const headerRest = headerMatch[2]; // "CHAPTER · DATE"
-      const id = headerMatch[3] ?? trimmed.match(/>\s*\^(ann-[a-z0-9-]+)/i)?.[1];
-      if (!id) continue;
-
-      // Chapter and date from headerRest "Chapter · YYYY-MM-DD HH:mm:ss"
-      const chapterDateMatch = headerRest.match(/^(.*?)\s·\s(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(?::\d{2})?)$/);
-      const chapter = chapterDateMatch ? chapterDateMatch[1].trim() : headerRest.trim();
-      const created = chapterDateMatch
-        ? this.parseLocalDateTime(chapterDateMatch[2]).toISOString()
-        : new Date(0).toISOString();
-
-      // Quoted text lines (lines starting with ">", skip header line, skip ^ID line)
-      const lines = trimmed.split("\n");
-      const textLines: string[] = [];
-      for (const line of lines) {
-        if (!line.startsWith(">")) continue;
-        const stripped = line.replace(/^>\s?/, "");
-        // Skip the header line itself and ^ID-only lines
-        if (stripped.startsWith(`[!${CALLOUT_PREFIX}`)) continue;
-        if (/^\^ann-/.test(stripped)) continue;
-        textLines.push(stripped);
-      }
-      const text = textLines.join("\n").trim();
-
-      const cfiRange = this.extractCfiFromChunk(trimmed);
-      if (!cfiRange) continue;
-
-      // Note: non-blockquote, non-sourcelink lines between the blockquote and ---
-      const noteLines: string[] = [];
-      let parsedNoteType: NoteType | undefined;
-      let pastQuote = false;
-      for (const line of lines) {
-        if (line.startsWith(">")) {
-          pastQuote = true;
-          continue;
-        }
-        if (!pastQuote) continue;
-        if (isSourceLinkLine(line)) continue;
-        if (line.trim() === "") continue;
-        const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
-        if (typeMatch) {
-          parsedNoteType = normalizeNoteType(typeMatch[1], resolveNoteTypes(this.settings.noteTypes));
-          continue;
-        }
-        if (CFI_COMMENT_RE.test(line.trim())) continue;
-        noteLines.push(line);
-      }
-      const note = noteLines.join("\n").trim() || undefined;
-      const noteType = note ? (parsedNoteType ?? "note") : undefined;
-
-      annotations.push({ id, cfiRange, text, color, note, noteType, chapter, created });
+      const ann = this.parseObEpubChunk(trimmed, epubFilePath);
+      if (ann) annotations.push(ann);
     }
 
     return annotations;

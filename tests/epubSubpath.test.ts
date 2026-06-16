@@ -72,17 +72,29 @@ describe("parseEpubSubpath", () => {
 });
 
 describe("buildEpubWikiLink", () => {
-  it("builds EPUB++ wiki link with cfi/end only", () => {
+  it("builds EPUB++ wiki link with cfi/end only and custom alias", () => {
+    const link = buildEpubWikiLink(
+      "books/demo.epub",
+      { cfiRange: "epubcfi(/6/4!/4/2/1:0)" },
+      "第三章 · 2026-05-23 18:15:42"
+    );
+    expect(link).toMatch(/^\[\[books\/demo\.epub#cfi=\/6\/4/);
+    expect(link).not.toContain("epubcfi(");
+    expect(link.endsWith("|第三章 · 2026-05-23 18:15:42]]")).toBe(true);
+    expect(extractCfiFromWikiLink(link)).toBe("epubcfi(/6/4!/4/2/1:0)");
+  });
+
+  it("builds legacy default alias when omitted", () => {
     const link = buildEpubWikiLink("books/demo.epub", {
       cfiRange: "epubcfi(/6/4!/4/2/1:0)",
     });
-    expect(link).toMatch(/^\[\[books\/demo\.epub#cfi=\/6\/4/);
-    expect(link).not.toContain("epubcfi(");
-    expect(link).not.toContain("&text=");
-    expect(link).not.toContain("&chapter=");
-    expect(link).not.toContain("&color=");
     expect(link.endsWith("|回到原文]]")).toBe(true);
-    expect(extractCfiFromWikiLink(link)).toBe("epubcfi(/6/4!/4/2/1:0)");
+  });
+
+  it("extracts CFI from title-alias wiki link", () => {
+    const link =
+      "[[epub-books/苦论.epub#cfi=/6/6!/4/2/10/1:0&end=/6/6!/4/2/10/1:44|语言的萎缩 · 2026-06-16 11:21:21]]";
+    expect(extractCfiFromWikiLink(link)).toBe("epubcfi(/6/6!/4/2/10,/1:0,/1:44)");
   });
 
   it("extracts CFI from wiki link with calibre assertion brackets", () => {

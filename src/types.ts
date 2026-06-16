@@ -136,19 +136,19 @@ export function noteTypeLabel(id: NoteType | undefined, types: NoteTypeDef[]): s
   return types.find((t) => t.id === (id ?? "note"))?.label ?? DEFAULT_NOTE_TYPES[0].label;
 }
 
-/** 摘录中「回到原文」链接的写入格式 */
+/** 摘录标题跳转链接的写入格式 */
 export type SourceLinkFormat = "block-ref" | "wiki-link";
 
 export const SOURCE_LINK_FORMATS: { id: SourceLinkFormat; label: string; desc: string }[] = [
   {
     id: "block-ref",
     label: "块引用",
-    desc: "[回到原文](#^ann-id)，CFI 存在 HTML 注释中，链接短且稳定",
+    desc: "标题 [章节 · 时间](#^ann-id)，CFI 存在 HTML 注释中",
   },
   {
     id: "wiki-link",
     label: "Wiki 链接(推荐)",
-    desc: "[[书名.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]，便于跨笔记引用",
+    desc: "标题 [[书名.epub#cfi=...|章节 · 时间]]，便于跨笔记引用",
   },
 ];
 
@@ -158,7 +158,7 @@ export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
 
 export interface EpubPluginSettings {
   excerptFolder: string;
-  /** 新标注与转换时使用的「回到原文」链接格式 */
+  /** 新标注与转换时使用的摘录标题跳转格式 */
   sourceLinkFormat: SourceLinkFormat;
   aiApiUrl: string;
   aiApiKey: string;
@@ -173,6 +173,10 @@ export interface EpubPluginSettings {
   noteIconOffsetX: number;
   /** 垂直偏移 (px)，正值向下 */
   noteIconOffsetY: number;
+  /** EPUB 阅读器内 SVG 高亮透明度 (0.15–0.85) */
+  epubHighlightOpacity: number;
+  /** 摘录 callout 背景透明度 (0.15–0.85) */
+  excerptCalloutOpacity: number;
   /** 五种想法类型的图标与显示名称（id 固定，仅可改 label / icon） */
   noteTypes: NoteTypeDef[];
 }
@@ -190,6 +194,8 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   noteIconSize: 20,
   noteIconOffsetX: 2,
   noteIconOffsetY: 0,
+  epubHighlightOpacity: 0.38,
+  excerptCalloutOpacity: 0.2,
   noteTypes: DEFAULT_NOTE_TYPES.map((t) => ({ ...t })),
 };
 
@@ -269,6 +275,15 @@ export const NOTE_ICON_OFFSET_X_MIN = -8;
 export const NOTE_ICON_OFFSET_X_MAX = 100;
 export const NOTE_ICON_OFFSET_Y_MIN = -8;
 export const NOTE_ICON_OFFSET_Y_MAX = 10;
+
+export const HIGHLIGHT_OPACITY_MIN = 0.15;
+export const HIGHLIGHT_OPACITY_MAX = 0.85;
+
+export function clampHighlightOpacity(value: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0.38;
+  return Math.min(HIGHLIGHT_OPACITY_MAX, Math.max(HIGHLIGHT_OPACITY_MIN, n));
+}
 
 export function clampNoteIconSize(value: number): number {
   return Math.min(NOTE_ICON_SIZE_MAX, Math.max(NOTE_ICON_SIZE_MIN, Math.round(value)));

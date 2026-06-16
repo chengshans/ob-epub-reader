@@ -156,8 +156,19 @@ function parseAnchorGoto(
   return parseObEpubGotoUrl(getAnchorGotoHref(anchor));
 }
 
+function isObEpubCalloutTitleAnchor(anchor: HTMLAnchorElement): boolean {
+  const title = anchor.closest(".callout-title, .callout-title-inner");
+  if (!title) return false;
+  const callout = anchor.closest('[data-callout="ob-epub"]');
+  return Boolean(callout);
+}
+
 function isObEpubGotoAnchor(anchor: HTMLAnchorElement): boolean {
   if (anchor.dataset.obEpubGotoWired === "1") return true;
+  if (isObEpubCalloutTitleAnchor(anchor)) {
+    if (isEpubWikiLinkAnchor(anchor)) return true;
+    if (extractAnnBlockRefId(getAnchorRawHref(anchor))) return true;
+  }
   if (isEpubWikiLinkAnchor(anchor)) return true;
   const raw = getAnchorRawHref(anchor);
   if (extractAnnBlockRefId(raw)) return true;
@@ -199,20 +210,25 @@ function dispatchGoto(
         void goto(resolved.file, resolved.cfi);
       } else {
         console.error("ob-epub: ann goto resolve failed", annId, excerptPath);
-        new Notice("无法解析「回到原文」链接，请重新标注");
+        new Notice("无法解析摘录跳转链接，请重新标注");
       }
     });
     return true;
   }
 
-  // Wiki EPUB link: defer to workspace.openLinkText (patched in main.ts).
-  if (isEpubWikiLinkAnchor(anchor)) {
+  // Wiki EPUB link outside wired excerpt handler: defer to workspace.openLinkText (patched in main.ts).
+  if (isEpubWikiLinkAnchor(anchor) && !isObEpubCalloutTitleAnchor(anchor)) {
     return false;
   }
 
   console.error("ob-epub: failed to parse goto link", getAnchorGotoHref(anchor));
-  new Notice("无法解析「回到原文」链接，请重新标注或检查摘录格式");
+  new Notice("无法解析摘录跳转链接，请重新标注或检查摘录格式");
   return true;
+}
+
+function findCalloutTitleAnchor(container: HTMLElement): HTMLAnchorElement | null {
+  const title = container.querySelector(".callout-title a, .callout-title-inner a");
+  return title instanceof HTMLAnchorElement ? title : null;
 }
 
 function tryHandleGotoClick(
@@ -232,9 +248,15 @@ function tryHandleGotoClick(
 
   const callout = target.closest(".ob-epub-goto-callout") as HTMLElement | null;
   if (callout && !target.closest("a")) {
-    const link = findGotoLinkNear(callout);
-    if (link) {
-      const handled = dispatchGoto(link, goto, resolveAnn, app);
+    const titleLink = findCalloutTitleAnchor(callout);
+    if (titleLink) {
+      const handled = dispatchGoto(titleLink, goto, resolveAnn, app);
+      if (!handled) return false;
+      return true;
+    }
+    const legacyLink = findLegacyGotoLinkNear(callout);
+    if (legacyLink) {
+      const handled = dispatchGoto(legacyLink, goto, resolveAnn, app);
       if (!handled) return false;
       return true;
     }
@@ -320,7 +342,8 @@ async function wireGotoAnchor(
 
   const wired = parseAnchorGoto(anchor, app, excerptPath);
   if (wired) {
-    applyGotoWire(anchor, wired, goto);
+    const annId = extractAnnBlockRefId(getAnchorRawHref(anchor)) ?? undefined;
+    applyGotoWire(anchor, { ...wired, annId }, goto);
     return;
   }
 
@@ -344,12 +367,18 @@ async function wireObEpubCallouts(
     const container = (node.closest(".callout") ?? node) as HTMLElement;
     if (container.dataset.obEpubGotoWired === "1") continue;
 
-    const gotoLink = findGotoLinkNear(container);
+    const titleLink = findCalloutTitleAnchor(container);
+    const legacyLink = findLegacyGotoLinkNear(container);
+    const gotoLink = titleLink ?? legacyLink;
     if (!gotoLink) continue;
 
     await wireGotoAnchor(gotoLink, goto, resolveAnn, excerptPath, app);
     const parsed = parseAnchorGoto(gotoLink, app, excerptPath);
-    if (!parsed) continue;
+    const annId = extractAnnBlockRefId(getAnchorRawHref(gotoLink));
+    const resolved =
+      parsed ??
+      (annId && resolveAnn ? await resolveAnn(annId, excerptPath) : null);
+    if (!resolved) continue;
 
     container.dataset.obEpubGotoWired = "1";
     container.addClass("ob-epub-goto-callout");
@@ -359,12 +388,13 @@ async function wireObEpubCallouts(
       if ((e.target as HTMLElement).closest("a")) return;
       e.preventDefault();
       e.stopPropagation();
-      void goto(parsed.file, parsed.cfi);
+      void goto(resolved.file, resolved.cfi);
     });
   }
 }
 
-function findGotoLinkNear(container: HTMLElement): HTMLAnchorElement | null {
+/** Legacy excerpts: standalone「回到原文」link below the callout. */
+function findLegacyGotoLinkNear(container: HTMLElement): HTMLAnchorElement | null {
   let sibling: Element | null = container;
   while (sibling) {
     sibling = sibling.nextElementSibling;

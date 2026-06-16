@@ -6,7 +6,7 @@ import { ProgressStore } from "./ProgressStore";
 import { AIService } from "./AIService";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, clampHighlightOpacity, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
@@ -40,8 +40,10 @@ export default class ObEpubPlugin extends Plugin {
     await this.migrateHashGotoLinksOnce();
     // Strip legacy text/chapter/color from wiki goto links (once)
     await this.migrateVerboseWikiLinksOnce();
+    // Move goto links into callout titles (once)
+    await this.migrateTitleGotoLinksOnce();
 
-    // Click「回到原文」/ callout → jump EPUB (works in split view)
+    // Click excerpt title / legacy「回到原文」/ callout → jump EPUB (works in split view)
     registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi), (annId, excerptPath) =>
       this.annotationVaultStore.resolveGotoFromExcerpt(excerptPath, annId)
     );
@@ -61,6 +63,10 @@ export default class ObEpubPlugin extends Plugin {
         this.settings,
         async (themeId) => {
           this.settings.readingTheme = themeId;
+          await this.saveSettings();
+        },
+        async (opacity) => {
+          this.settings.epubHighlightOpacity = clampHighlightOpacity(opacity);
           await this.saveSettings();
         }
       );
@@ -141,6 +147,14 @@ export default class ObEpubPlugin extends Plugin {
       }
     });
 
+    this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
+  }
+
+  private applyExcerptCalloutOpacity(opacity: number): void {
+    document.documentElement.style.setProperty(
+      "--ob-epub-excerpt-callout-opacity",
+      String(clampHighlightOpacity(opacity))
+    );
   }
 
   /** 一次性迁移：将 data.json 中的 progress 移到 vault JSON 文件 */
@@ -193,6 +207,19 @@ export default class ObEpubPlugin extends Plugin {
       await this.saveData(data);
     } catch (err) {
       console.error("ob-epub: wiki link slim migration failed", err);
+    }
+  }
+
+  /** One-time: rewrite excerpt goto links into callout title links. */
+  private async migrateTitleGotoLinksOnce() {
+    try {
+      const data = (await this.loadData()) ?? {};
+      if (data.titleGotoLinksMigrated) return;
+      await this.annotationVaultStore.convertAllExcerptSourceLinks();
+      data.titleGotoLinksMigrated = true;
+      await this.saveData(data);
+    } catch (err) {
+      console.error("ob-epub: title goto link migration failed", err);
     }
   }
 
@@ -305,9 +332,14 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
     this.settings.sourceLinkFormat = normalizeSourceLinkFormat(this.settings.sourceLinkFormat);
+    this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
+    this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
+    this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
   }
 
   async saveSettings() {
+    this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
+    this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
     const existing = (await this.loadData()) ?? {};
     existing.settings = this.settings;
     await this.saveData(existing);
@@ -316,6 +348,8 @@ export default class ObEpubPlugin extends Plugin {
     await this.progressStore?.updateSettings(this.settings);
     this.annotationVaultStore?.updateSettings(this.settings);
     this.aiService?.updateSettings(this.settings);
+
+    this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
 
     // Update open views
     this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE).forEach((leaf) => {
@@ -326,6 +360,7 @@ export default class ObEpubPlugin extends Plugin {
   onunload() {
     this.unpatchEpubWikiLinks?.();
     this.unpatchEpubWikiLinks = null;
+    document.documentElement.style.removeProperty("--ob-epub-excerpt-callout-opacity");
     try {
       this.app.workspace.detachLeavesOfType(BOOKSHELF_VIEW_TYPE);
       this.app.workspace.detachLeavesOfType(EPUB_READER_VIEW_TYPE);
