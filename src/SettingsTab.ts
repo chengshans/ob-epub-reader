@@ -1,5 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type ObEpubPlugin from "./main";
+import { ExcerptCheckModal } from "./ExcerptCheckModal";
 import {
   DEFAULT_NOTE_TYPES,
   NoteType,
@@ -41,17 +42,50 @@ export class EpubSettingsTab extends PluginSettingTab {
     containerEl.addClass("ob-epub-settings");
     new Setting(containerEl).setName("常规").setHeading();
 
-    new Setting(containerEl)
+    const excerptFolderSetting = new Setting(containerEl)
       .setName("摘录文件夹")
-      .setDesc("摘录 Markdown 保存目录；阅读进度写入各书摘录文件的 frontmatter")
       .addText((text) =>
         text
-          .setPlaceholder("epub-books/anno")
+          .setPlaceholder("{filefolder}/anno")
           .setValue(this.plugin.settings.excerptFolder)
           .onChange(async (value) => {
             this.plugin.settings.excerptFolder = value || "epub-books/anno";
             await this.plugin.saveSettings();
           })
+      );
+    excerptFolderSetting.descEl.empty();
+    excerptFolderSetting.descEl.appendText(
+      "摘录 Markdown 保存目录；阅读进度写入各书摘录文件的 frontmatter。支持 {filefolder} 占位符（EPUB 所在目录），如 {filefolder}/anno。"
+    );
+    excerptFolderSetting.descEl.createEl("br");
+    excerptFolderSetting.descEl.createSpan({
+      cls: "ob-epub-settings-warn",
+      text: "移动 EPUB 或文件夹后，需手动更新摘录 frontmatter 中的 epub-source 为新路径，否则「回到原文」链接会失效",
+    });
+
+    new Setting(containerEl)
+      .setName("检查摘录元数据")
+      .setDesc(
+        "检查摘录 frontmatter 的 epub-source 是否指向存在的 EPUB；仅当 epub-source 缺失或无效时，才按 {filefolder} 规则查找同级 EPUB"
+      )
+      .addButton((btn) =>
+        btn.setButtonText("开始检查").onClick(async () => {
+          btn.setDisabled(true);
+          try {
+            const report = await this.plugin.annotationVaultStore.checkExcerptMetadata();
+            new ExcerptCheckModal(this.app, report).open();
+            if (report.withIssues === 0) {
+              new Notice(`已检查 ${report.checked} 个摘录文件，未发现问题`);
+            } else {
+              new Notice(`发现 ${report.withIssues} 个摘录文件存在问题，详见弹窗`);
+            }
+          } catch (err) {
+            console.error("ob-epub: excerpt metadata check failed", err);
+            new Notice("检查摘录元数据失败，请查看控制台");
+          } finally {
+            btn.setDisabled(false);
+          }
+        })
       );
 
     new Setting(containerEl)
@@ -76,7 +110,9 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("转换已有摘录链接")
-      .setDesc("按上方所选格式，批量重写摘录文件夹内所有《书名》摘录.md 中的跳转链接")
+      .setDesc(
+        "按上方所选格式，批量重写摘录文件夹内所有《书名》摘录.md 中的跳转链接；使用 {filefolder} 时会扫描库内全部《书名》摘录.md"
+      )
       .addButton((btn) =>
         btn.setButtonText("立即转换").onClick(async () => {
           btn.setDisabled(true);

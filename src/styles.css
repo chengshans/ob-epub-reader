@@ -971,6 +971,50 @@ a.ob-epub-goto-link {
   border-color: var(--interactive-accent);
 }
 
+.ob-epub-settings .ob-epub-settings-warn {
+  color: var(--text-error, #e0533d);
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-summary {
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-list {
+  max-height: 360px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-item {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-item:last-child {
+  border-bottom: none;
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-path {
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-meta {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.ob-epub-excerpt-check-modal .ob-epub-excerpt-check-issues {
+  margin: 6px 0 0 1.2em;
+  color: var(--text-error, #e0533d);
+}
+
 /* ---- Dark theme adjustments ---- */
 .theme-dark .epub-reader-area {
   background: var(--background-primary);

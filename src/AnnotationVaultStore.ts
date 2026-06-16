@@ -1,6 +1,15 @@
 import { App, normalizePath, TFile } from "obsidian";
 import { extractEpubCfiLiteral } from "./cfi/cfiString";
 import {
+  EXCERPT_MD_NAME_RE,
+  ExcerptMetadataCheckItem,
+  ExcerptMetadataCheckReport,
+  extractTitleFromExcerptName,
+  inferFilefolderFromExcerptLocation,
+  isDynamicExcerptFolder,
+  resolveExcerptFolder,
+} from "./excerptFolder";
+import {
   buildEpubWikiLink,
   extractCfiFromWikiLink,
   GOTO_WIKI_LINK_LINE_RE,
@@ -119,10 +128,25 @@ export class AnnotationVaultStore {
 
   // ── Path helpers ──────────────────────────────────────────────────────────
 
+  private resolveFolder(epubFilePath: string): string {
+    return resolveExcerptFolder(this.settings.excerptFolder, epubFilePath);
+  }
+
+  private listExcerptMarkdownFiles(): TFile[] {
+    const template = this.settings.excerptFolder;
+    const all = this.app.vault.getMarkdownFiles();
+    if (isDynamicExcerptFolder(template)) {
+      return all.filter((f) => EXCERPT_MD_NAME_RE.test(f.name));
+    }
+    const folder = template.replace(/\/$/, "");
+    const prefix = folder ? `${folder}/` : "";
+    return all.filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+  }
+
   getAnnotationFilePath(epubFilePath: string): string {
-    const folder = this.settings.excerptFolder.replace(/\/$/, "");
+    const folder = this.resolveFolder(epubFilePath);
     const basename = epubFilePath.split("/").pop() ?? epubFilePath;
-    const title = basename.replace(/\.epub$/i, "");
+    const title = basename.replace(/\.epub$/i, "").trimEnd();
     return normalizePath(`${folder}/《${title}》摘录.md`);
   }
 
@@ -270,11 +294,7 @@ export class AnnotationVaultStore {
 
   /** Rewrite all excerpt files to use the current sourceLinkFormat. Returns files updated. */
   async convertAllExcerptSourceLinks(): Promise<number> {
-    const folder = this.settings.excerptFolder.replace(/\/$/, "");
-    const prefix = folder ? `${folder}/` : "";
-    const files = this.app.vault
-      .getMarkdownFiles()
-      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+    const files = this.listExcerptMarkdownFiles();
 
     let updated = 0;
     for (const file of files) {
@@ -288,6 +308,77 @@ export class AnnotationVaultStore {
       }
     }
     return updated;
+  }
+
+  private epubFileExists(epubPath: string): boolean {
+    const normalized = normalizePath(epubPath);
+    const file =
+      this.app.vault.getFileByPath(normalized) ??
+      this.app.vault.getAbstractFileByPath(normalized);
+    return file instanceof TFile && file.extension === "epub";
+  }
+
+  private findEpubByTitleInFolder(folder: string, title: string): TFile | null {
+    const normalizedFolder = normalizePath(folder);
+    const normalizedTitle = title.trimEnd();
+    for (const file of this.app.vault.getFiles()) {
+      if (file.extension !== "epub") continue;
+      const slash = file.path.lastIndexOf("/");
+      const parent = slash >= 0 ? file.path.slice(0, slash) : "";
+      if (normalizePath(parent) !== normalizedFolder) continue;
+      if (file.basename.trimEnd() === normalizedTitle) return file;
+    }
+    return null;
+  }
+
+  /** Validate excerpt frontmatter epub-source and local EPUB per folder template. */
+  async checkExcerptMetadata(): Promise<ExcerptMetadataCheckReport> {
+    const files = this.listExcerptMarkdownFiles();
+    const items: ExcerptMetadataCheckItem[] = [];
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const epubSource = this.extractEpubSourceFromFrontmatter(content);
+      const filefolder = inferFilefolderFromExcerptLocation(
+        file.path,
+        this.settings.excerptFolder
+      );
+      const title = extractTitleFromExcerptName(file.name);
+      const localEpub =
+        filefolder && title ? this.findEpubByTitleInFolder(filefolder, title) : null;
+      const issues: ExcerptMetadataCheckItem["issues"] = [];
+
+      const epubSourceValid = Boolean(epubSource && this.epubFileExists(epubSource));
+
+      if (!epubSource) {
+        issues.push("missing-epub-source");
+      } else if (!epubSourceValid) {
+        issues.push("epub-source-not-found");
+      }
+
+      // epub-source 有效时视为可正常跳转，不再做路径位置等二次校验
+      if (!epubSourceValid && filefolder && title && !localEpub) {
+        issues.push("local-epub-not-found");
+      }
+
+      if (issues.length > 0) {
+        items.push({
+          excerptPath: file.path,
+          epubSource,
+          expectedExcerptPath: epubSourceValid
+            ? this.getAnnotationFilePath(epubSource!)
+            : undefined,
+          localEpubPath: localEpub?.path,
+          issues,
+        });
+      }
+    }
+
+    return {
+      checked: files.length,
+      withIssues: items.length,
+      items,
+    };
   }
 
   private extractCfiFromLegacyLink(text: string): string | null {
@@ -464,13 +555,9 @@ export class AnnotationVaultStore {
   }
 
   async scanAllProgress(): Promise<Record<string, BookProgress>> {
-    const folder = this.settings.excerptFolder.replace(/\/$/, "");
-    const prefix = folder ? `${folder}/` : "";
     const result: Record<string, BookProgress> = {};
 
-    const files = this.app.vault
-      .getMarkdownFiles()
-      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+    const files = this.listExcerptMarkdownFiles();
 
     for (const file of files) {
       const content = await this.app.vault.read(file);
@@ -487,11 +574,7 @@ export class AnnotationVaultStore {
 
   /** One-time fix for excerpt md files written with the old `<…>` link format. */
   async fixLegacyGotoLinksInVault(): Promise<void> {
-    const folder = this.settings.excerptFolder.replace(/\/$/, "");
-    const prefix = folder ? `${folder}/` : "";
-    const files = this.app.vault
-      .getMarkdownFiles()
-      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+    const files = this.listExcerptMarkdownFiles();
 
     for (const file of files) {
       const content = await this.app.vault.read(file);
@@ -505,11 +588,7 @@ export class AnnotationVaultStore {
 
   /** Convert any legacy goto links to #^ann-id block refs with CFI comments. */
   async migrateRemainingObsidianGotoLinks(): Promise<void> {
-    const folder = this.settings.excerptFolder.replace(/\/$/, "");
-    const prefix = folder ? `${folder}/` : "";
-    const files = this.app.vault
-      .getMarkdownFiles()
-      .filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+    const files = this.listExcerptMarkdownFiles();
 
     for (const file of files) {
       const content = await this.app.vault.read(file);
@@ -585,7 +664,7 @@ export class AnnotationVaultStore {
     const existing = this.app.vault.getAbstractFileByPath(mdPath);
     if (existing instanceof TFile) return existing;
 
-    const folder = this.settings.excerptFolder;
+    const folder = this.resolveFolder(epubFilePath);
     if (!this.app.vault.getAbstractFileByPath(folder)) {
       await this.app.vault.createFolder(folder).catch(() => {});
     }
