@@ -186,7 +186,7 @@ function isObEpubGotoAnchor(anchor: HTMLAnchorElement): boolean {
 function isGotoLinkElement(el: HTMLAnchorElement): boolean {
   if (isObEpubGotoAnchor(el)) return true;
   const text = el.textContent?.trim();
-  return text === "回到原文";
+  return text === "回到原文" || text === "原文";
 }
 
 /** @returns true when navigation was handled (or async handler started). */

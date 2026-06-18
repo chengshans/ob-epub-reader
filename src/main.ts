@@ -3,7 +3,6 @@ import { BOOKSHELF_ICON_ID, BOOKSHELF_ICON_SVG } from "./icons/bookshelfIcon";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
-import { AIService } from "./AIService";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
 import { DEFAULT_SETTINGS, EpubPluginSettings, clampHighlightOpacity, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes } from "./types";
@@ -17,7 +16,6 @@ export default class ObEpubPlugin extends Plugin {
   settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
   progressStore!: ProgressStore;
   annotationVaultStore!: AnnotationVaultStore;
-  aiService!: AIService;
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
   private lastGotoKey = "";
   private lastGotoAt = 0;
@@ -29,7 +27,6 @@ export default class ObEpubPlugin extends Plugin {
     this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
     this.progressStore = new ProgressStore(this.app, this.settings, this.annotationVaultStore);
     await this.progressStore.load();
-    this.aiService = new AIService(this.settings);
 
     // Migrate old annotations from plugin data.json (one-time)
     await this.migrateOldAnnotations();
@@ -59,7 +56,6 @@ export default class ObEpubPlugin extends Plugin {
         this,
         this.annotationVaultStore,
         this.progressStore,
-        this.aiService,
         this.settings,
         async (themeId) => {
           this.settings.readingTheme = themeId;
@@ -347,7 +343,6 @@ export default class ObEpubPlugin extends Plugin {
     // Propagate settings changes to services
     await this.progressStore?.updateSettings(this.settings);
     this.annotationVaultStore?.updateSettings(this.settings);
-    this.aiService?.updateSettings(this.settings);
 
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
 

@@ -68,7 +68,61 @@ export function buildEpubWikiLink(
   alias = "回到原文"
 ): string {
   const fragment = buildEpubSubpath(input).slice(1);
-  return `[[${epubPath}#${fragment}|${alias}]]`;
+  return `[[${epubPath}#${fragment}|${escapeWikiAlias(alias)}]]`;
+}
+
+/** Escape special characters in Obsidian wiki-link alias. */
+export function escapeWikiAlias(alias: string): string {
+  return alias.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\]/g, "\\]");
+}
+
+/** Unescape Obsidian wiki-link alias. */
+export function unescapeWikiAlias(alias: string): string {
+  let result = "";
+  for (let i = 0; i < alias.length; i++) {
+    if (alias[i] === "\\" && i + 1 < alias.length) {
+      result += alias[i + 1];
+      i += 1;
+    } else {
+      result += alias[i];
+    }
+  }
+  return result;
+}
+
+function findLastUnescapedPipe(text: string): number {
+  for (let i = text.length - 1; i >= 0; i--) {
+    if (text[i] !== "|") continue;
+    let backslashes = 0;
+    for (let j = i - 1; j >= 0 && text[j] === "\\"; j--) backslashes++;
+    if (backslashes % 2 === 0) return i;
+  }
+  return -1;
+}
+
+/** Parse `[[path.epub#cfi=...|alias]]` markdown (supports `]` inside CFI). */
+export function parseEpubWikiLinkMarkdown(
+  markdown: string
+): { path: string; subpath: string; alias: string } | null {
+  const trimmed = markdown.trim();
+  const linkStart = trimmed.indexOf("[[");
+  const linkEnd = trimmed.lastIndexOf("]]");
+  if (linkStart < 0 || linkEnd <= linkStart) return null;
+
+  const inner = trimmed.slice(linkStart + 2, linkEnd);
+  const pipe = findLastUnescapedPipe(inner);
+  if (pipe <= 0) return null;
+
+  const linkBody = inner.slice(0, pipe);
+  const alias = unescapeWikiAlias(inner.slice(pipe + 1));
+  const hash = linkBody.indexOf("#");
+  if (hash < 0) return null;
+
+  const path = linkBody.slice(0, hash);
+  const subpath = linkBody.slice(hash);
+  if (!path.toLowerCase().endsWith(".epub") || !subpath.includes("cfi=")) return null;
+
+  return { path, subpath, alias };
 }
 
 /** Match EPUB wiki links in markdown; CFI wire form may contain `]` (e.g. `[calibre_pb_0]`). */
@@ -108,10 +162,12 @@ export function slimWikiGotoLinksInContent(content: string): string {
 
 /** Extract navigate CFI from any EPUB wiki link markdown in text. */
 export function extractCfiFromWikiLink(text: string): string | null {
-  const match = text.match(/\[\[[^\]]+\.epub#(.+)\|[^\]]+\]\]/i);
-  if (!match) return null;
-  const parsed = parseEpubSubpath(`#${match[1]}`);
-  return parsed?.cfi ?? null;
+  const linkMatch = text.match(/\[\[[^\n]+\.epub#cfi=[^\n]+\]\]/i);
+  if (!linkMatch) return null;
+  const parsed = parseEpubWikiLinkMarkdown(linkMatch[0]);
+  if (!parsed) return null;
+  const params = parseEpubSubpath(parsed.subpath.startsWith("#") ? parsed.subpath : `#${parsed.subpath}`);
+  return params?.cfi ?? null;
 }
 
 /** True when line is a goto source link (block-ref, markdown, or wiki). */
@@ -119,6 +175,7 @@ export function isSourceLinkLine(line: string): boolean {
   const trimmed = line.trim();
   if (/^\[回到原文\]\(/.test(trimmed)) return true;
   if (/^\[\[[^\]]+\.epub#cfi=/i.test(trimmed)) return true;
+  if (/\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\]\s*$/.test(trimmed)) return true;
   return false;
 }
 

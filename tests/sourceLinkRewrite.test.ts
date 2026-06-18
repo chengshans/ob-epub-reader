@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { App } from "obsidian";
 import { AnnotationVaultStore } from "../src/AnnotationVaultStore";
-import { buildCalloutHeaderLine } from "../src/excerptHeader";
 import { DEFAULT_SETTINGS, type EpubPluginSettings } from "../src/types";
 
 import { LEGACY_GOTO_WIKI_LINK_RE } from "../src/epubSubpath";
@@ -13,6 +12,7 @@ const EPUB_SOURCE = "books/demo.epub";
 const CALIBRE_EPUB = "epub-books/最小阻力之路 (罗伯特·弗里茨).epub";
 const CREATED = "2026-05-23T18:15:42.000Z";
 const CHAPTER = "第三章";
+const TEXT = "摘录正文第一行\n摘录正文第二行";
 
 function countLegacyGotoLinks(chunk: string): number {
   const md = chunk.match(/\[回到原文\]\([^)\n]+\)/g)?.length ?? 0;
@@ -22,22 +22,6 @@ function countLegacyGotoLinks(chunk: string): number {
 
 function countCfiComments(chunk: string): number {
   return chunk.match(/<!--\s*ob-epub-cfi:/g)?.length ?? 0;
-}
-
-function expectedBlockRefHeader(): string {
-  return buildCalloutHeaderLine(
-    {
-      id: ANN_ID,
-      cfiRange: SAMPLE_CFI,
-      text: "摘录正文",
-      color: "yellow",
-      chapter: CHAPTER,
-      created: CREATED,
-    },
-    EPUB_SOURCE,
-    "block-ref",
-    () => "2026-05-23 18:15:42"
-  );
 }
 
 function makeSampleChunk(opts: {
@@ -71,26 +55,8 @@ function createStore(sourceLinkFormat: EpubPluginSettings["sourceLinkFormat"]): 
 }
 
 describe("rewriteGotoLinksToCurrentFormat", () => {
-  it("converts wiki title link without ^ann-id to block-ref title", () => {
-    const store = createStore("block-ref");
-    const chunk = [
-      "> [!ob-epub|green] [[epub-books/苦论 (E.M.齐奥朗) .epub#cfi=/6/6!/4/2/10/1:0&end=/6/6!/4/2/10/1:44|语言的萎缩 · 2026-06-15 18:32:00]]",
-      "> 有浩繁的卷帙作为我们的情感之源",
-    ].join("\n");
-    const result = store.rewriteGotoLinksToCurrentFormat(
-      chunk,
-      "epub-books/苦论 (E.M.齐奥朗) .epub"
-    );
-
-    expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).not.toMatch(/\[\[.*\.epub#cfi=/);
-    expect(result).toContain("[语言的萎缩 · 2026-06-15 18:32:00](#^ann-");
-    expect(result).toContain("^ann-");
-    expect(countCfiComments(result)).toBe(1);
-  });
-
-  it("converts legacy wiki-only link to title wiki link", () => {
-    const store = createStore("wiki-link");
+  it("converts legacy wiki-only link to callout-title wiki link", () => {
+    const store = createStore("callout-title");
     const chunk = makeSampleChunk({
       links: [`[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|回到原文]]`],
     });
@@ -98,99 +64,63 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
 
     expect(countLegacyGotoLinks(result)).toBe(0);
     expect(result).toContain(`[[${EPUB_SOURCE}#cfi=`);
-    expect(result).toContain(`${CHAPTER} · 2026-05-23 18:15:42]] ^${ANN_ID}`);
+    expect(result).toContain(`${CHAPTER} · 2026-05-23 18:15:42]]`);
     expect(result).toMatch(/^>\s*\[!ob-epub\|yellow\]\s+\[\[/m);
     expect(countCfiComments(result)).toBe(0);
   });
 
-  it("converts legacy block-ref to title block-ref with CFI comment", () => {
-    const store = createStore("block-ref");
-    const chunk = makeSampleChunk({
-      cfiComment: true,
-      links: [`[回到原文](#^${ANN_ID})`],
-    });
+  it("converts callout-title to inline-suffix", () => {
+    const store = createStore("inline-suffix");
+    const chunk = [
+      `> [!ob-epub|green] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文第一行",
+      "> 摘录正文第二行",
+    ].join("\n");
     const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
 
-    expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).toContain(expectedBlockRefHeader());
-    expect(countCfiComments(result)).toBe(1);
+    expect(result).not.toMatch(/^>\s*\[!ob-epub/m);
+    expect(result).toContain("摘录正文第二行[[");
+    expect(result).toContain("|原文]]");
   });
 
-  it("removes wiki link with calibre CFI brackets when converting to block-ref title", () => {
-    const store = createStore("block-ref");
+  it("converts callout-title to inline-colored", () => {
+    const store = createStore("inline-colored");
+    const chunk = [
+      `> [!ob-epub|purple] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文",
+    ].join("\n");
+    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+
+    expect(result).toContain('<span style="color: #8b5cf6;">摘录正文</span>');
+    expect(result).toContain("|原文]]");
+  });
+
+  it("converts callout-title to wiki-text-alias", () => {
+    const store = createStore("wiki-text-alias");
+    const chunk = [
+      `> [!ob-epub|yellow] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文",
+    ].join("\n");
+    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+
+    expect(result).toMatch(/^\[\[books\/demo\.epub#cfi=.*\|摘录正文\]\]$/m);
+    expect(result).not.toContain("[!ob-epub");
+  });
+
+  it("removes wiki link with calibre CFI brackets when converting to callout-title", () => {
+    const store = createStore("callout-title");
     const wikiLink =
       `[[${CALIBRE_EPUB}#cfi=/6/50!/4/2[calibre_pb_0]/14/1:3&end=/6/50!/4/2[calibre_pb_0]/14/1:118&chapter=第一部分&color=red|回到原文]]`;
     const chunk = makeSampleChunk({ links: [wikiLink] });
     const result = store.rewriteGotoLinksToCurrentFormat(chunk, CALIBRE_EPUB);
 
     expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).not.toContain("[[");
     expect(result).toContain("[calibre_pb_0]");
-    expect(countCfiComments(result)).toBe(1);
+    expect(result).toMatch(/^>\s*\[!ob-epub\|yellow\]\s+\[\[/m);
   });
 
-  it("deduplicates double legacy markdown links when converting to block-ref title", () => {
-    const store = createStore("block-ref");
-    const chunk = makeSampleChunk({
-      cfiComment: true,
-      links: [
-        `[回到原文](#^${ANN_ID})`,
-        `[回到原文](obsidian://ob-epub-goto?file=books%2Fdemo.epub&cfi=${encodeURIComponent(SAMPLE_CFI)})`,
-      ],
-    });
-    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
-
-    expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).toContain(expectedBlockRefHeader());
-  });
-
-  it("removes callout-prefixed legacy link and uses title block-ref", () => {
-    const store = createStore("block-ref");
-    const chunk = [
-      `> [!ob-epub|yellow] ${CHAPTER} · 2026-05-23 18:15:42 ^${ANN_ID}`,
-      "> 摘录正文",
-      `> [回到原文](#^${ANN_ID})`,
-      "",
-      `<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`,
-      `[回到原文](#^${ANN_ID})`,
-    ].join("\n");
-    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
-
-    expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).not.toMatch(/^>\s*\[回到原文\]/m);
-    expect(result).toContain(expectedBlockRefHeader());
-  });
-
-  it("wraps block-ref metadata with blank lines (CFI comment only)", () => {
-    const store = createStore("block-ref");
-    const chunk = makeSampleChunk({ note: "想法文字", links: [`[回到原文](#^${ANN_ID})`] });
-    chunk.concat(`\n<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`);
-    const result = store.rewriteGotoLinksToCurrentFormat(
-      `${chunk}\n<!-- ob-epub-cfi: ${SAMPLE_CFI} -->\n[回到原文](#^${ANN_ID})`,
-      EPUB_SOURCE
-    );
-
-    expect(result).toMatch(/想法文字\n\n<!-- ob-epub-cfi:/);
-    expect(result).toMatch(/<!-- ob-epub-cfi:[^\n]+$/);
-    expect(countLegacyGotoLinks(result)).toBe(0);
-  });
-
-  it("converts legacy block-ref to title wiki link", () => {
-    const store = createStore("wiki-link");
-    const chunk = makeSampleChunk({
-      cfiComment: true,
-      links: [`[回到原文](#^${ANN_ID})`],
-    });
-    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
-
-    expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).toMatch(/^>\s*\[!ob-epub\|yellow\]\s+\[\[books\/demo\.epub#cfi=/m);
-    expect(result).toContain(`${CHAPTER} · 2026-05-23 18:15:42]] ^${ANN_ID}`);
-    expect(countCfiComments(result)).toBe(0);
-  });
-
-  it("converts verbose legacy wiki link to title wiki link", () => {
-    const store = createStore("wiki-link");
+  it("converts verbose legacy wiki link to callout-title", () => {
+    const store = createStore("callout-title");
     const verbose =
       `[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42&text=abc&chapter=第三章&color=yellow|回到原文]]`;
     const chunk = makeSampleChunk({ links: [verbose] });
@@ -198,37 +128,33 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
 
     expect(countLegacyGotoLinks(result)).toBe(0);
     expect(result).toContain(
-      `[[books/demo.epub#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|第三章 · 2026-05-23 18:15:42]] ^${ANN_ID}`
+      `[[books/demo.epub#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|第三章 · 2026-05-23 18:15:42]]`
     );
     expect(result).not.toContain("&text=");
   });
 
-  it("is idempotent for block-ref title format", () => {
-    const store = createStore("block-ref");
-    const once = store.rewriteGotoLinksToCurrentFormat(
-      makeSampleChunk({ cfiComment: true, links: [`[回到原文](#^${ANN_ID})`] }),
-      EPUB_SOURCE
-    );
+  it("is idempotent for callout-title format", () => {
+    const store = createStore("callout-title");
+    const chunk = [
+      `> [!ob-epub|yellow] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文第一行",
+      "> 摘录正文第二行",
+    ].join("\n");
+    const once = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
     const twice = store.rewriteGotoLinksToCurrentFormat(once, EPUB_SOURCE);
     expect(twice).toBe(once);
   });
 
-  it("appends title wiki link when note contains [回到原文] text without markdown link", () => {
-    const store = createStore("wiki-link");
-    const chunk = makeSampleChunk({
-      note: "参见 [回到原文] 章节说明",
-      cfiComment: true,
-      links: [`[回到原文](#^${ANN_ID})`],
-    });
-    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
-
-    expect(countLegacyGotoLinks(result)).toBe(0);
-    expect(result).toContain("参见 [回到原文] 章节说明");
-    expect(result).toMatch(/\[\[books\/demo\.epub#cfi=/);
+  it("is idempotent for inline-suffix format", () => {
+    const store = createStore("inline-suffix");
+    const chunk = `摘录正文[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|原文]]`;
+    const once = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+    const twice = store.rewriteGotoLinksToCurrentFormat(once, EPUB_SOURCE);
+    expect(twice).toBe(once);
   });
 
-  it("leaves chunk unchanged when converting to wiki without epub-source", () => {
-    const store = createStore("wiki-link");
+  it("leaves chunk unchanged when converting without epub-source", () => {
+    const store = createStore("callout-title");
     const chunk = makeSampleChunk({
       cfiComment: true,
       links: [`[回到原文](#^${ANN_ID})`],
@@ -238,13 +164,63 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     expect(result).toBe(chunk);
   });
 
-  it("leaves chunk unchanged when converting to wiki without extractable CFI", () => {
-    const store = createStore("wiki-link");
+  it("leaves chunk unchanged when converting without extractable CFI", () => {
+    const store = createStore("callout-title");
     const chunk = makeSampleChunk({
       links: [`[回到原文](#^${ANN_ID})`],
     });
     const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
 
     expect(result).toBe(chunk);
+  });
+
+  it("converts grouped chapter layout without polluting wiki alias", () => {
+    const store = createStore("wiki-text-alias");
+    const grouped = [
+      "---",
+      `epub-source: ${EPUB_SOURCE}`,
+      "created: 2026-06-17",
+      "---",
+      "",
+      "# 《demo》摘录",
+      "",
+      "<!-- ob-epub-chapter-toc-start -->",
+      "## 章节目录",
+      "",
+      "- [[#I|I]]（1）",
+      "<!-- ob-epub-chapter-toc-end -->",
+      "",
+      "<!-- ob-epub-chapter-body-start -->",
+      "## I",
+      "",
+      '<span style="color: #e0533d ;">我之所以活着，不过是因为我能够想什么时候去死就什么时候去死。</span> '
+        + `[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|原文]]`,
+      "",
+      "---",
+      "",
+      "## 未知章节",
+      "",
+      '<span style="color: #3b82c4 ;">当我身无分文的时候，我试着想象光音天。</span> '
+        + `[[${EPUB_SOURCE}#cfi=/6/20!/4/2/1:0&end=/6/20!/4/2/1:10|原文]]`,
+      "",
+      "<!-- ob-epub-chapter-body-end -->",
+      "",
+    ].join("\n");
+
+    const result = store.rewriteGotoLinksToCurrentFormat(grouped, EPUB_SOURCE);
+
+    expect(result).toContain("## 章节目录");
+    expect(result).toContain("<!-- ob-epub-chapter-body-start -->");
+    expect(result).toContain("<!-- ob-epub-chapter-body-end -->");
+    expect(result).toContain("[[#I|I]]");
+    expect(result).not.toContain("<!-- ob-epub-chapter-toc-start -->[[");
+    expect(result).toMatch(
+      /\[\[books\/demo\.epub#cfi=\/6\/14!\/4\/2\/1:0&end=\/6\/14!\/4\/2\/1:42\|我之所以活着，不过是因为我能够想什么时候去死就什么时候去死。\]\]/
+    );
+    expect(result).toMatch(
+      /\[\[books\/demo\.epub#cfi=\/6\/20!\/4\/2\/1:0&end=\/6\/20!\/4\/2\/1:10\|当我身无分文的时候，我试着想象光音天。\]\]/
+    );
+    const bodyEndCount = (result.match(/<!-- ob-epub-chapter-body-end -->/g) ?? []).length;
+    expect(bodyEndCount).toBe(1);
   });
 });

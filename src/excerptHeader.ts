@@ -46,10 +46,8 @@ export function buildCalloutHeaderLine(
   formatDate: (date: Date) => string
 ): string {
   const alias = buildTitleAliasFromAnn(ann, formatDate);
-  if (format === "wiki-link") {
-    return `${buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, alias)} ^${ann.id}`;
-  }
-  return `[${alias}](#^${ann.id}) ^${ann.id}`;
+  void format;
+  return buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, alias);
 }
 
 export function parseChapterDateFromTitle(titleText: string): {

@@ -2,7 +2,7 @@
 
 **中文** | [English](README.en.md)
 
-在 Obsidian 中直接阅读 EPUB 电子书，支持目录导航、阅读进度、文本高亮与标注、摘录导出、阅读主题，以及 AI 辅助解读。
+在 Obsidian 中直接阅读 EPUB 电子书，支持目录导航、阅读进度、文本高亮与标注、摘录导出与阅读主题。
 
 ## 安装
 
@@ -27,9 +27,8 @@
 - **阅读进度** — 自动保存位置，摘录 frontmatter 记录进度百分比、章节与阅读时长
 - **文本高亮与标注** — 选中文字后可画线（黄/红/绿/蓝/紫）或添加想法
 - **五种想法类型** — 做笔记、灵感、准备实践、反复看、疑问；可在设置中自定义名称与图标
-- **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，含可配置的「回到原文」跳转链接（块引用或 Wiki 链接）
-- **深度链接** — 块引用 `#^ann-id` 或 Wiki 链接 `#cfi=...` 从摘录跳回 EPUB 原文；旧版 `obsidian://ob-epub-goto` 链接会在首次加载时自动迁移
-- **AI 集成** — 选中文字后调用 OpenAI 兼容 API，将解读写入摘录文件
+- **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，支持四种可配置的摘录链接格式
+- **深度链接** — 使用 Wiki 链接 `#cfi=...` 从摘录跳回 EPUB 原文；旧版 `obsidian://ob-epub-goto` 与块引用格式可自动兼容并迁移
 - **阅读模式** — 分页 / 滚动，可调字体大小
 - **阅读主题** — 跟随 Obsidian、默认白、护眼黄、护眼绿、羊皮纸、夜间（工具栏可切换，设置中可设默认）
 - **键盘与滚轮** — 方向键、PageUp/PageDown、鼠标滚轮翻页
@@ -49,41 +48,43 @@
 3. 摘录写入 `{摘录文件夹}/《书名》摘录.md`
 4. 点击原文旁的想法图标，或侧栏标注列表，可查看、编辑或删除标注
 
-摘录块示例（默认 **块引用** 格式）：
+摘录块示例（默认 **Callout + 标题链接** 格式）：
 
 ```markdown
-> [!ob-epub|yellow] 第三章 · 2026-06-09 12:00 ^ann-abc123
+> [!ob-epub|yellow] [[书名.epub#cfi=/6/14!/4/2/1:0&end=...|第三章 · 2026-06-09 12:00]]
 > 选中的原文内容
 
 <!-- ob-epub-note-type: inspiration -->
 可选的想法文字
 
-<!-- ob-epub-cfi: epubcfi(/6/14!/4/2,/1:0,/1:42) -->
-[回到原文](#^ann-abc123)
-
 ---
 ```
 
-链接块前后各留一行空行；CFI 注释与 `[回到原文]` 之间不加空行。`^ann-abc123` 与 callout 标题中的块 ID 一致，点击链接即可跳回 EPUB 对应位置。
+### 摘录链接格式
+
+在 **设置 → 摘录标题跳转格式** 可选择四种预设。修改设置仅影响新标注；已有摘录需点击 **转换已有摘录链接 → 立即转换** 批量转换。
+
+| ID | 设置名称 | 写入示例 | 颜色 |
+|----|----------|----------|------|
+| `callout-title` | Callout + 标题链接 | `> [!ob-epub\|purple] [[book.epub#cfi=...\|章节 · 时间]]` + `> 正文` | callout metadata |
+| `inline-suffix` | 正文 + 文末「原文」 | `正文。[[book.epub#cfi=...\|原文]]` | 不保存，读回 `yellow` |
+| `inline-colored` | 着色正文 + 文末「原文」 | `<span style="color: #8b5cf6;">正文</span> [[...\|原文]]` | span hex → 最近高亮色 |
+| `wiki-text-alias` | 链接即正文 | `[[book.epub#cfi=...\|摘录全文]]` | 不保存，读回 `yellow` |
+
+想法区块（四种格式共用）：
+
+```markdown
+<!-- ob-epub-note-type: inspiration -->
+想法内容
+```
+
+多行摘录：格式 2/3（`inline-suffix`、`inline-colored`）保留换行；格式 4（`wiki-text-alias`）写入时将正文换行合并为单行（空格连接），别名需转义 `\|`、`\]`。
 
 ### 回到原文
 
-摘录中的 **回到原文** 链接、或点击 `ob-epub` callout，会跳转到 EPUB 阅读器的对应位置（分屏模式下同样有效）。
+摘录中的 Wiki 链接（`[[书名.epub#cfi=...|...]]`）、**原文** 链接、或 `ob-epub` callout 标题链接，均可跳转到 EPUB 阅读器的对应位置（分屏模式下同样有效）。
 
-**链接格式**（**设置 → 回到原文链接格式**）：
-
-| 格式 | 示例 | 说明 |
-|------|------|------|
-| **块引用（推荐）** | `[回到原文](#^ann-id)` | CFI 写在 `<!-- ob-epub-cfi: epubcfi(...) -->` 注释中，链接短、稳定，Obsidian 渲染一致 |
-| **Wiki 链接** | `[[书名.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | 仅含 CFI 定位参数，便于跨笔记引用 |
-
-新标注按当前所选格式写入。已有摘录可在设置中切换格式后，点击 **转换已有摘录链接 → 立即转换** 批量重写。
-
-> 旧版 `obsidian://ob-epub-goto?file=...&cfi=...` 链接会在插件首次加载时自动迁移为块引用格式。
-
-### AI 解读
-
-**推荐使用 [Claudian](https://github.com/YishenTu/claudian)**：内置 AI 适合段落级的一键释义；若需要多轮对话、结合 Vault 上下文深化理解，或调用 Claude Code / Codex 等代理读写笔记，推荐安装 Obsidian 社区插件 [Claudian](https://github.com/YishenTu/claudian)。EPUB 摘录以 Markdown 保存在 Vault 中，可在 Claudian 侧栏直接引用《书名》摘录.md，与 AI 共读、整理想法、扩展笔记。
+> 旧版 `obsidian://ob-epub-goto?file=...&cfi=...`、旧块引用与旧注释格式会在插件首次加载或手动转换时迁移为当前选中的摘录格式。
 
 ### 阅读主题
 
@@ -119,24 +120,20 @@
 | 选项 | 说明 | 默认值 |
 |------|------|--------|
 | 摘录文件夹 | 摘录 Markdown 保存目录（进度写入各书 frontmatter） | `epub-books/anno` |
-| 回到原文链接格式 | 块引用（推荐）或 Wiki 链接；见上文 | 块引用 |
-| 转换已有摘录链接 | 按当前格式批量重写摘录文件夹内所有《书名》摘录.md | — |
+| 摘录标题跳转格式 | 四种预设格式；见上文 | Callout + 标题链接 |
+| 转换已有摘录链接 | 转换为当前选中的摘录格式，批量重写摘录文件夹内所有《书名》摘录.md | — |
 | 默认阅读模式 | 分页 / 滚动 | 滚动 |
 | 默认字体大小 | 内容区字号（px） | 16 |
 | 默认阅读主题 | 跟随 Obsidian / 默认白 / 护眼黄 / 护眼绿 / 羊皮纸 / 夜间 | 跟随 Obsidian |
 | 想法类型 | 五种想法分类的名称与图标（id 固定，可恢复默认） | 见设置页 |
 | 想法图标大小 | 原文旁想法图标的直径（px） | 20 |
 | 想法图标位置 | 相对高亮区域的水平/垂直偏移（px） | 2 / 0 |
-| AI API URL | OpenAI 兼容接口地址 | `https://api.openai.com/v1` |
-| AI API Key | 本地保存，不上传 | （空） |
-| AI 模型 | 如 `gpt-4o-mini` | `gpt-4o-mini` |
-| AI Prompt 模板 | 使用 `{text}` 占位 | 见设置页 |
 
 ## 数据存储
 
 | 文件 | 位置 | 内容 |
 |------|------|------|
-| `《书名》摘录.md` | `{摘录文件夹}/` | 高亮、标注、AI 解读；frontmatter 含阅读进度 |
+| `《书名》摘录.md` | `{摘录文件夹}/` | 高亮、标注；frontmatter 含阅读进度 |
 | `data.json` | `.obsidian/plugins/ob-epub-reader/` | 插件设置（不含标注与进度） |
 
 摘录 frontmatter 进度字段：`progress-percent`、`progress-cfi`、`progress-chapter`、`last-read`、`reading-time-seconds`（累计阅读秒数）。

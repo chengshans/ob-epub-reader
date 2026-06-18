@@ -8,7 +8,61 @@ export const CHAPTER_TOC_END = "<!-- ob-epub-chapter-toc-end -->";
 export const CHAPTER_BODY_START = "<!-- ob-epub-chapter-body-start -->";
 export const CHAPTER_BODY_END = "<!-- ob-epub-chapter-body-end -->";
 
-const OB_EPUB_BLOCK_RE = /^>\s*\[!ob-epub\|/m;
+export const OB_EPUB_BLOCK_RE = /^>\s*\[!ob-epub\|/m;
+
+/** Remove leading `## 章节` headings from an annotation segment. */
+export function stripChapterHeadingPrefix(text: string): string {
+  let result = text.trim();
+  while (result.startsWith("##")) {
+    const next = result.indexOf("\n");
+    if (next < 0) return "";
+    result = result.slice(next + 1).trimStart();
+  }
+  return result;
+}
+
+function looksLikeAnnotationBlock(text: string): boolean {
+  const body = stripChapterHeadingPrefix(text);
+  if (!body) return false;
+  if (OB_EPUB_BLOCK_RE.test(body)) return true;
+  if (/^\[\[[^\n]+\.epub#cfi=[^\n]+\|[^\n]+\]\]\s*$/m.test(body)) return true;
+  if (/<span\s+style="color:\s*#/i.test(body)) return true;
+  if (/\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\]/.test(body)) return true;
+  return false;
+}
+
+/** Extract chapter name from a segment that may include a `## 章节` heading. */
+export function extractChapterFromSegment(segment: string): string {
+  const match = segment.trim().match(/^##\s+([^\n]+)/m);
+  return match?.[1]?.trim() ?? "";
+}
+
+/**
+ * Split excerpt file content into individual annotation blocks (ignores TOC / YAML).
+ * Works for grouped chapter layout and flat `---`-separated files.
+ */
+export function extractAnnotationBlocksFromExcerpt(content: string): string[] {
+  const bodyStart = content.indexOf(CHAPTER_BODY_START);
+  let region: string;
+  if (bodyStart >= 0) {
+    const from = bodyStart + CHAPTER_BODY_START.length;
+    const bodyEnd = content.indexOf(CHAPTER_BODY_END);
+    region = content.slice(from, bodyEnd >= 0 ? bodyEnd : content.length);
+  } else {
+    const { preamble, suffix } = splitExcerptRegions(content);
+    const preLen = preamble.length;
+    const sufLen = suffix.length;
+    region = content.slice(preLen, content.length - (sufLen > 0 ? sufLen : 0));
+  }
+
+  const blocks: string[] = [];
+  for (const segment of region.split(/\n+---\n+/)) {
+    const trimmed = segment.trim();
+    if (!trimmed || !looksLikeAnnotationBlock(trimmed)) continue;
+    blocks.push(trimmed);
+  }
+  return blocks;
+}
 
 /** Annotation block separator: blank line above and below `---`. */
 export const EXCERPT_CHUNK_SEPARATOR = "\n\n---\n\n";

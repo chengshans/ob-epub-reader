@@ -4,7 +4,6 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { cfiProgressMatches } from "./cfi/cfiMatch";
 import { parseEpubSubpath } from "./epubSubpath";
 import { ProgressStore, normalizeCfi, normalizePercent } from "./ProgressStore";
-import { AIService } from "./AIService";
 import {
   EpubPluginSettings,
   EpubOpenBridge,
@@ -79,7 +78,6 @@ export class EpubReaderView extends FileView {
   private openBridge: EpubOpenBridge;
   private annotationVaultStore: AnnotationVaultStore;
   private progressStore: ProgressStore;
-  private aiService: AIService;
   private settings: EpubPluginSettings;
   private pendingCfi: string = "";
   private annotationWatcherCleanup: (() => void) | null = null;
@@ -140,7 +138,6 @@ export class EpubReaderView extends FileView {
     openBridge: EpubOpenBridge,
     annotationVaultStore: AnnotationVaultStore,
     progressStore: ProgressStore,
-    aiService: AIService,
     settings: EpubPluginSettings,
     onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>,
     onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>
@@ -149,7 +146,6 @@ export class EpubReaderView extends FileView {
     this.openBridge = openBridge;
     this.annotationVaultStore = annotationVaultStore;
     this.progressStore = progressStore;
-    this.aiService = aiService;
     this.settings = settings;
     this.onReadingThemeChange = onReadingThemeChange;
     this.onEpubHighlightOpacityChange = onEpubHighlightOpacityChange;
@@ -1318,12 +1314,6 @@ export class EpubReaderView extends FileView {
       this.openNoteModal();
     });
 
-    const aiBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "🤖 AI" });
-    aiBtn.addEventListener("click", async () => {
-      this.dismissContextMenu();
-      await this.runAI();
-    });
-
     document.body.appendChild(menu);
     this.contextMenu = menu;
     this.positionMenu(menu, contents);
@@ -1715,6 +1705,10 @@ export class EpubReaderView extends FileView {
    * Full refresh: parse the vault md file → clear existing annotations →
    * re-draw every highlight. Called on book open and on file-watcher trigger.
    */
+  private async refreshHighlightsAfterMutation(): Promise<void> {
+    await this.refreshHighlights();
+  }
+
   private async refreshHighlights() {
     if (!this.file || !this.rendition || this.isRefreshingHighlights) return;
     this.isRefreshingHighlights = true;
@@ -1743,11 +1737,7 @@ export class EpubReaderView extends FileView {
     const existing = await this.annotationVaultStore.getByCfi(this.file.path, this.selectedCfi);
     if (existing) {
       await this.annotationVaultStore.update(this.file.path, existing.id, { color });
-      const updated = await this.annotationVaultStore.getById(this.file.path, existing.id);
-      if (updated) {
-        this.upsertCachedHighlight(updated);
-        this.redrawLine(updated);
-      }
+      await this.refreshHighlightsAfterMutation();
     } else {
       const ann: Annotation = {
         id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
@@ -1758,9 +1748,7 @@ export class EpubReaderView extends FileView {
         created: new Date().toISOString(),
       };
       await this.annotationVaultStore.add(this.file.path, ann);
-      this.upsertCachedHighlight(ann);
-      this.drawLine(ann);
-      this.scheduleHighlightSync();
+      await this.refreshHighlightsAfterMutation();
     }
     this.clearSelection();
     if (this.sidebarMode === "notes") this.renderNotesPanel();
@@ -1791,9 +1779,7 @@ export class EpubReaderView extends FileView {
           created: new Date().toISOString(),
         };
         await this.annotationVaultStore.add(filePath, ann);
-        this.upsertCachedHighlight(ann);
-        this.drawLine(ann);
-        this.scheduleHighlightSync();
+        await this.refreshHighlightsAfterMutation();
         this.clearSelection();
         if (this.sidebarMode === "notes") this.renderNotesPanel();
         new Notice(note ? "✅ 标注已保存" : "✅ 已画线");
@@ -2280,30 +2266,6 @@ export class EpubReaderView extends FileView {
 
     this.buildNotesToolbar(this.notesEl);
     this.refreshNotesListView(list);
-  }
-
-  private async runAI() {
-    if (!this.file || !this.selectedText) return;
-    if (!this.aiService.isConfigured()) {
-      new Notice("请先在设置中配置 AI API Key");
-      return;
-    }
-
-    const notice = new Notice("🤖 AI 正在思考…", 0);
-    try {
-      const result = await this.aiService.query(this.selectedText);
-      notice.hide();
-      const filePath = await this.annotationVaultStore.appendAIResponse(
-        this.file.path,
-        this.selectedText,
-        result,
-        this.selectedCfi
-      );
-      new Notice(`✅ AI 回复已写入 ${filePath}`);
-    } catch (err) {
-      notice.hide();
-      new Notice(`❌ AI 请求失败: ${err}`);
-    }
   }
 
   // Called when settings change

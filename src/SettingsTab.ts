@@ -9,6 +9,7 @@ import {
   READING_THEMES,
   ReadingThemeId,
   SOURCE_LINK_FORMATS,
+  SourceLinkFormat,
   clampHighlightOpacity,
   resolveNoteTypes,
 } from "./types";
@@ -91,25 +92,22 @@ export class EpubSettingsTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
-      .setName("摘录标题跳转格式")
-      .setDesc(
-        SOURCE_LINK_FORMATS.find((f) => f.id === this.plugin.settings.sourceLinkFormat)?.desc ??
-          "摘录 callout 标题内嵌跳转链接的写入格式"
-      )
-      .addDropdown((drop) => {
-        for (const fmt of SOURCE_LINK_FORMATS) {
-          drop.addOption(fmt.id, fmt.label);
-        }
-        drop
-          .setValue(this.plugin.settings.sourceLinkFormat)
-          .onChange(async (value) => {
-            this.plugin.settings.sourceLinkFormat =
-              value === "wiki-link" ? "wiki-link" : "block-ref";
-            await this.plugin.saveSettings();
-            this.display();
-          });
-      });
+    const formatSetting = new Setting(containerEl)
+      .setName("摘录导出格式")
+      .setDesc(this.formatSettingDesc(this.plugin.settings.sourceLinkFormat));
+
+    formatSetting.addDropdown((drop) => {
+      for (const fmt of SOURCE_LINK_FORMATS) {
+        drop.addOption(fmt.id, fmt.label);
+      }
+      drop
+        .setValue(this.plugin.settings.sourceLinkFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.sourceLinkFormat = value as SourceLinkFormat;
+          formatSetting.setDesc(this.formatSettingDesc(this.plugin.settings.sourceLinkFormat));
+          await this.plugin.saveSettings();
+        });
+    });
 
     new Setting(containerEl)
       .setName("摘录 callout 背景透明度")
@@ -132,7 +130,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("转换已有摘录链接")
       .setDesc(
-        "按上方所选格式，批量重写摘录文件夹内所有《书名》摘录.md 中的跳转链接；使用 {filefolder} 时会扫描库内全部《书名》摘录.md"
+        "批量将摘录文件夹内所有《书名》摘录.md 转换为当前选中的摘录导出格式；使用 {filefolder} 时会扫描库内全部《书名》摘录.md"
       )
       .addButton((btn) =>
         btn.setButtonText("立即转换").onClick(async () => {
@@ -291,59 +289,10 @@ export class EpubSettingsTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl).setName("AI 集成").setHeading();
+  }
 
-    new Setting(containerEl)
-      .setName("AI API URL")
-      .setDesc("OpenAI 兼容接口地址（例：https://api.openai.com/v1）")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://api.openai.com/v1")
-          .setValue(this.plugin.settings.aiApiUrl)
-          .onChange(async (value) => {
-            this.plugin.settings.aiApiUrl = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("AI API Key")
-      .setDesc("你的 API Key（保存在本地，不会上传）")
-      .addText((text) => {
-        text
-          .setPlaceholder("sk-...")
-          .setValue(this.plugin.settings.aiApiKey)
-          .onChange(async (value) => {
-            this.plugin.settings.aiApiKey = value;
-            await this.plugin.saveSettings();
-          });
-        text.inputEl.type = "password";
-      });
-
-    new Setting(containerEl)
-      .setName("AI 模型")
-      .setDesc("使用的模型名称（例：gpt-4o-mini）")
-      .addText((text) =>
-        text
-          .setPlaceholder("gpt-4o-mini")
-          .setValue(this.plugin.settings.aiModel)
-          .onChange(async (value) => {
-            this.plugin.settings.aiModel = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("AI Prompt 模板")
-      .setDesc("使用 {text} 作为选中文字的占位符")
-      .addTextArea((area) =>
-        area
-          .setPlaceholder("请解释以下这段话的含义：\n\n{text}")
-          .setValue(this.plugin.settings.aiPromptTemplate)
-          .onChange(async (value) => {
-            this.plugin.settings.aiPromptTemplate = value;
-            await this.plugin.saveSettings();
-          })
-      );
+  private formatSettingDesc(format: SourceLinkFormat): string {
+    const found = SOURCE_LINK_FORMATS.find((f) => f.id === format);
+    return found?.desc ?? SOURCE_LINK_FORMATS[0].desc;
   }
 }

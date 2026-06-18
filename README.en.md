@@ -2,7 +2,7 @@
 
 [中文](README.md) | **English**
 
-Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault excerpts, deep links back to the source, reading themes, and optional AI interpretation.
+Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault excerpts, deep links back to the source, and reading themes.
 
 ## Installation
 
@@ -28,8 +28,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
 - **Excerpt export** — Annotations sync to Markdown excerpt files with configurable back-to-source links (block reference or wiki link)
-- **Deep links** — Block refs `#^ann-id` or wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs are migrated on first load
-- **AI integration** — Send selected text to any OpenAI-compatible API and append the response to the excerpt file
+- **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading modes** — Paginated or scroll; adjustable font size
 - **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in toolbar; set default in settings)
 - **Keyboard and mouse** — Arrow keys, Page Up/Down, and mouse wheel for page turns
@@ -70,28 +69,15 @@ The link block is surrounded by blank lines; there is no blank line between the 
 
 Click **回到原文** in an excerpt file, or click an `ob-epub` callout, to jump to that passage in the EPUB reader (works in split view).
 
-**Link format** (**Settings → Back-to-source link format**):
+**Link format** (**Settings → Excerpt title link format**):
 
 | Format | Example | Notes |
 |--------|---------|-------|
-| **Block reference (recommended)** | `[回到原文](#^ann-id)` | CFI stored in `<!-- ob-epub-cfi: epubcfi(...) -->`; short, stable links with consistent Obsidian rendering |
-| **Wiki link** | `[[Book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | CFI-only params; handy for linking to the same EPUB location from other notes |
+| **Wiki link** | `[[Book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | The only write format; CFI-only params make links portable across notes |
 
-New annotations use the selected format. To rewrite existing excerpts, switch the format in settings, then click **Convert existing excerpt links → Convert now**.
+New annotations are always written as wiki links. To rewrite existing excerpts, click **Convert existing excerpt links → Convert now**.
 
-> Legacy `obsidian://ob-epub-goto?file=...&cfi=...` links are automatically migrated to block references on first plugin load.
-
-### AI interpretation
-
-The plugin includes lightweight AI interpretation: select a passage and call an OpenAI-compatible API in one click; the response is appended to the excerpt file.
-
-1. Configure AI API URL, key, model, and prompt template in settings
-2. Select text and choose **AI** from the context menu
-3. The response is appended to the book’s excerpt file
-
-Use `{text}` in the prompt template as a placeholder for the selection.
-
-**Recommended: [Claudian](https://github.com/YishenTu/claudian)** — Built-in AI is best for quick, one-shot explanations. For multi-turn dialogue, vault-aware deep reading, or agent workflows (Claude Code, Codex, etc.) that read and write your notes, install the Obsidian community plugin [Claudian](https://github.com/YishenTu/claudian). EPUB excerpts live as Markdown in your vault; open them in Claudian’s sidebar to co-read with AI, refine thoughts, and expand your notes.
+> Legacy `obsidian://ob-epub-goto?file=...&cfi=...` links, old block-ref links, and legacy CFI-comment layouts are migrated to wiki links on first plugin load or via manual conversion.
 
 ### Reading themes
 
@@ -127,7 +113,7 @@ Configure under **Settings → EPUB Marginalia**:
 | Option | Description | Default |
 |--------|-------------|---------|
 | Excerpt folder | Directory for excerpt Markdown files (progress stored in each book’s frontmatter) | `epub-books/anno` |
-| Back-to-source link format | Block reference (recommended) or wiki link; see above | Block reference |
+| Excerpt title link format | Wiki link only; see above | Wiki link |
 | Convert existing excerpt links | Batch-rewrite all `《Title》摘录.md` files in the excerpt folder to the current format | — |
 | Default reading mode | Paginated / scroll | Scroll |
 | Default font size | Reader font size (px) | 16 |
@@ -135,16 +121,12 @@ Configure under **Settings → EPUB Marginalia**:
 | Note types | Labels and icons for five note categories (fixed ids; reset to defaults available) | See settings tab |
 | Note icon size | Diameter of note icons beside highlights (px) | 20 |
 | Note icon position | Horizontal / vertical offset from highlight (px) | 2 / 0 |
-| AI API URL | OpenAI-compatible endpoint | `https://api.openai.com/v1` |
-| AI API key | Stored locally only | (empty) |
-| AI model | e.g. `gpt-4o-mini` | `gpt-4o-mini` |
-| AI prompt template | Use `{text}` placeholder | See settings tab |
 
 ## Data storage
 
 | File | Location | Contents |
 |------|----------|----------|
-| `《Book Title》摘录.md` | `{excerpt folder}/` | Highlights, margin notes, AI output; frontmatter includes reading progress |
+| `《Book Title》摘录.md` | `{excerpt folder}/` | Highlights and margin notes; frontmatter includes reading progress |
 | `data.json` | `.obsidian/plugins/ob-epub-reader/` | Plugin settings (not annotations or progress) |
 
 Progress fields in excerpt frontmatter: `progress-percent`, `progress-cfi`, `progress-chapter`, `last-read`, `reading-time-seconds` (cumulative reading time in seconds).

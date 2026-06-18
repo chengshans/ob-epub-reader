@@ -26,17 +26,13 @@ function makeFlatExcerpt(): string {
     "",
     "# 《demo》摘录",
     "",
-    "> [!ob-epub|yellow] [语言的萎缩 · 2026-06-16 08:22:26](#^ann-1) ^ann-1",
+    "> [!ob-epub|yellow] [[books/demo.epub#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|语言的萎缩 · 2026-06-16 08:22:26]] ^ann-1",
     "> 第一条摘录",
-    "",
-    `<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`,
     "",
     "---",
     "",
-    "> [!ob-epub|purple] [时间与贫血 · 2026-06-16 11:03:10](#^ann-2) ^ann-2",
+    "> [!ob-epub|purple] [[books/demo.epub#cfi=/6/20!/4/2/1:0&end=/6/20!/4/2/1:10|时间与贫血 · 2026-06-16 11:03:10]] ^ann-2",
     "> 第二条摘录",
-    "",
-    `<!-- ob-epub-cfi: ${CFI_B} -->`,
     "",
     "---",
     "",
@@ -70,7 +66,7 @@ describe("recomposeExcerptFromContent", () => {
     expect(result.indexOf("## 语言的萎缩")).toBeLessThan(result.indexOf("## 时间与贫血"));
   });
 
-  it("preserves title block-ref links and CFI comments", () => {
+  it("preserves callout-title wiki links on recompose", () => {
     const store = createStore();
     const flat = makeFlatExcerpt();
     const annotations = parseAnnotations(store, flat);
@@ -79,13 +75,12 @@ describe("recomposeExcerptFromContent", () => {
     const expected1 = buildCalloutHeaderLine(
       annotations.find((a) => a.id === "ann-1")!,
       EPUB_SOURCE,
-      "block-ref",
+      "callout-title",
       () => "2026-06-16 08:22:26"
     );
     expect(result).toContain(expected1);
     expect(result).not.toContain("[回到原文]");
-    expect(result).toContain(`<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`);
-    expect(result).toContain(`<!-- ob-epub-cfi: ${CFI_B} -->`);
+    expect(result).not.toContain("<!-- ob-epub-cfi:");
   });
 
   it("recomposed blocks use blank lines around --- separators", () => {
@@ -115,7 +110,7 @@ describe("recomposeExcerptFromContent", () => {
     const result = store.recomposeExcerptFromContent(flat, EPUB_SOURCE, remaining);
 
     expect(result).not.toContain("^ann-1");
-    expect(result).toContain("^ann-2");
+    expect(result).toContain("时间与贫血");
     expect(result).toContain("[!note] AI 解读");
   });
 
@@ -127,7 +122,7 @@ describe("recomposeExcerptFromContent", () => {
     const reparsed = parseAnnotations(store, result);
 
     expect(reparsed).toHaveLength(2);
-    expect(reparsed.map((a) => a.id).sort()).toEqual(["ann-1", "ann-2"]);
-    expect(reparsed.find((a) => a.id === "ann-1")?.chapter).toBe("语言的萎缩");
+    expect(reparsed.map((a) => a.chapter).sort()).toEqual(["时间与贫血", "语言的萎缩"]);
+    expect(reparsed.find((a) => a.chapter === "语言的萎缩")?.text).toBe("第一条摘录");
   });
 });

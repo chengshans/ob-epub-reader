@@ -12,19 +12,20 @@ import {
 import {
   buildGroupedAnnotationBody,
   composeExcerptContent,
+  extractAnnotationBlocksFromExcerpt,
+  extractChapterFromSegment,
   joinExcerptChunks,
   splitExcerptChunks,
   splitExcerptRegions,
+  stripChapterHeadingPrefix,
 } from "./excerptChapterLayout";
 import {
-  buildCalloutHeaderLine,
-  hasLegacyStandaloneGotoLink,
-  parseCalloutHeader,
-  resolveAnnotationId,
-} from "./excerptHeader";
+  buildExcerptBlock,
+  isChunkInCurrentFormat,
+  parseExcerptChunk,
+} from "./excerptBlockFormat";
 import {
   extractCfiFromWikiLink,
-  isSourceLinkLine,
   slimWikiGotoLinksInContent,
 } from "./epubSubpath";
 import {
@@ -33,31 +34,21 @@ import {
   EpubPluginSettings,
   formatReadingTime,
   HighlightColor,
-  HIGHLIGHT_COLORS,
-  normalizeNoteType,
-  NoteType,
   parseReadingTime,
   resolveNoteTypes,
 } from "./types";
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
-// block-ref:
-// > [!ob-epub|yellow] [第三章 · 2026-05-23 18:15:42](#^ann-abc123) ^ann-abc123
+// callout-title:
+// > [!ob-epub|yellow] [[book.epub#cfi=...|章节 · 时间]]
 // > 原文内容…
-// <!-- ob-epub-cfi: epubcfi(...) -->
 //
-// wiki-link:
-// > [!ob-epub|yellow] [[book.epub#cfi=/6/14!/4/2/1:0&end=...|第三章 · 2026-05-23 18:15:42]]
-// > 原文内容…
+// inline-suffix / inline-colored / wiki-text-alias — see excerptBlockFormat.ts
 //
 // ---
 //
 // ─────────────────────────────────────────────────────────────────────────────
-
-const CALLOUT_PREFIX = "ob-epub";
-const NOTE_TYPE_COMMENT_RE = /^<!--\s*ob-epub-note-type:\s*([a-z]+)\s*-->$/;
-const CFI_COMMENT_RE = /^<!--\s*ob-epub-cfi:\s*epubcfi\([\s\S]*?\)\s*-->$/;
 
 // Old annotation shape from plugin data.json (before migration)
 interface OldAnnotation {
@@ -75,10 +66,26 @@ export class AnnotationVaultStore {
   private settings: EpubPluginSettings;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private watchPausedUntil = 0;
+  /** Serialize excerpt read-modify-write per EPUB to avoid lost annotations. */
+  private excerptWriteChains = new Map<string, Promise<void>>();
 
   constructor(app: App, settings: EpubPluginSettings) {
     this.app = app;
     this.settings = settings;
+  }
+
+  /** Queue excerpt mutations for the same EPUB file (parallel add/update would otherwise race). */
+  private runSerializedExcerptWrite<T>(epubFilePath: string, task: () => Promise<T>): Promise<T> {
+    const prev = this.excerptWriteChains.get(epubFilePath) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(task);
+    this.excerptWriteChains.set(
+      epubFilePath,
+      run.then(
+        () => undefined,
+        () => undefined
+      )
+    );
+    return run;
   }
 
   updateSettings(settings: EpubPluginSettings) {
@@ -172,37 +179,22 @@ export class AnnotationVaultStore {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
-  /** Hidden CFI comment with a blank line before it (separator adds blank line before ---). */
-  private formatCfiMetadataBlock(cfiRange: string): string {
-    return `\n\n${this.buildCfiComment(cfiRange)}`;
-  }
-
   private buildCfiComment(cfiRange: string): string {
     return `<!-- ob-epub-cfi: ${cfiRange} -->`;
   }
 
-  private isChunkInCurrentTitleFormat(
+  private isChunkInCurrentFormat(
     chunk: string,
     ann: Annotation,
     epubSource?: string
   ): boolean {
-    if (hasLegacyStandaloneGotoLink(chunk)) return false;
-
-    const headerMatch = chunk.match(/^>\s*\[!ob-epub\|([a-z]+)\]\s+(.+)$/m);
-    if (!headerMatch) return false;
-
-    const expectedHeader = buildCalloutHeaderLine(
+    return isChunkInCurrentFormat(
+      chunk,
       ann,
       epubSource ?? "",
       this.settings.sourceLinkFormat,
       (d) => this.formatDate(d)
     );
-    if (headerMatch[2].trim() !== expectedHeader) return false;
-
-    if (this.settings.sourceLinkFormat === "block-ref") {
-      return chunk.includes(this.buildCfiComment(ann.cfiRange));
-    }
-    return !chunk.includes("<!-- ob-epub-cfi:");
   }
 
   /** Strip legacy angle-bracket wrappers and other broken link syntax. */
@@ -226,85 +218,34 @@ export class AnnotationVaultStore {
 
   /** Replace goto links in all chunks to match the current sourceLinkFormat setting. */
   rewriteGotoLinksToCurrentFormat(content: string, epubSource?: string): string {
-    const chunks = splitExcerptChunks(content);
-    const rewritten = chunks.map((chunk) => this.rewriteChunkGotoLinks(chunk, epubSource));
-    return joinExcerptChunks(rewritten);
+    if (!epubSource) return content;
+
+    const annotations = this.parseContent(content, epubSource);
+    if (annotations.length === 0) return content;
+
+    const blocks = extractAnnotationBlocksFromExcerpt(content);
+    const formatDate = (d: Date) => this.formatDate(d);
+    const needsUpdate =
+      blocks.length !== annotations.length ||
+      blocks.some((block, i) => {
+        const ann = annotations[i];
+        if (!ann) return true;
+        const body = stripChapterHeadingPrefix(block);
+        return !isChunkInCurrentFormat(
+          body,
+          ann,
+          epubSource,
+          this.settings.sourceLinkFormat,
+          formatDate
+        );
+      });
+
+    if (!needsUpdate) return content;
+    return this.recomposeExcerptFromContent(content, epubSource, annotations);
   }
 
-  private rewriteChunkGotoLinks(chunk: string, epubSource?: string): string {
-    const trimmed = chunk.trim();
-    if (!trimmed || !/\[!ob-epub\|/i.test(trimmed)) return chunk;
-
-    const ann = this.parseObEpubChunk(trimmed, epubSource ?? "");
-    if (!ann) return chunk;
-    if (this.settings.sourceLinkFormat === "wiki-link" && !epubSource) return chunk;
-
-    if (this.isChunkInCurrentTitleFormat(trimmed, ann, epubSource)) return chunk;
-
-    return this.buildBlock(ann, epubSource ?? "").trimEnd();
-  }
-
-  /** Parse one ob-epub annotation block; assigns stable id from CFI when ^ann-id is absent. */
-  private parseObEpubChunk(trimmed: string, epubFilePath: string): Annotation | null {
-    const headerMatch = trimmed.match(/^>\s*\[!ob-epub\|([a-z]+)\]\s+(.+)$/m);
-    if (!headerMatch) return null;
-
-    const color = headerMatch[1] as HighlightColor;
-    if (!HIGHLIGHT_COLORS.find((c) => c.id === color)) return null;
-
-    const parsedHeader = parseCalloutHeader(headerMatch[2], trimmed);
-    if (!parsedHeader) return null;
-
-    const cfiRange = this.extractCfiFromChunk(trimmed);
-    if (!cfiRange) return null;
-
-    const id = resolveAnnotationId(parsedHeader.annId, cfiRange);
-    const { chapter, createdIso } = parsedHeader;
-
-    const lines = trimmed.split("\n");
-    const textLines: string[] = [];
-    for (const line of lines) {
-      if (!line.startsWith(">")) continue;
-      const stripped = line.replace(/^>\s?/, "");
-      if (stripped.startsWith(`[!${CALLOUT_PREFIX}`)) continue;
-      if (/^\^ann-/.test(stripped)) continue;
-      if (/^\[回到原文\]\(/.test(stripped)) continue;
-      textLines.push(stripped);
-    }
-    const text = textLines.join("\n").trim();
-
-    const noteLines: string[] = [];
-    let parsedNoteType: NoteType | undefined;
-    let pastQuote = false;
-    for (const line of lines) {
-      if (line.startsWith(">")) {
-        pastQuote = true;
-        continue;
-      }
-      if (!pastQuote) continue;
-      if (isSourceLinkLine(line)) continue;
-      if (line.trim() === "") continue;
-      const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
-      if (typeMatch) {
-        parsedNoteType = normalizeNoteType(typeMatch[1], resolveNoteTypes(this.settings.noteTypes));
-        continue;
-      }
-      if (CFI_COMMENT_RE.test(line.trim())) continue;
-      noteLines.push(line);
-    }
-    const note = noteLines.join("\n").trim() || undefined;
-    const noteType = note ? (parsedNoteType ?? "note") : undefined;
-
-    return { id, cfiRange, text, color, note, noteType, chapter, created: createdIso };
-  }
-
-  /** One-time migration: replace legacy goto links with block refs. */
-  rewriteGotoLinksToBlockRefs(content: string): string {
-    const prev = this.settings.sourceLinkFormat;
-    this.settings = { ...this.settings, sourceLinkFormat: "block-ref" };
-    const result = this.rewriteGotoLinksToCurrentFormat(content);
-    this.settings = { ...this.settings, sourceLinkFormat: prev };
-    return result;
+  private parseExcerptChunk(trimmed: string, epubFilePath: string): Annotation | null {
+    return parseExcerptChunk(trimmed, epubFilePath, resolveNoteTypes(this.settings.noteTypes));
   }
 
   private parseSingleChunkAnnotation(
@@ -313,7 +254,7 @@ export class AnnotationVaultStore {
     annId: string,
     cfiRange: string
   ): Annotation | null {
-    const parsed = this.parseObEpubChunk(chunk.trim(), epubFilePath);
+    const parsed = this.parseExcerptChunk(chunk.trim(), epubFilePath);
     if (parsed) return parsed;
     return { id: annId, cfiRange, text: "", color: "yellow", chapter: "", created: new Date().toISOString() };
   }
@@ -733,24 +674,12 @@ export class AnnotationVaultStore {
   // ── Block serialisation ───────────────────────────────────────────────────
 
   private buildBlock(ann: Annotation, epubFilePath: string): string {
-    const headerContent = buildCalloutHeaderLine(
+    return buildExcerptBlock(
       ann,
       epubFilePath,
       this.settings.sourceLinkFormat,
       (d) => this.formatDate(d)
     );
-    const headerLine = `> [!${CALLOUT_PREFIX}|${ann.color}] ${headerContent}`;
-    const textLines = ann.text.split("\n").map((l) => `> ${l}`).join("\n");
-    const parts: string[] = [headerLine, textLines];
-    if (ann.note) {
-      parts.push("", `<!-- ob-epub-note-type: ${ann.noteType ?? "note"} -->`, ann.note);
-    }
-    const body = parts.join("\n");
-    const metadataBlock =
-      this.settings.sourceLinkFormat === "block-ref"
-        ? this.formatCfiMetadataBlock(ann.cfiRange)
-        : "";
-    return `${body}${metadataBlock}`;
   }
 
   // ── Block parsing ─────────────────────────────────────────────────────────
@@ -761,16 +690,18 @@ export class AnnotationVaultStore {
    */
   parseContent(content: string, epubFilePath: string): Annotation[] {
     const annotations: Annotation[] = [];
+    const blocks = extractAnnotationBlocksFromExcerpt(content);
+    const noteTypes = resolveNoteTypes(this.settings.noteTypes);
 
-    // Split by the `---` separator (with optional surrounding newlines)
-    const chunks = splitExcerptChunks(content);
+    for (const block of blocks) {
+      const ann = parseExcerptChunk(block, epubFilePath, noteTypes);
+      if (!ann) continue;
 
-    for (const chunk of chunks) {
-      const trimmed = chunk.trim();
-      if (!trimmed) continue;
-
-      const ann = this.parseObEpubChunk(trimmed, epubFilePath);
-      if (ann) annotations.push(ann);
+      const chapterFromHeader = extractChapterFromSegment(block);
+      if (!ann.chapter && chapterFromHeader) {
+        ann.chapter = chapterFromHeader;
+      }
+      annotations.push(ann);
     }
 
     return annotations;
@@ -806,35 +737,40 @@ export class AnnotationVaultStore {
   // ── Public CRUD ───────────────────────────────────────────────────────────
 
   async add(epubFilePath: string, ann: Annotation): Promise<void> {
-    await this.ensureFile(epubFilePath);
-    const current = await this.readContent(epubFilePath);
-    const annotations = this.parseContent(current, epubFilePath);
-    annotations.push(ann);
-    await this.recomposeExcerptFile(epubFilePath, current, annotations);
+    return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      await this.ensureFile(epubFilePath);
+      const current = await this.readContent(epubFilePath);
+      const annotations = this.parseContent(current, epubFilePath);
+      annotations.push(ann);
+      await this.recomposeExcerptFile(epubFilePath, current, annotations);
+    });
   }
 
   async update(epubFilePath: string, id: string, patch: Partial<Annotation>): Promise<void> {
-    const content = await this.readContent(epubFilePath);
-    if (!content) return;
+    return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      const content = await this.readContent(epubFilePath);
+      if (!content) return;
 
-    const annotations = this.parseContent(content, epubFilePath);
-    const idx = annotations.findIndex((a) => a.id === id);
-    if (idx < 0) return;
+      const annotations = this.parseContent(content, epubFilePath);
+      const idx = annotations.findIndex((a) => a.id === id);
+      if (idx < 0) return;
 
-    const updated: Annotation = { ...annotations[idx], ...patch };
-    // Rebuild the entire file from scratch to avoid regex-replace pitfalls
-    await this.rebuildFile(epubFilePath, content, annotations, idx, updated);
+      const updated: Annotation = { ...annotations[idx], ...patch };
+      await this.rebuildFile(epubFilePath, content, annotations, idx, updated);
+    });
   }
 
   async remove(epubFilePath: string, id: string): Promise<void> {
-    const content = await this.readContent(epubFilePath);
-    if (!content) return;
+    return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      const content = await this.readContent(epubFilePath);
+      if (!content) return;
 
-    const annotations = this.parseContent(content, epubFilePath);
-    const idx = annotations.findIndex((a) => a.id === id);
-    if (idx < 0) return;
+      const annotations = this.parseContent(content, epubFilePath);
+      const idx = annotations.findIndex((a) => a.id === id);
+      if (idx < 0) return;
 
-    await this.rebuildFile(epubFilePath, content, annotations, idx, null);
+      await this.rebuildFile(epubFilePath, content, annotations, idx, null);
+    });
   }
 
   /**
@@ -908,31 +844,6 @@ export class AnnotationVaultStore {
     }
     const leaf = this.app.workspace.getLeaf(true);
     await leaf.openFile(file as TFile);
-  }
-
-  // ── AI response append ────────────────────────────────────────────────────
-
-  async appendAIResponse(
-    epubFilePath: string,
-    selectedText: string,
-    aiResponse: string,
-    cfi: string
-  ): Promise<string> {
-    const file = await this.ensureFile(epubFilePath);
-    const current = await this.app.vault.read(file);
-    const dateStr = this.formatDate(new Date());
-    const block = [
-      `> [!note] AI 解读 · ${dateStr}`,
-      `> **原文**：${selectedText.slice(0, 100)}${selectedText.length > 100 ? "…" : ""}`,
-      `>`,
-      ...aiResponse.split("\n").map((line) => `> ${line}`),
-      ``,
-      `---`,
-      ``,
-    ].join("\n");
-    this.pauseWatch();
-    await this.app.vault.modify(file, current + "\n" + block);
-    return file.path;
   }
 
   // ── Migration from old AnnotationStore (plugin data.json) ────────────────

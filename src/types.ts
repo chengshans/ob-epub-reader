@@ -136,34 +136,50 @@ export function noteTypeLabel(id: NoteType | undefined, types: NoteTypeDef[]): s
   return types.find((t) => t.id === (id ?? "note"))?.label ?? DEFAULT_NOTE_TYPES[0].label;
 }
 
-/** 摘录标题跳转链接的写入格式 */
-export type SourceLinkFormat = "block-ref" | "wiki-link";
+/** 摘录导出 / 跳转链接的写入格式（四种固定预设） */
+export type SourceLinkFormat =
+  | "callout-title"
+  | "inline-suffix"
+  | "inline-colored"
+  | "wiki-text-alias";
 
 export const SOURCE_LINK_FORMATS: { id: SourceLinkFormat; label: string; desc: string }[] = [
   {
-    id: "block-ref",
-    label: "块引用",
-    desc: "标题 [章节 · 时间](#^ann-id)，CFI 存在 HTML 注释中",
+    id: "callout-title",
+    label: "Callout + 标题链接",
+    desc: "> [!ob-epub|颜色] [[书名.epub#cfi=...|章节 · 时间]] + 正文；保留 callout 高亮色",
   },
   {
-    id: "wiki-link",
-    label: "Wiki 链接(推荐)",
-    desc: "标题 [[书名.epub#cfi=...|章节 · 时间]]，便于跨笔记引用",
+    id: "inline-suffix",
+    label: "正文 + 文末「原文」",
+    desc: "正文后接 [[书名.epub#cfi=...|原文]]；不保存画线颜色，同步回阅读器时按黄色处理",
+  },
+  {
+    id: "inline-colored",
+    label: "着色正文 + 文末「原文」",
+    desc: "<span style=\"color:…\">正文</span> [[书名.epub#cfi=...|原文]]；通过 span 保留颜色",
+  },
+  {
+    id: "wiki-text-alias",
+    label: "链接即正文",
+    desc: "[[书名.epub#cfi=...|摘录全文]] 单行；不保存画线颜色，同步回阅读器时按黄色处理",
   },
 ];
 
+const SOURCE_LINK_FORMAT_IDS = new Set<string>(SOURCE_LINK_FORMATS.map((f) => f.id));
+
 export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
-  return value === "wiki-link" ? "wiki-link" : "block-ref";
+  if (value === "wiki-link") return "callout-title";
+  if (typeof value === "string" && SOURCE_LINK_FORMAT_IDS.has(value)) {
+    return value as SourceLinkFormat;
+  }
+  return "callout-title";
 }
 
 export interface EpubPluginSettings {
   excerptFolder: string;
   /** 新标注与转换时使用的摘录标题跳转格式 */
   sourceLinkFormat: SourceLinkFormat;
-  aiApiUrl: string;
-  aiApiKey: string;
-  aiModel: string;
-  aiPromptTemplate: string;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
   readingTheme: ReadingThemeId;
@@ -183,11 +199,7 @@ export interface EpubPluginSettings {
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
   excerptFolder: "epub-books/anno",
-  sourceLinkFormat: "block-ref",
-  aiApiUrl: "https://api.openai.com/v1",
-  aiApiKey: "",
-  aiModel: "gpt-4o-mini",
-  aiPromptTemplate: "请解释以下这段话的含义：\n\n{text}",
+  sourceLinkFormat: "callout-title",
   defaultFlow: "scrolled",
   fontSize: 16,
   readingTheme: "obsidian",
