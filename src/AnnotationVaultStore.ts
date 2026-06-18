@@ -37,6 +37,7 @@ import {
   EpubPluginSettings,
   formatReadingTime,
   HighlightColor,
+  isAnnotationsAndExcerptsEnabled,
   parseReadingTime,
   resolveNoteTypes,
 } from "./types";
@@ -93,6 +94,10 @@ export class AnnotationVaultStore {
 
   updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
+  }
+
+  private annotationsEnabled(): boolean {
+    return isAnnotationsAndExcerptsEnabled(this.settings);
   }
 
   /** Suppress file-watcher callbacks triggered by our own vault writes. */
@@ -537,6 +542,7 @@ export class AnnotationVaultStore {
   }
 
   async writeProgress(epubFilePath: string, progress: BookProgress): Promise<void> {
+    if (!this.annotationsEnabled()) return;
     const file = await this.ensureFile(epubFilePath);
     const content = await this.app.vault.read(file);
     const updated = this.upsertProgressInContent(content, progress);
@@ -766,6 +772,7 @@ export class AnnotationVaultStore {
   // ── Public CRUD ───────────────────────────────────────────────────────────
 
   async add(epubFilePath: string, ann: Annotation): Promise<void> {
+    if (!this.annotationsEnabled()) return;
     return this.runSerializedExcerptWrite(epubFilePath, async () => {
       await this.ensureFile(epubFilePath);
       const current = await this.readContent(epubFilePath);
@@ -776,6 +783,7 @@ export class AnnotationVaultStore {
   }
 
   async update(epubFilePath: string, id: string, patch: Partial<Annotation>): Promise<void> {
+    if (!this.annotationsEnabled()) return;
     return this.runSerializedExcerptWrite(epubFilePath, async () => {
       const content = await this.readContent(epubFilePath);
       if (!content) return;
@@ -790,6 +798,7 @@ export class AnnotationVaultStore {
   }
 
   async remove(epubFilePath: string, id: string): Promise<void> {
+    if (!this.annotationsEnabled()) return;
     return this.runSerializedExcerptWrite(epubFilePath, async () => {
       const content = await this.readContent(epubFilePath);
       if (!content) return;
@@ -880,6 +889,7 @@ export class AnnotationVaultStore {
   async migrateFromPluginData(
     oldAnnotations: Record<string, OldAnnotation[]>
   ): Promise<void> {
+    if (!this.annotationsEnabled()) return;
     if (!oldAnnotations || Object.keys(oldAnnotations).length === 0) return;
 
     for (const [epubFilePath, anns] of Object.entries(oldAnnotations)) {

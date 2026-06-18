@@ -3,13 +3,18 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { isCfiAhead } from "./cfi/compare";
 import { cfiSpineKey } from "./cfi/cfiMatch";
 import { isBalancedEpubCfi, unescapeCfiString } from "./cfi/cfiString";
-import { BookProgress, EpubPluginSettings } from "./types";
+import { BookProgress, EpubPluginSettings, isAnnotationsAndExcerptsEnabled } from "./types";
 
 export { cfiSpineKey } from "./cfi/cfiMatch";
 
 /** 旧版集中进度文件（仅用于一次性迁移读取） */
 const PROGRESS_FILENAME = "reading-progress.json";
 const HIDDEN_PROGRESS_FILENAME = ".reading-progress.json";
+
+export type PluginProgressPersistence = {
+  loadPluginProgress: () => Promise<Record<string, BookProgress>>;
+  savePluginProgress: (progress: Record<string, BookProgress>) => Promise<void>;
+};
 
 /** 将 epub.js 的 EpubCFI 对象或历史 JSON 对象统一为 CFI 字符串 */
 export function normalizeCfi(cfi: unknown): string {
@@ -57,21 +62,34 @@ export class ProgressStore {
   private app: App;
   private settings: EpubPluginSettings;
   private annotationVaultStore: AnnotationVaultStore;
+  private loadPluginProgress: () => Promise<Record<string, BookProgress>>;
+  private savePluginProgress: (progress: Record<string, BookProgress>) => Promise<void>;
 
   constructor(
     app: App,
     settings: EpubPluginSettings,
-    annotationVaultStore: AnnotationVaultStore
+    annotationVaultStore: AnnotationVaultStore,
+    persistence?: PluginProgressPersistence
   ) {
     this.app = app;
     this.settings = settings;
     this.annotationVaultStore = annotationVaultStore;
+    this.loadPluginProgress =
+      persistence?.loadPluginProgress ??
+      (async () => ({}));
+    this.savePluginProgress =
+      persistence?.savePluginProgress ??
+      (async () => undefined);
   }
 
   async updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
     this.annotationVaultStore.updateSettings(settings);
     await this.load();
+  }
+
+  private annotationsEnabled(): boolean {
+    return isAnnotationsAndExcerptsEnabled(this.settings);
   }
 
   private getExcerptFolder(): string {
@@ -145,6 +163,19 @@ export class ProgressStore {
     }
   }
 
+  private mergeProgressByLastRead(
+    target: Record<string, BookProgress>,
+    source: Record<string, BookProgress>
+  ): void {
+    for (const [filePath, entry] of Object.entries(source)) {
+      const normalized = normalizeProgress(entry);
+      const existing = target[filePath];
+      if (!existing || normalized.lastRead > existing.lastRead) {
+        target[filePath] = normalized;
+      }
+    }
+  }
+
   private mergeProgress(
     target: Record<string, BookProgress>,
     source: Record<string, BookProgress>
@@ -165,6 +196,7 @@ export class ProgressStore {
   private async resolveExistingProgress(filePath: string): Promise<BookProgress | null> {
     const cached = this.progress[filePath];
     if (cached) return normalizeProgress(cached);
+    if (!this.annotationsEnabled()) return null;
     const fromDisk = await this.annotationVaultStore.readProgress(filePath);
     if (!fromDisk) return null;
     const normalized = normalizeProgress(fromDisk);
@@ -198,31 +230,55 @@ export class ProgressStore {
     return false;
   }
 
+  private async persistProgress(entry: BookProgress, filePath: string): Promise<void> {
+    if (this.annotationsEnabled()) {
+      await this.annotationVaultStore.writeProgress(filePath, entry);
+      return;
+    }
+    await this.savePluginProgress(this.progress);
+  }
+
   async load() {
     const fromFrontmatter = await this.annotationVaultStore.scanAllProgress();
     this.progress = { ...fromFrontmatter };
+
+    const fromPlugin = await this.loadPluginProgress();
+    this.mergeProgressByLastRead(this.progress, fromPlugin);
 
     const legacy =
       (await this.readLegacyProgressFile(this.getLegacyProgressFilePath())) ?? {};
     const hidden = (await this.readHiddenProgressFile(this.getHiddenProgressFilePath())) ?? {};
 
     const legacyMerged = { ...legacy };
-    this.mergeProgress(legacyMerged, hidden);
+    this.mergeProgressByLastRead(legacyMerged, hidden);
 
-    // 仅将尚无 frontmatter 进度的书从旧 JSON 迁入，避免每次启动用旧 JSON 覆盖
+    const annotationsEnabled = this.annotationsEnabled();
     const toMigrate: Array<{ epubPath: string; progress: BookProgress }> = [];
     for (const [filePath, entry] of Object.entries(legacyMerged)) {
       if (fromFrontmatter[filePath]) continue;
       const normalized = normalizeProgress(entry);
-      this.progress[filePath] = normalized;
-      toMigrate.push({ epubPath: filePath, progress: normalized });
+      const existing = this.progress[filePath];
+      if (!existing || normalized.lastRead > existing.lastRead) {
+        this.progress[filePath] = normalized;
+      }
+      if (!fromFrontmatter[filePath]) {
+        toMigrate.push({ epubPath: filePath, progress: normalized });
+      }
     }
 
-    for (const { epubPath, progress } of toMigrate) {
+    if (annotationsEnabled) {
+      for (const { epubPath, progress } of toMigrate) {
+        try {
+          await this.annotationVaultStore.writeProgress(epubPath, progress);
+        } catch (err) {
+          console.error("ob-epub: failed to migrate progress to frontmatter for", epubPath, err);
+        }
+      }
+    } else if (toMigrate.length > 0) {
       try {
-        await this.annotationVaultStore.writeProgress(epubPath, progress);
+        await this.savePluginProgress(this.progress);
       } catch (err) {
-        console.error("ob-epub: failed to migrate progress to frontmatter for", epubPath, err);
+        console.error("ob-epub: failed to persist legacy progress to plugin data", err);
       }
     }
   }
@@ -256,13 +312,12 @@ export class ProgressStore {
 
     this.progress[filePath] = entry;
     try {
-      await this.annotationVaultStore.writeProgress(filePath, entry);
+      await this.persistProgress(entry, filePath);
     } catch (err) {
-      console.error(
-        "ob-epub: failed to save reading progress to",
-        this.getProgressFilePath(filePath),
-        err
-      );
+      const dest = this.annotationsEnabled()
+        ? this.getProgressFilePath(filePath)
+        : "plugin data.json";
+      console.error("ob-epub: failed to save reading progress to", dest, err);
       throw err;
     }
   }
@@ -293,13 +348,12 @@ export class ProgressStore {
 
     this.progress[filePath] = normalizeProgress(entry);
     try {
-      await this.annotationVaultStore.writeProgress(filePath, this.progress[filePath]);
+      await this.persistProgress(this.progress[filePath], filePath);
     } catch (err) {
-      console.error(
-        "ob-epub: failed to save reading time to",
-        this.getProgressFilePath(filePath),
-        err
-      );
+      const dest = this.annotationsEnabled()
+        ? this.getProgressFilePath(filePath)
+        : "plugin data.json";
+      console.error("ob-epub: failed to save reading time to", dest, err);
       throw err;
     }
   }
@@ -312,15 +366,34 @@ export class ProgressStore {
     return normalizePercent(this.progress[filePath]?.percent ?? 0);
   }
 
-  /** 从旧的 data.json progress 迁移数据到摘录 frontmatter */
+  /** 重新开启标注与摘录时，将内存进度合并写入摘录 frontmatter */
+  async syncProgressToExcerpts(): Promise<void> {
+    for (const [epubPath, raw] of Object.entries(this.progress)) {
+      try {
+        await this.annotationVaultStore.writeProgress(epubPath, normalizeProgress(raw));
+      } catch (err) {
+        console.error("ob-epub: failed to sync progress to excerpt for", epubPath, err);
+      }
+    }
+  }
+
+  /** 从旧的 data.json progress 迁移数据到摘录 frontmatter 或内存 */
   async migrateFrom(oldProgress: Record<string, BookProgress>): Promise<void> {
     const toMigrate = this.mergeProgress(this.progress, oldProgress);
-    for (const { epubPath, progress } of toMigrate) {
-      try {
-        await this.annotationVaultStore.writeProgress(epubPath, progress);
-      } catch (err) {
-        console.error("ob-epub: failed to migrate progress from data.json for", epubPath, err);
+    if (this.annotationsEnabled()) {
+      for (const { epubPath, progress } of toMigrate) {
+        try {
+          await this.annotationVaultStore.writeProgress(epubPath, progress);
+        } catch (err) {
+          console.error("ob-epub: failed to migrate progress from data.json for", epubPath, err);
+        }
       }
+      return;
+    }
+    try {
+      await this.savePluginProgress(this.progress);
+    } catch (err) {
+      console.error("ob-epub: failed to persist migrated progress to plugin data", err);
     }
   }
 }

@@ -1042,6 +1042,9 @@ a.ob-epub-goto-link {
 .ob-epub-settings .setting-item-control input.ob-epub-note-type-icon-input {
   width: 3.5em;
   text-align: center;
+  border: 1.5px solid var(--ob-epub-control-border) !important;
+  border-radius: var(--radius-s, 6px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .ob-epub-settings .setting-item-control input[type="range"] {
@@ -1052,7 +1055,7 @@ a.ob-epub-goto-link {
   height: 6px;
   border-radius: 3px;
   background: var(--background-modifier-border);
-  border: 1px solid var(--background-modifier-border-hover);
+  border: 1.5px solid var(--ob-epub-control-border);
   cursor: pointer;
 }
 
@@ -1071,7 +1074,7 @@ a.ob-epub-goto-link {
   height: 6px;
   border-radius: 3px;
   background: var(--background-modifier-border);
-  border: 1px solid var(--background-modifier-border-hover);
+  border: 1.5px solid var(--ob-epub-control-border);
 }
 
 .ob-epub-settings .setting-item-control input[type="range"]::-moz-range-thumb {
@@ -1089,19 +1092,145 @@ a.ob-epub-goto-link {
 .ob-epub-settings .setting-item-control input[type="password"],
 .ob-epub-settings .setting-item-control textarea {
   background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1.5px solid var(--ob-epub-control-border);
+  border-radius: var(--radius-s, 6px);
   color: var(--text-normal);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.ob-epub-settings .setting-item-control button {
+  border: 1.5px solid var(--ob-epub-control-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .ob-epub-settings .setting-item-control select:focus,
 .ob-epub-settings .setting-item-control input[type="text"]:focus,
 .ob-epub-settings .setting-item-control input[type="password"]:focus,
-.ob-epub-settings .setting-item-control textarea:focus {
+.ob-epub-settings .setting-item-control textarea:focus,
+.ob-epub-settings .setting-item-control input.ob-epub-note-type-icon-input:focus {
   border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 123, 104, 238), 0.18);
 }
 
 .ob-epub-settings .ob-epub-settings-warn {
   color: var(--text-error, #e0533d);
+}
+
+/* 功能分组外框（比默认 modifier-border 更深，便于辨认卡片边界） */
+.ob-epub-settings {
+  --ob-epub-group-border: var(
+    --background-modifier-border-hover,
+    color-mix(in srgb, var(--text-muted) 32%, var(--background-modifier-border))
+  );
+  --ob-epub-control-border: var(
+    --background-modifier-border-hover,
+    color-mix(in srgb, var(--text-muted) 38%, var(--background-modifier-border))
+  );
+}
+
+/* 功能分组：所有 setting-item 为 containerEl 直接子节点，用边框拼成卡片 */
+.ob-epub-settings .setting-item.ob-epub-group-header {
+  border: 1.5px solid var(--ob-epub-group-border);
+  border-radius: 8px 8px 0 0;
+  margin-top: 20px;
+  margin-bottom: 0;
+  padding: 12px 16px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s, 0 1px 4px rgba(0, 0, 0, 0.07));
+}
+
+.ob-epub-settings .setting-item.ob-epub-group-header .setting-item-name {
+  font-weight: 600;
+}
+
+.ob-epub-settings .ob-epub-group-extra,
+.ob-epub-settings .setting-item.ob-epub-group-member {
+  border-left: 1.5px solid var(--ob-epub-group-border);
+  border-right: 1.5px solid var(--ob-epub-group-border);
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 16px;
+  padding-right: 16px;
+  background: var(--background-primary);
+}
+
+.ob-epub-settings .ob-epub-group-footer {
+  border-left: 1.5px solid var(--ob-epub-group-border);
+  border-right: 1.5px solid var(--ob-epub-group-border);
+  border-bottom: 1.5px solid var(--ob-epub-group-border);
+  border-radius: 0 0 8px 8px;
+  margin-bottom: 8px;
+  height: 6px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s, 0 2px 6px rgba(0, 0, 0, 0.06));
+}
+
+.ob-epub-settings .setting-item.ob-epub-group-header.is-collapsed {
+  border-radius: 8px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow-s, 0 1px 4px rgba(0, 0, 0, 0.07));
+}
+
+.ob-epub-settings .is-collapsed-hidden {
+  display: none !important;
+}
+
+.ob-epub-settings .setting-item.ob-epub-group-header .ob-epub-group-collapse-btn,
+.ob-epub-settings .setting-item.ob-epub-group-header .extra-setting-button {
+  opacity: 0.85;
+}
+
+.ob-epub-settings .setting-item.ob-epub-group-header .extra-setting-button:hover {
+  opacity: 1;
+  color: var(--text-accent);
+}
+
+.ob-epub-settings .ob-epub-group-extra.is-disabled,
+.ob-epub-settings .setting-item.ob-epub-group-member.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.ob-epub-settings .ob-epub-settings-group-scope {
+  margin: 0;
+  padding: 10px 16px;
+  border-left: 1.5px solid var(--ob-epub-group-border);
+  border-right: 1.5px solid var(--ob-epub-group-border);
+  background: var(--background-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ob-epub-settings .ob-epub-settings-group-scope-label {
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.ob-epub-settings .ob-epub-settings-group-scope-list {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.ob-epub-settings .ob-epub-settings-group-scope-list li {
+  margin: 2px 0;
+}
+
+.ob-epub-settings .ob-epub-settings-group-scope-note {
+  margin: 0;
+  padding: 8px 16px 12px;
+  border-left: 1.5px solid var(--ob-epub-group-border);
+  border-right: 1.5px solid var(--ob-epub-group-border);
+  background: var(--background-primary);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.ob-epub-settings .ob-epub-format-table-wrap.ob-epub-group-extra {
+  padding: 0 16px 12px;
+  border-left: 1.5px solid var(--ob-epub-group-border);
+  border-right: 1.5px solid var(--ob-epub-group-border);
+  background: var(--background-primary);
 }
 
 .ob-epub-settings .ob-epub-format-table-wrap {
@@ -1118,7 +1247,7 @@ a.ob-epub-goto-link {
 
 .ob-epub-settings .ob-epub-format-table th,
 .ob-epub-settings .ob-epub-format-table td {
-  border: 1px solid var(--background-modifier-border);
+  border: 1.5px solid var(--ob-epub-control-border);
   padding: 6px 8px;
   text-align: left;
   vertical-align: top;

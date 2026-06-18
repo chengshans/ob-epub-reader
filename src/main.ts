@@ -5,7 +5,7 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, clampHighlightOpacity, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
@@ -20,12 +20,25 @@ export default class ObEpubPlugin extends Plugin {
   private lastGotoKey = "";
   private lastGotoAt = 0;
   private unpatchEpubWikiLinks: (() => void) | null = null;
+  private bookshelfRibbonEl: HTMLElement | null = null;
 
   async onload() {
     await this.loadSettings();
 
     this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
-    this.progressStore = new ProgressStore(this.app, this.settings, this.annotationVaultStore);
+    this.progressStore = new ProgressStore(this.app, this.settings, this.annotationVaultStore, {
+      loadPluginProgress: async () => {
+        const data = (await this.loadData()) ?? {};
+        const raw = data.progress as Record<string, BookProgress> | undefined;
+        if (!raw || typeof raw !== "object") return {};
+        return { ...raw };
+      },
+      savePluginProgress: async (progress) => {
+        const data = (await this.loadData()) ?? {};
+        data.progress = progress;
+        await this.saveData(data);
+      },
+    });
     await this.progressStore.load();
 
     // Migrate old annotations from plugin data.json (one-time)
@@ -80,7 +93,7 @@ export default class ObEpubPlugin extends Plugin {
       });
     });
 
-    this.addRibbonIcon(BOOKSHELF_ICON_ID, "EPUB 书架", () => {
+    this.bookshelfRibbonEl = this.addRibbonIcon(BOOKSHELF_ICON_ID, "EPUB 书架", () => {
       void this.openBookshelf();
     });
 
@@ -147,6 +160,7 @@ export default class ObEpubPlugin extends Plugin {
     });
 
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
+    this.applyFeatureGroups();
   }
 
   private applyExcerptCalloutOpacity(opacity: number): void {
@@ -158,6 +172,7 @@ export default class ObEpubPlugin extends Plugin {
 
   /** 一次性迁移：将 data.json 中的 progress 移到 vault JSON 文件 */
   private async migrateProgressFromDataJson() {
+    if (!isAnnotationsAndExcerptsEnabled(this.settings)) return;
     try {
       const data = await this.loadData();
       if (!data?.progress || Object.keys(data.progress).length === 0) return;
@@ -224,6 +239,7 @@ export default class ObEpubPlugin extends Plugin {
 
   /** One-time migration: move old data.json annotations into vault markdown files. */
   private async migrateOldAnnotations() {
+    if (!isAnnotationsAndExcerptsEnabled(this.settings)) return;
     try {
       const data = await this.loadData();
       if (!data?.annotations || Object.keys(data.annotations).length === 0) return;
@@ -239,6 +255,10 @@ export default class ObEpubPlugin extends Plugin {
   }
 
   async openBookshelf(): Promise<void> {
+    if (!isBookshelfEnabled(this.settings)) {
+      new Notice("EPUB 书架已在设置中关闭");
+      return;
+    }
     const { workspace } = this.app;
     let leaf = workspace.getLeavesOfType(BOOKSHELF_VIEW_TYPE)[0];
 
@@ -257,6 +277,7 @@ export default class ObEpubPlugin extends Plugin {
   }
 
   private refreshBookshelfViews(): void {
+    if (!isBookshelfEnabled(this.settings)) return;
     if (!this.app?.workspace) return;
     this.app.workspace.getLeavesOfType(BOOKSHELF_VIEW_TYPE).forEach((leaf) => {
       try {
@@ -328,6 +349,7 @@ export default class ObEpubPlugin extends Plugin {
   async loadSettings() {
     const data = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings ?? {});
+    this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
     this.settings.sourceLinkFormat = normalizeSourceLinkFormat(this.settings.sourceLinkFormat);
@@ -337,9 +359,13 @@ export default class ObEpubPlugin extends Plugin {
   }
 
   async saveSettings() {
+    const existing = (await this.loadData()) ?? {};
+    const prevGroups = normalizeFeatureGroups(
+      (existing.settings as EpubPluginSettings | undefined)?.featureGroups
+    );
+    this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
-    const existing = (await this.loadData()) ?? {};
     existing.settings = this.settings;
     await this.saveData(existing);
 
@@ -349,10 +375,34 @@ export default class ObEpubPlugin extends Plugin {
 
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
 
+    await this.applyFeatureGroups(prevGroups);
+
     // Update open views
     this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE).forEach((leaf) => {
       (leaf.view as EpubReaderView).updateSettings(this.settings);
     });
+  }
+
+  private async applyFeatureGroups(prev?: FeatureGroupSettings): Promise<void> {
+    const bookshelfOn = isBookshelfEnabled(this.settings);
+    this.bookshelfRibbonEl?.toggleVisibility(bookshelfOn);
+    if (!bookshelfOn) {
+      try {
+        this.app.workspace.detachLeavesOfType(BOOKSHELF_VIEW_TYPE);
+      } catch (err) {
+        console.error("ob-epub: detach bookshelf leaves failed", err);
+      }
+    }
+
+    const annotationsOn = isAnnotationsAndExcerptsEnabled(this.settings);
+    const wasAnnotationsOn = prev ? prev.annotationsAndExcerpts : annotationsOn;
+    if (annotationsOn && !wasAnnotationsOn) {
+      try {
+        await this.progressStore.syncProgressToExcerpts();
+      } catch (err) {
+        console.error("ob-epub: sync progress to excerpts failed", err);
+      }
+    }
   }
 
   onunload() {

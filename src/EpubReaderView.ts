@@ -25,6 +25,7 @@ import {
   noteIconGlyphSize,
   normalizeReadingTheme,
   resolveNoteTypes,
+  isAnnotationsAndExcerptsEnabled,
 } from "./types";
 import { buildExcerptBlock } from "./excerptBlockFormat";
 import { NoteInputModal } from "./NoteInputModal";
@@ -122,6 +123,7 @@ export class EpubReaderView extends FileView {
   private themeSwatchesEl: HTMLElement | null = null;
   private highlightOpacityRangeEl: HTMLInputElement | null = null;
   private sidebarEl: HTMLElement | null = null;
+  private notesTabEl: HTMLElement | null = null;
   private tocEl: HTMLElement | null = null;
   private notesEl: HTMLElement | null = null;
   private readerEl: HTMLElement | null = null;
@@ -312,9 +314,9 @@ export class EpubReaderView extends FileView {
     this.sidebarEl = bodyEl.createDiv({ cls: "epub-sidebar" });
     const tabs = this.sidebarEl.createDiv({ cls: "epub-sidebar-tabs" });
     const tocTab = tabs.createEl("button", { cls: "epub-sidebar-tab is-active", text: "目录" });
-    const notesTab = tabs.createEl("button", { cls: "epub-sidebar-tab", text: "标注" });
+    this.notesTabEl = tabs.createEl("button", { cls: "epub-sidebar-tab", text: "标注" });
     tocTab.addEventListener("click", () => this.setSidebarMode("toc"));
-    notesTab.addEventListener("click", () => this.setSidebarMode("notes"));
+    this.notesTabEl.addEventListener("click", () => this.setSidebarMode("notes"));
 
     const panelsEl = this.sidebarEl.createDiv({ cls: "epub-sidebar-panels" });
 
@@ -343,6 +345,19 @@ export class EpubReaderView extends FileView {
       }
     });
     this.resizeObserver.observe(this.readerEl!);
+    this.applyAnnotationsFeatureState();
+  }
+
+  private annotationsEnabled(): boolean {
+    return isAnnotationsAndExcerptsEnabled(this.settings);
+  }
+
+  private applyAnnotationsFeatureState(): void {
+    const enabled = this.annotationsEnabled();
+    this.notesTabEl?.toggleVisibility(enabled);
+    if (!enabled && this.sidebarMode === "notes") {
+      this.setSidebarMode("toc");
+    }
   }
 
   private buildToolbar(toolbar: HTMLElement) {
@@ -370,7 +385,9 @@ export class EpubReaderView extends FileView {
     fontSizeUp.addEventListener("click", () => this.changeFontSize(2));
 
     this.buildThemeToolbar(toolbar);
-    this.buildHighlightOpacityToolbar(toolbar);
+    if (this.annotationsEnabled()) {
+      this.buildHighlightOpacityToolbar(toolbar);
+    }
 
     // Flow toggle
     const flowBtn = toolbar.createEl("button", {
@@ -675,10 +692,12 @@ export class EpubReaderView extends FileView {
       });
 
       // Register vault file watcher for external edits
-      this.annotationWatcherCleanup = this.annotationVaultStore.watchFile(
-        file.path,
-        () => this.refreshHighlights()
-      );
+      if (this.annotationsEnabled()) {
+        this.annotationWatcherCleanup = this.annotationVaultStore.watchFile(
+          file.path,
+          () => this.refreshHighlights()
+        );
+      }
 
       // Keyboard navigation at the host level
       this.registerKeyboardNavigation();
@@ -1299,6 +1318,14 @@ export class EpubReaderView extends FileView {
       void this.copySelectionAsExcerpt();
     });
 
+    if (!this.annotationsEnabled()) {
+      document.body.appendChild(menu);
+      this.contextMenu = menu;
+      this.positionMenu(menu, contents);
+      this.bindContextMenuDismiss(true, contents?.document);
+      return;
+    }
+
     const copyDivider = menu.createDiv({ cls: "epub-ctx-divider" });
     void copyDivider;
 
@@ -1649,6 +1676,7 @@ export class EpubReaderView extends FileView {
   }
 
   private async handleHighlightMarkClick(annId: string, cfiRange: string) {
+    if (!this.annotationsEnabled()) return;
     if (!this.file) return;
     const ann = await this.resolveAnnotationForMark(annId, cfiRange);
     if (ann) this.showAnnotationMenu(ann);
@@ -1722,6 +1750,13 @@ export class EpubReaderView extends FileView {
 
   private async refreshHighlights() {
     if (!this.file || !this.rendition || this.isRefreshingHighlights) return;
+    if (!this.annotationsEnabled()) {
+      for (const ann of this.cachedHighlights) {
+        this.removeDrawnLine(ann.cfiRange);
+      }
+      this.cachedHighlights = [];
+      return;
+    }
     this.isRefreshingHighlights = true;
     try {
       const list = await this.annotationVaultStore.getByFile(this.file.path);
@@ -1774,6 +1809,7 @@ export class EpubReaderView extends FileView {
   }
 
   private async addUnderline(color: HighlightColor) {
+    if (!this.annotationsEnabled()) return;
     if (!this.file || !this.selectedCfi || !this.selectedText) return;
     const existing = await this.annotationVaultStore.getByCfi(this.file.path, this.selectedCfi);
     if (existing) {
@@ -1797,6 +1833,7 @@ export class EpubReaderView extends FileView {
   }
 
   private openNoteModal() {
+    if (!this.annotationsEnabled()) return;
     if (!this.file || !this.selectedCfi || !this.selectedText) return;
     const filePath = this.file.path;
     const cfiRange = this.selectedCfi;
@@ -1841,6 +1878,7 @@ export class EpubReaderView extends FileView {
   }
 
   private showAnnotationMenu(ann: Annotation) {
+    if (!this.annotationsEnabled()) return;
     this.dismissContextMenu();
     if (!this.file) return;
     const filePath = this.file.path;
@@ -2312,6 +2350,10 @@ export class EpubReaderView extends FileView {
   // Called when settings change
   updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
+    if (this.toolbarEl) {
+      this.buildToolbar(this.toolbarEl);
+    }
+    this.applyAnnotationsFeatureState();
     this.syncHighlightOpacityToolbar();
     this.fontSize = settings.fontSize;
     const nextTheme = normalizeReadingTheme(settings.readingTheme);

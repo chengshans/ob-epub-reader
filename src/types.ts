@@ -190,6 +190,56 @@ export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
   return "callout-title";
 }
 
+// ---- Feature groups (功能分组) ----
+
+export interface FeatureGroupSettings {
+  /** 高亮、想法、摘录写入、侧栏标注；默认开启 */
+  annotationsAndExcerpts: boolean;
+  /** 书架侧栏、Ribbon、打开书架命令；默认开启 */
+  bookshelf: boolean;
+  /** 设置页分组折叠状态 */
+  readerCollapsed?: boolean;
+  annotationsCollapsed?: boolean;
+  bookshelfCollapsed?: boolean;
+}
+
+export const DEFAULT_FEATURE_GROUPS: FeatureGroupSettings = {
+  annotationsAndExcerpts: true,
+  bookshelf: true,
+  readerCollapsed: false,
+  annotationsCollapsed: false,
+  bookshelfCollapsed: false,
+};
+
+export function normalizeFeatureGroups(raw?: Partial<FeatureGroupSettings>): FeatureGroupSettings {
+  return {
+    annotationsAndExcerpts: raw?.annotationsAndExcerpts !== false,
+    bookshelf: raw?.bookshelf !== false,
+    readerCollapsed: raw?.readerCollapsed === true,
+    annotationsCollapsed: raw?.annotationsCollapsed === true,
+    bookshelfCollapsed: raw?.bookshelfCollapsed === true,
+  };
+}
+
+export type FeatureGroupId = "reader" | "annotations" | "bookshelf";
+
+export function isFeatureGroupCollapsed(
+  groups: FeatureGroupSettings,
+  groupId: FeatureGroupId
+): boolean {
+  if (groupId === "reader") return groups.readerCollapsed === true;
+  if (groupId === "annotations") return groups.annotationsCollapsed === true;
+  return groups.bookshelfCollapsed === true;
+}
+
+export function isAnnotationsAndExcerptsEnabled(settings: EpubPluginSettings): boolean {
+  return settings.featureGroups.annotationsAndExcerpts;
+}
+
+export function isBookshelfEnabled(settings: EpubPluginSettings): boolean {
+  return settings.featureGroups.bookshelf;
+}
+
 export interface EpubPluginSettings {
   excerptFolder: string;
   /** 摘录 Markdown 文件名模板，支持 {title}、{filename} 占位符 */
@@ -211,6 +261,8 @@ export interface EpubPluginSettings {
   excerptCalloutOpacity: number;
   /** 五种想法类型的图标与显示名称（id 固定，仅可改 label / icon） */
   noteTypes: NoteTypeDef[];
+  /** 功能分组总开关 */
+  featureGroups: FeatureGroupSettings;
 }
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
@@ -226,6 +278,7 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   epubHighlightOpacity: 0.38,
   excerptCalloutOpacity: 0.2,
   noteTypes: DEFAULT_NOTE_TYPES.map((t) => ({ ...t })),
+  featureGroups: { ...DEFAULT_FEATURE_GROUPS },
 };
 
 export interface BookProgress {
