@@ -844,12 +844,11 @@ export class EpubReaderView extends FileView {
 
   private buildAutoPasteToolbar(toolbar: HTMLElement) {
     const group = toolbar.createDiv({ cls: "epub-auto-paste" });
-    const label = group.createSpan({ cls: "epub-auto-paste-label", text: "粘贴" });
-    label.title = "复制摘录时自动插入打开的 Markdown 笔记";
     const toggleBtn = group.createEl("button", {
       cls: "epub-toolbar-btn epub-auto-paste-toggle",
       attr: { id: "epub-auto-paste-btn", type: "button" },
     });
+    toggleBtn.title = "复制摘录时自动插入打开的 Markdown 笔记";
     this.syncAutoPasteToggle(toggleBtn);
     toggleBtn.addEventListener("click", () => {
       const next = !this.settings.autoPasteExcerpt;
@@ -864,7 +863,8 @@ export class EpubReaderView extends FileView {
       btn ?? this.toolbarEl?.querySelector("#epub-auto-paste-btn");
     if (!(toggleBtn instanceof HTMLButtonElement)) return;
     const enabled = this.settings.autoPasteExcerpt !== false;
-    toggleBtn.textContent = enabled ? "开" : "关";
+    toggleBtn.textContent = enabled ? "🌟" : "★";
+    toggleBtn.setAttr("aria-label", enabled ? "自动粘贴已开启" : "自动粘贴已关闭");
     toggleBtn.title = enabled
       ? "自动粘贴已开启：复制摘录会插入 Markdown"
       : "自动粘贴已关闭：复制摘录仅写入剪贴板";
