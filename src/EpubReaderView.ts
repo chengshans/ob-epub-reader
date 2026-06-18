@@ -54,6 +54,8 @@ const ANNOTATION_TYPE = "highlight";
 const HIGHLIGHT_CLASS = "epub-user-highlight";
 const NOTE_ICON_CLASS = "epub-note-icon";
 const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-icon";
+const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
+const READING_THEME_ATTR = "data-ob-epub-theme";
 
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
@@ -593,11 +595,12 @@ export class EpubReaderView extends FileView {
       });
 
       // Mouse wheel + keyboard navigation (bound inside each iframe document)
-      this.rendition.hooks.content.register((contents: any) => {
+      this.rendition.hooks.content.register(async (contents: { document?: Document }) => {
         if (this.isBookSessionStale(generation)) return;
         try {
           this.attachContentNavigation(contents);
-          void this.inlineBlockedStylesheets(contents);
+          await this.inlineBlockedStylesheets(contents);
+          this.injectReadingThemeIntoDocument(contents?.document);
         } catch (err) {
           console.warn("ob-epub: content hook failed", err);
         }
@@ -822,8 +825,9 @@ export class EpubReaderView extends FileView {
     this.themeSwatchesEl = swatches;
 
     for (const theme of READING_THEMES) {
-      const swatch = swatches.createDiv({
+      const swatch = swatches.createEl("button", {
         cls: "epub-theme-swatch",
+        type: "button",
         attr: { "data-theme": theme.id },
       });
       swatch.title = theme.label;
@@ -832,7 +836,9 @@ export class EpubReaderView extends FileView {
       } else {
         swatch.style.backgroundColor = theme.swatch;
       }
-      swatch.addEventListener("click", () => {
+      swatch.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         void this.setReadingTheme(theme.id);
       });
     }
@@ -841,6 +847,10 @@ export class EpubReaderView extends FileView {
   }
 
   private updateThemeToolbarActive() {
+    if (!this.themeSwatchesEl || !this.themeSwatchesEl.isConnected) {
+      this.themeSwatchesEl =
+        this.toolbarEl?.querySelector<HTMLElement>(".epub-theme-swatches") ?? null;
+    }
     if (!this.themeSwatchesEl) return;
     this.themeSwatchesEl.querySelectorAll(".epub-theme-swatch").forEach((el) => {
       const id = (el as HTMLElement).dataset.theme;
@@ -888,12 +898,15 @@ export class EpubReaderView extends FileView {
   }
 
   private async setReadingTheme(id: ReadingThemeId) {
-    if (this.readingTheme === id) return;
     this.readingTheme = id;
-    this.applyTheme();
     this.updateThemeToolbarActive();
+    this.applyThemeSafe();
     if (this.onReadingThemeChange) {
-      await this.onReadingThemeChange(id);
+      try {
+        await this.onReadingThemeChange(id);
+      } catch (err) {
+        console.warn("ob-epub: save reading theme failed", err);
+      }
     }
   }
 
@@ -945,14 +958,97 @@ export class EpubReaderView extends FileView {
         "line-height": "1.8",
         padding: "2em 3em",
       },
+      // EPUB 内嵌样式常在子元素上写死 color，仅设置 body 无法覆盖
+      "body *": {
+        color: `${textColor} !important`,
+      },
+      "body a, body a *": {
+        color: `${linkColor} !important`,
+      },
       "*": {
         "-webkit-user-select": "text !important",
         "user-select": "text !important",
       },
-      a: { color: `${linkColor} !important` },
       "::selection": { background: `${selectionBg}`, color: `${textColor}` },
       "::-moz-selection": { background: `${selectionBg}`, color: `${textColor}` },
     };
+  }
+
+  /** 高优先级选择器，覆盖 EPUB 内嵌 stylesheet 中的 color/background 规则 */
+  private buildInjectedThemeCss(
+    background: string,
+    textColor: string,
+    linkColor: string,
+    selectionBg: string,
+    fontFamily: string
+  ): string {
+    const root = `html[${READING_THEME_ATTR}] body`;
+    const blocks: string[] = [
+      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:2em 3em}`,
+      `${root} *{color:${textColor} !important;-webkit-user-select:text !important;user-select:text !important}`,
+      `${root} a,${root} a *{color:${linkColor} !important}`,
+      `${root} ::selection{background:${selectionBg};color:${textColor}}`,
+      `${root} ::-moz-selection{background:${selectionBg};color:${textColor}}`,
+    ];
+    return blocks.join("\n");
+  }
+
+  private injectReadingThemeIntoDocument(doc: Document | null | undefined): void {
+    if (!doc?.documentElement || !doc.head) return;
+
+    try {
+      const fontFamily = this.cssVar(
+        "--font-text",
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
+      );
+      const { background, textColor, linkColor, selectionBg } = this.resolveThemeColors();
+
+      doc.documentElement.setAttribute(READING_THEME_ATTR, this.readingTheme);
+
+      let styleEl = doc.getElementById(READING_THEME_STYLE_ID) as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = doc.createElement("style");
+        styleEl.id = READING_THEME_STYLE_ID;
+      } else {
+        styleEl.remove();
+      }
+      styleEl.textContent = this.buildInjectedThemeCss(
+        background,
+        textColor,
+        linkColor,
+        selectionBg,
+        fontFamily
+      );
+      doc.head.appendChild(styleEl);
+    } catch (err) {
+      console.warn("ob-epub: inject reading theme failed", err);
+    }
+  }
+
+  private applyThemeToAllContents(): void {
+    if (!this.rendition) return;
+    try {
+      const contents = this.rendition.getContents() as Array<{ document?: Document }>;
+      if (!Array.isArray(contents)) return;
+      for (const content of contents) {
+        this.injectReadingThemeIntoDocument(content?.document);
+      }
+    } catch (err) {
+      console.warn("ob-epub: apply theme to contents failed", err);
+    }
+  }
+
+  private applyThemeSafe(): void {
+    try {
+      this.applyTheme();
+    } catch (err) {
+      console.warn("ob-epub: applyTheme failed", err);
+      if (this.readerEl) {
+        const { background } = this.resolveThemeColors();
+        this.readerEl.style.background = background;
+      }
+      this.applyThemeToAllContents();
+    }
   }
 
   private registerAllThemes(fontFamily: string) {
@@ -1010,9 +1106,15 @@ export class EpubReaderView extends FileView {
       );
     }
 
-    this.rendition.themes.select(this.readingTheme);
-    this.rendition.themes.fontSize(`${this.fontSize}px`);
+    try {
+      this.rendition.themes.select(this.readingTheme);
+      this.rendition.themes.fontSize(`${this.fontSize}px`);
+    } catch (err) {
+      console.warn("ob-epub: epub.js theme select failed", err);
+    }
     this.accentColor = accent;
+
+    this.applyThemeToAllContents();
 
     if (this.readerEl) {
       this.readerEl.style.background = background;
@@ -2349,12 +2451,16 @@ export class EpubReaderView extends FileView {
 
   // Called when settings change
   updateSettings(settings: EpubPluginSettings) {
+    const prevAnnotationsOn = this.annotationsEnabled();
     this.settings = settings;
-    if (this.toolbarEl) {
+    const annotationsChanged = prevAnnotationsOn !== this.annotationsEnabled();
+    if (annotationsChanged && this.toolbarEl) {
       this.buildToolbar(this.toolbarEl);
+    } else {
+      this.updateThemeToolbarActive();
+      this.syncHighlightOpacityToolbar();
     }
     this.applyAnnotationsFeatureState();
-    this.syncHighlightOpacityToolbar();
     this.fontSize = settings.fontSize;
     const nextTheme = normalizeReadingTheme(settings.readingTheme);
     const themeChanged = nextTheme !== this.readingTheme;
@@ -2363,7 +2469,7 @@ export class EpubReaderView extends FileView {
     }
     if (this.rendition) {
       if (themeChanged) {
-        this.applyTheme();
+        this.applyThemeSafe();
         this.updateThemeToolbarActive();
       } else {
         this.rendition.themes.fontSize(`${this.fontSize}px`);

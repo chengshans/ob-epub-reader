@@ -75,7 +75,7 @@ export default class ObEpubPlugin extends Plugin {
         this.settings,
         async (themeId) => {
           this.settings.readingTheme = themeId;
-          await this.saveSettings();
+          await this.saveSettings({ skipViewUpdate: true });
         },
         async (opacity) => {
           this.settings.epubHighlightOpacity = clampHighlightOpacity(opacity);
@@ -358,7 +358,7 @@ export default class ObEpubPlugin extends Plugin {
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
   }
 
-  async saveSettings() {
+  async saveSettings(options?: { skipViewUpdate?: boolean }) {
     const existing = (await this.loadData()) ?? {};
     const prevGroups = normalizeFeatureGroups(
       (existing.settings as EpubPluginSettings | undefined)?.featureGroups
@@ -377,10 +377,11 @@ export default class ObEpubPlugin extends Plugin {
 
     await this.applyFeatureGroups(prevGroups);
 
-    // Update open views
-    this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE).forEach((leaf) => {
-      (leaf.view as EpubReaderView).updateSettings(this.settings);
-    });
+    if (!options?.skipViewUpdate) {
+      this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE).forEach((leaf) => {
+        (leaf.view as EpubReaderView).updateSettings(this.settings);
+      });
+    }
   }
 
   private async applyFeatureGroups(prev?: FeatureGroupSettings): Promise<void> {
