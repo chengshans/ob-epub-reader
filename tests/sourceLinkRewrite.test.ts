@@ -64,7 +64,7 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
 
     expect(countLegacyGotoLinks(result)).toBe(0);
     expect(result).toContain(`[[${EPUB_SOURCE}#cfi=`);
-    expect(result).toContain(`${CHAPTER} · 2026-05-23 18:15:42]]`);
+    expect(result).toContain(`|${CHAPTER}]]`);
     expect(result).toMatch(/^>\s*\[!ob-epub\|yellow\]\s+\[\[/m);
     expect(countCfiComments(result)).toBe(0);
   });
@@ -128,7 +128,7 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
 
     expect(countLegacyGotoLinks(result)).toBe(0);
     expect(result).toContain(
-      `[[books/demo.epub#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|第三章 · 2026-05-23 18:15:42]]`
+      `[[books/demo.epub#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|第三章]]`
     );
     expect(result).not.toContain("&text=");
   });
@@ -172,6 +172,60 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
 
     expect(result).toBe(chunk);
+  });
+
+  it("preserves chapter for second block in grouped inline layout", () => {
+    const store = createStore("callout-title");
+    const grouped = [
+      "---",
+      `epub-source: ${EPUB_SOURCE}`,
+      "created: 2026-06-17",
+      "---",
+      "",
+      "# 《demo》摘录",
+      "",
+      "<!-- ob-epub-chapter-toc-start -->",
+      "## 章节目录",
+      "",
+      "- [[#语言的萎缩|语言的萎缩]]（2）",
+      "<!-- ob-epub-chapter-toc-end -->",
+      "",
+      "<!-- ob-epub-chapter-body-start -->",
+      "## 语言的萎缩",
+      "",
+      `> [!ob-epub|yellow] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|语言的萎缩 · 2026-05-23 18:15:42]]`,
+      "> 第一条摘录",
+      "",
+      "---",
+      "",
+      `摘录正文[[${EPUB_SOURCE}#cfi=/6/20!/4/2/1:0&end=/6/20!/4/2/1:10|原文]]`,
+      "",
+      "<!-- ob-epub-chapter-body-end -->",
+      "",
+    ].join("\n");
+
+    const result = store.rewriteGotoLinksToCurrentFormat(grouped, EPUB_SOURCE);
+
+    expect(result).toContain("## 语言的萎缩");
+    expect(result).not.toContain("## 未知章节");
+    expect(result).toContain("语言的萎缩");
+    expect(result).not.toContain("|语言的萎缩 · ");
+    expect(result).not.toMatch(/\| · \d{4}-\d{2}-\d{2}/);
+    const parsed = store.parseContent(result, EPUB_SOURCE);
+    expect(parsed).toHaveLength(2);
+    expect(parsed.every((a) => a.chapter === "语言的萎缩")).toBe(true);
+  });
+
+  it("strips legacy chapter-date alias when converting to callout-title", () => {
+    const store = createStore("callout-title");
+    const chunk = [
+      `> [!ob-epub|yellow] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文",
+    ].join("\n");
+    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+
+    expect(result).toContain(`|${CHAPTER}]]`);
+    expect(result).not.toContain("18:15:42");
   });
 
   it("converts grouped chapter layout without polluting wiki alias", () => {

@@ -9,19 +9,12 @@ export interface ParsedCalloutHeader {
   annId: string | null;
 }
 
-export function buildTitleAlias(
-  chapter: string,
-  createdIso: string,
-  formatDate: (date: Date) => string
-): string {
-  return `${chapter} · ${formatDate(new Date(createdIso))}`;
+export function buildTitleAlias(chapter: string): string {
+  return chapter.trim();
 }
 
-export function buildTitleAliasFromAnn(
-  ann: Annotation,
-  formatDate: (date: Date) => string
-): string {
-  return buildTitleAlias(ann.chapter, ann.created, formatDate);
+export function buildTitleAliasFromAnn(ann: Annotation): string {
+  return buildTitleAlias(ann.chapter);
 }
 
 /** Stable block id when wiki title format omits ^ann-id in the file. */
@@ -45,8 +38,9 @@ export function buildCalloutHeaderLine(
   format: SourceLinkFormat,
   formatDate: (date: Date) => string
 ): string {
-  const alias = buildTitleAliasFromAnn(ann, formatDate);
+  const alias = buildTitleAliasFromAnn(ann);
   void format;
+  void formatDate;
   return buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, alias);
 }
 

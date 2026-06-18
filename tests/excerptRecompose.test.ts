@@ -79,6 +79,7 @@ describe("recomposeExcerptFromContent", () => {
       () => "2026-06-16 08:22:26"
     );
     expect(result).toContain(expected1);
+    expect(result).not.toMatch(/\|语言的萎缩 · /);
     expect(result).not.toContain("[回到原文]");
     expect(result).not.toContain("<!-- ob-epub-cfi:");
   });

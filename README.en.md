@@ -51,7 +51,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 Example excerpt block (default **block reference** format):
 
 ```markdown
-> [!ob-epub|yellow] Chapter 3 · 2026-06-09 12:00 ^ann-abc123
+> [!ob-epub|yellow] [[book.epub#cfi=...|Chapter 3]] ^ann-abc123
 > Selected passage text
 
 <!-- ob-epub-note-type: inspiration -->

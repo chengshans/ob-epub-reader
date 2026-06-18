@@ -147,7 +147,7 @@ export const SOURCE_LINK_FORMATS: { id: SourceLinkFormat; label: string; desc: s
   {
     id: "callout-title",
     label: "Callout + 标题链接",
-    desc: "> [!ob-epub|颜色] [[书名.epub#cfi=...|章节 · 时间]] + 正文；保留 callout 高亮色",
+    desc: "> [!ob-epub|颜色] [[书名.epub#cfi=...|章节]] + 正文；保留 callout 高亮色",
   },
   {
     id: "inline-suffix",

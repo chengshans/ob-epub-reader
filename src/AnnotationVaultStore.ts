@@ -13,6 +13,7 @@ import {
   buildGroupedAnnotationBody,
   composeExcerptContent,
   extractAnnotationBlocksFromExcerpt,
+  extractAnnotationBlocksWithContext,
   extractChapterFromSegment,
   joinExcerptChunks,
   splitExcerptChunks,
@@ -41,7 +42,7 @@ import {
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
 // callout-title:
-// > [!ob-epub|yellow] [[book.epub#cfi=...|章节 · 时间]]
+// > [!ob-epub|yellow] [[book.epub#cfi=...|章节]]
 // > 原文内容…
 //
 // inline-suffix / inline-colored / wiki-text-alias — see excerptBlockFormat.ts
@@ -690,16 +691,17 @@ export class AnnotationVaultStore {
    */
   parseContent(content: string, epubFilePath: string): Annotation[] {
     const annotations: Annotation[] = [];
-    const blocks = extractAnnotationBlocksFromExcerpt(content);
+    const blocks = extractAnnotationBlocksWithContext(content);
     const noteTypes = resolveNoteTypes(this.settings.noteTypes);
 
-    for (const block of blocks) {
+    for (const { block, contextChapter } of blocks) {
       const ann = parseExcerptChunk(block, epubFilePath, noteTypes);
       if (!ann) continue;
 
-      const chapterFromHeader = extractChapterFromSegment(block);
-      if (!ann.chapter && chapterFromHeader) {
-        ann.chapter = chapterFromHeader;
+      const chapterFromHeading = extractChapterFromSegment(block);
+      const chapter = ann.chapter || chapterFromHeading || contextChapter;
+      if (chapter) {
+        ann.chapter = chapter;
       }
       annotations.push(ann);
     }

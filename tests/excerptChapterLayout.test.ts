@@ -8,6 +8,7 @@ import {
   CHAPTER_TOC_START,
   composeExcerptContent,
   EXCERPT_CHUNK_SEPARATOR,
+  extractAnnotationBlocksWithContext,
   extractExcerptPreamble,
   extractExcerptSuffix,
   groupAnnotationsByChapter,
@@ -29,6 +30,28 @@ function makeAnn(overrides: Partial<Annotation> & Pick<Annotation, "id" | "chapt
     ...overrides,
   };
 }
+
+describe("extractAnnotationBlocksWithContext", () => {
+  it("inherits chapter heading for blocks after --- in same chapter", () => {
+    const content = [
+      "<!-- ob-epub-chapter-body-start -->",
+      "## 语言的萎缩",
+      "",
+      "> [!ob-epub|yellow] 第一条",
+      "",
+      "---",
+      "",
+      "第二条正文[[books/demo.epub#cfi=/6/20!/4/2/1:0&end=/6/20!/4/2/1:10|原文]]",
+      "",
+      "<!-- ob-epub-chapter-body-end -->",
+    ].join("\n");
+
+    const blocks = extractAnnotationBlocksWithContext(content);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].contextChapter).toBe("语言的萎缩");
+    expect(blocks[1].contextChapter).toBe("语言的萎缩");
+  });
+});
 
 describe("groupAnnotationsByChapter", () => {
   it("groups by chapter and normalizes empty to 未知章节", () => {

@@ -34,7 +34,55 @@ function looksLikeAnnotationBlock(text: string): boolean {
 /** Extract chapter name from a segment that may include a `## 章节` heading. */
 export function extractChapterFromSegment(segment: string): string {
   const match = segment.trim().match(/^##\s+([^\n]+)/m);
-  return match?.[1]?.trim() ?? "";
+  const name = match?.[1]?.trim() ?? "";
+  if (!name || name === "章节目录") return "";
+  return name;
+}
+
+function excerptAnnotationRegion(content: string): string {
+  const bodyStart = content.indexOf(CHAPTER_BODY_START);
+  if (bodyStart >= 0) {
+    const from = bodyStart + CHAPTER_BODY_START.length;
+    const bodyEnd = content.indexOf(CHAPTER_BODY_END);
+    return content.slice(from, bodyEnd >= 0 ? bodyEnd : content.length);
+  }
+  const { preamble, suffix } = splitExcerptRegions(content);
+  const preLen = preamble.length;
+  const sufLen = suffix.length;
+  return content.slice(preLen, content.length - (sufLen > 0 ? sufLen : 0));
+}
+
+export interface AnnotationBlockContext {
+  block: string;
+  /** Chapter from the nearest preceding `## 章节` heading in grouped layout. */
+  contextChapter: string;
+}
+
+/**
+ * Split excerpt file content into annotation blocks with chapter context.
+ * In grouped layout only the first block per chapter carries `## 标题`; later
+ * blocks in the same chapter inherit contextChapter from that heading.
+ */
+export function extractAnnotationBlocksWithContext(content: string): AnnotationBlockContext[] {
+  const region = excerptAnnotationRegion(content);
+  const result: AnnotationBlockContext[] = [];
+  let currentChapter = "";
+
+  for (const segment of region.split(/\n+---\n+/)) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+
+    const headingChapter = extractChapterFromSegment(trimmed);
+    if (headingChapter) {
+      currentChapter = headingChapter;
+    }
+
+    if (!looksLikeAnnotationBlock(trimmed)) continue;
+
+    result.push({ block: trimmed, contextChapter: currentChapter });
+  }
+
+  return result;
 }
 
 /**
@@ -42,26 +90,7 @@ export function extractChapterFromSegment(segment: string): string {
  * Works for grouped chapter layout and flat `---`-separated files.
  */
 export function extractAnnotationBlocksFromExcerpt(content: string): string[] {
-  const bodyStart = content.indexOf(CHAPTER_BODY_START);
-  let region: string;
-  if (bodyStart >= 0) {
-    const from = bodyStart + CHAPTER_BODY_START.length;
-    const bodyEnd = content.indexOf(CHAPTER_BODY_END);
-    region = content.slice(from, bodyEnd >= 0 ? bodyEnd : content.length);
-  } else {
-    const { preamble, suffix } = splitExcerptRegions(content);
-    const preLen = preamble.length;
-    const sufLen = suffix.length;
-    region = content.slice(preLen, content.length - (sufLen > 0 ? sufLen : 0));
-  }
-
-  const blocks: string[] = [];
-  for (const segment of region.split(/\n+---\n+/)) {
-    const trimmed = segment.trim();
-    if (!trimmed || !looksLikeAnnotationBlock(trimmed)) continue;
-    blocks.push(trimmed);
-  }
-  return blocks;
+  return extractAnnotationBlocksWithContext(content).map((item) => item.block);
 }
 
 /** Annotation block separator: blank line above and below `---`. */

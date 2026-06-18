@@ -51,7 +51,7 @@
 摘录块示例（默认 **Callout + 标题链接** 格式）：
 
 ```markdown
-> [!ob-epub|yellow] [[书名.epub#cfi=/6/14!/4/2/1:0&end=...|第三章 · 2026-06-09 12:00]]
+> [!ob-epub|yellow] [[书名.epub#cfi=/6/14!/4/2/1:0&end=...|第三章]]
 > 选中的原文内容
 
 <!-- ob-epub-note-type: inspiration -->
@@ -66,7 +66,7 @@
 
 | ID | 设置名称 | 写入示例 | 颜色 |
 |----|----------|----------|------|
-| `callout-title` | Callout + 标题链接 | `> [!ob-epub\|purple] [[book.epub#cfi=...\|章节 · 时间]]` + `> 正文` | callout metadata |
+| `callout-title` | Callout + 标题链接 | `> [!ob-epub\|purple] [[book.epub#cfi=...\|章节]]` + `> 正文` | callout metadata |
 | `inline-suffix` | 正文 + 文末「原文」 | `正文。[[book.epub#cfi=...\|原文]]` | 不保存，读回 `yellow` |
 | `inline-colored` | 着色正文 + 文末「原文」 | `<span style="color: #8b5cf6;">正文</span> [[...\|原文]]` | span hex → 最近高亮色 |
 | `wiki-text-alias` | 链接即正文 | `[[book.epub#cfi=...\|摘录全文]]` | 不保存，读回 `yellow` |
