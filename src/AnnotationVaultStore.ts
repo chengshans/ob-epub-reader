@@ -261,7 +261,9 @@ export class AnnotationVaultStore {
   }
 
   private parseExcerptChunk(trimmed: string, epubFilePath: string): Annotation | null {
-    return parseExcerptChunk(trimmed, epubFilePath, resolveNoteTypes(this.settings.noteTypes));
+    return parseExcerptChunk(trimmed, epubFilePath, resolveNoteTypes(this.settings.noteTypes), {
+      defaultColor: this.settings.defaultExcerptHighlightColor,
+    });
   }
 
   private parseSingleChunkAnnotation(
@@ -272,7 +274,14 @@ export class AnnotationVaultStore {
   ): Annotation | null {
     const parsed = this.parseExcerptChunk(chunk.trim(), epubFilePath);
     if (parsed) return parsed;
-    return { id: annId, cfiRange, text: "", color: "yellow", chapter: "", created: new Date().toISOString() };
+    return {
+      id: annId,
+      cfiRange,
+      text: "",
+      color: this.settings.defaultExcerptHighlightColor,
+      chapter: "",
+      created: new Date().toISOString(),
+    };
   }
 
   /** Rewrite all excerpt files to use the current sourceLinkFormat. Returns files updated. */
@@ -728,7 +737,9 @@ export class AnnotationVaultStore {
     const noteTypes = resolveNoteTypes(this.settings.noteTypes);
 
     for (const { block, contextChapter } of blocks) {
-      const ann = parseExcerptChunk(block, epubFilePath, noteTypes);
+      const ann = parseExcerptChunk(block, epubFilePath, noteTypes, {
+        defaultColor: this.settings.defaultExcerptHighlightColor,
+      });
       if (!ann) continue;
 
       const chapterFromHeading = extractChapterFromSegment(block);

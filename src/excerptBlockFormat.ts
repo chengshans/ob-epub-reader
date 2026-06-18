@@ -37,16 +37,24 @@ const CFI_COMMENT_RE = /^<!--\s*ob-epub-cfi:\s*epubcfi\([\s\S]*?\)\s*-->$/;
 
 export const DEFAULT_EXCERPT_HIGHLIGHT_COLOR: HighlightColor = HIGHLIGHT_COLORS[0].id;
 
+export interface ParseExcerptOptions {
+  /** 不保存颜色的格式在解析时使用的画线颜色 */
+  defaultColor?: HighlightColor;
+}
+
 const COLORED_INLINE_RE =
   /<span\s+style="color:\s*(#[0-9a-fA-F]{3,8})\s*;?">\s*([\s\S]*?)\s*<\/span>\s*(\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\])/;
 
 const LAYOUT_LINE_RE =
   /^<!--\s*ob-epub-chapter-|^- \[\[#|^##\s|^\s*$/;
 
-export function highlightColorFromHex(hex: string): HighlightColor {
+export function highlightColorFromHex(
+  hex: string,
+  defaultColor: HighlightColor = DEFAULT_EXCERPT_HIGHLIGHT_COLOR
+): HighlightColor {
   const normalized = hex.trim().toLowerCase();
   const found = HIGHLIGHT_COLORS.find((c) => c.hex.toLowerCase() === normalized);
-  return found?.id ?? DEFAULT_EXCERPT_HIGHLIGHT_COLOR;
+  return found?.id ?? defaultColor;
 }
 
 function extractCfiFromExcerptChunk(text: string): string | null {
@@ -271,7 +279,11 @@ function parseCalloutChunk(trimmed: string, noteTypes: NoteTypeDef[]): Annotatio
   return { id, cfiRange, text, color, note, noteType, chapter, created: createdIso };
 }
 
-function parseWikiTextAliasChunk(trimmed: string, noteTypes: NoteTypeDef[]): Annotation | null {
+function parseWikiTextAliasChunk(
+  trimmed: string,
+  noteTypes: NoteTypeDef[],
+  defaultColor: HighlightColor
+): Annotation | null {
   const body = stripLayoutFromBlock(trimmed);
   const lines = body.split("\n");
   const firstLine = lines[0]?.trim() ?? "";
@@ -301,7 +313,7 @@ function parseWikiTextAliasChunk(trimmed: string, noteTypes: NoteTypeDef[]): Ann
     id,
     cfiRange,
     text,
-    color: DEFAULT_EXCERPT_HIGHLIGHT_COLOR,
+    color: defaultColor,
     note,
     noteType,
     chapter: "",
@@ -309,7 +321,11 @@ function parseWikiTextAliasChunk(trimmed: string, noteTypes: NoteTypeDef[]): Ann
   };
 }
 
-function parseInlineColoredChunk(trimmed: string, noteTypes: NoteTypeDef[]): Annotation | null {
+function parseInlineColoredChunk(
+  trimmed: string,
+  noteTypes: NoteTypeDef[],
+  defaultColor: HighlightColor
+): Annotation | null {
   const body = stripLayoutFromBlock(trimmed);
   const match = body.match(COLORED_INLINE_RE);
   if (!match) return null;
@@ -324,7 +340,7 @@ function parseInlineColoredChunk(trimmed: string, noteTypes: NoteTypeDef[]): Ann
 
   const cfiRange = params.cfi;
   const id = resolveAnnotationId(null, cfiRange);
-  const color = highlightColorFromHex(match[1]);
+  const color = highlightColorFromHex(match[1], defaultColor);
   const text = match[2].trim();
   const lines = trimmed.split("\n");
   const linkIdx = lines.findIndex((l) => l.includes("|原文]]"));
@@ -342,7 +358,11 @@ function parseInlineColoredChunk(trimmed: string, noteTypes: NoteTypeDef[]): Ann
   };
 }
 
-function parseInlineSuffixChunk(trimmed: string, noteTypes: NoteTypeDef[]): Annotation | null {
+function parseInlineSuffixChunk(
+  trimmed: string,
+  noteTypes: NoteTypeDef[],
+  defaultColor: HighlightColor
+): Annotation | null {
   const body = stripLayoutFromBlock(trimmed);
   const linkMatch = body.match(/\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\]/);
   if (!linkMatch) return null;
@@ -373,7 +393,7 @@ function parseInlineSuffixChunk(trimmed: string, noteTypes: NoteTypeDef[]): Anno
     id,
     cfiRange,
     text,
-    color: DEFAULT_EXCERPT_HIGHLIGHT_COLOR,
+    color: defaultColor,
     note,
     noteType,
     chapter: "",
@@ -384,21 +404,24 @@ function parseInlineSuffixChunk(trimmed: string, noteTypes: NoteTypeDef[]): Anno
 export function parseExcerptChunk(
   chunk: string,
   _epubFilePath: string,
-  noteTypes: NoteTypeDef[]
+  noteTypes: NoteTypeDef[],
+  options?: ParseExcerptOptions
 ): Annotation | null {
   const trimmed = stripLayoutFromBlock(chunk).trim() || chunk.trim();
   if (!trimmed) return null;
 
+  const defaultColor = options?.defaultColor ?? DEFAULT_EXCERPT_HIGHLIGHT_COLOR;
+
   const callout = parseCalloutChunk(trimmed, noteTypes);
   if (callout) return callout;
 
-  const wikiAlias = parseWikiTextAliasChunk(trimmed, noteTypes);
+  const wikiAlias = parseWikiTextAliasChunk(trimmed, noteTypes, defaultColor);
   if (wikiAlias) return wikiAlias;
 
-  const colored = parseInlineColoredChunk(trimmed, noteTypes);
+  const colored = parseInlineColoredChunk(trimmed, noteTypes, defaultColor);
   if (colored) return colored;
 
-  const inline = parseInlineSuffixChunk(trimmed, noteTypes);
+  const inline = parseInlineSuffixChunk(trimmed, noteTypes, defaultColor);
   if (inline) return inline;
 
   return null;

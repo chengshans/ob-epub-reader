@@ -5,7 +5,7 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
@@ -353,6 +353,9 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
     this.settings.sourceLinkFormat = normalizeSourceLinkFormat(this.settings.sourceLinkFormat);
+    this.settings.defaultExcerptHighlightColor = normalizeHighlightColor(
+      this.settings.defaultExcerptHighlightColor
+    );
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);

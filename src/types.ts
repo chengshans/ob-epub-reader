@@ -160,7 +160,7 @@ export const SOURCE_LINK_FORMATS: {
   {
     id: "inline-suffix",
     label: "正文 + 文末「原文」",
-    desc: "正文后接 [[书名.epub#cfi=...|原文]]；不保存画线颜色，同步回阅读器时按黄色处理",
+    desc: "正文后接 [[书名.epub#cfi=...|原文]]；不保存画线颜色，解析与转换时使用默认画线颜色",
     pros: "正文紧凑、多行保留",
     cons: "不保留颜色、链接不醒目",
   },
@@ -174,7 +174,7 @@ export const SOURCE_LINK_FORMATS: {
   {
     id: "wiki-text-alias",
     label: "链接即正文",
-    desc: "[[书名.epub#cfi=...|摘录全文]] 单行；不保存画线颜色，同步回阅读器时按黄色处理",
+    desc: "[[书名.epub#cfi=...|摘录全文]] 单行；不保存画线颜色，解析与转换时使用默认画线颜色",
     pros: "最简一行",
     cons: "多行合并、不保留颜色",
   },
@@ -246,6 +246,8 @@ export interface EpubPluginSettings {
   excerptFilename: string;
   /** 新标注与转换时使用的摘录标题跳转格式 */
   sourceLinkFormat: SourceLinkFormat;
+  /** 不保存颜色的摘录格式在解析/转换时使用的画线颜色 */
+  defaultExcerptHighlightColor: HighlightColor;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
   readingTheme: ReadingThemeId;
@@ -269,6 +271,7 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   excerptFolder: "epub-books/anno",
   excerptFilename: "《{title}》摘录.md",
   sourceLinkFormat: "callout-title",
+  defaultExcerptHighlightColor: "yellow",
   defaultFlow: "scrolled",
   fontSize: 16,
   readingTheme: "obsidian",
@@ -349,6 +352,15 @@ export const HIGHLIGHT_COLORS: HighlightColorDef[] = [
 
 export function colorHex(id: HighlightColor): string {
   return HIGHLIGHT_COLORS.find((c) => c.id === id)?.hex ?? "#e8b339";
+}
+
+const HIGHLIGHT_COLOR_IDS = new Set<string>(HIGHLIGHT_COLORS.map((c) => c.id));
+
+export function normalizeHighlightColor(value: unknown): HighlightColor {
+  if (typeof value === "string" && HIGHLIGHT_COLOR_IDS.has(value)) {
+    return value as HighlightColor;
+  }
+  return HIGHLIGHT_COLORS[0].id;
 }
 
 export const NOTE_ICON_SIZE_MIN = 14;

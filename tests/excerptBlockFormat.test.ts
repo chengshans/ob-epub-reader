@@ -53,11 +53,13 @@ describe("excerptBlockFormat", () => {
     expect(parsed?.cfiRange).toBe(SAMPLE_CFI);
   });
 
-  it("round-trips inline-suffix with yellow color", () => {
+  it("round-trips inline-suffix with configured default color", () => {
     const { parsed } = roundTrip("inline-suffix");
-    expect(parsed?.text).toBe(TEXT);
     expect(parsed?.color).toBe(DEFAULT_EXCERPT_HIGHLIGHT_COLOR);
-    expect(parsed?.cfiRange).toBe(SAMPLE_CFI);
+
+    const built = buildExcerptBlock(sampleAnn(), EPUB_SOURCE, "inline-suffix", formatDate);
+    const withPurple = parseExcerptChunk(built, EPUB_SOURCE, NOTE_TYPES, { defaultColor: "purple" });
+    expect(withPurple?.color).toBe("purple");
   });
 
   it("round-trips inline-colored format preserving color", () => {

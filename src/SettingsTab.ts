@@ -3,6 +3,7 @@ import type ObEpubPlugin from "./main";
 import { ExcerptCheckModal } from "./ExcerptCheckModal";
 import {
   DEFAULT_NOTE_TYPES,
+  HIGHLIGHT_COLORS,
   HIGHLIGHT_OPACITY_MAX,
   HIGHLIGHT_OPACITY_MIN,
   NoteType,
@@ -222,6 +223,31 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
   }
 
+  private renderDefaultExcerptColor(containerEl: HTMLElement, groupId: SettingsGroupId): void {
+    const setting = this.addMemberSetting(containerEl, groupId, (s) => {
+      s.setName("默认画线颜色").setDesc(
+        "不保存颜色的摘录格式（正文 + 文末「原文」、链接即正文）在解析或格式转换时使用的画线颜色"
+      );
+    });
+
+    const dots = setting.controlEl.createDiv({ cls: "epub-color-dots" });
+    for (const c of HIGHLIGHT_COLORS) {
+      const dot = dots.createDiv({ cls: "epub-color-dot" });
+      dot.setAttribute("data-color", c.id);
+      dot.title = c.label;
+      if (c.id === this.plugin.settings.defaultExcerptHighlightColor) {
+        dot.addClass("is-active");
+      }
+      dot.addEventListener("click", async () => {
+        this.plugin.settings.defaultExcerptHighlightColor = c.id;
+        dots.querySelectorAll(".epub-color-dot").forEach((el) => {
+          el.toggleClass("is-active", el.getAttribute("data-color") === c.id);
+        });
+        await this.plugin.saveSettings();
+      });
+    }
+  }
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
@@ -293,6 +319,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.renderSourceLinkFormat(containerEl, "reader");
+    this.renderDefaultExcerptColor(containerEl, "reader");
     this.endGroup(containerEl, "reader");
 
     // ── 标注与摘录 ──
