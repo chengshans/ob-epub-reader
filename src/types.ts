@@ -265,6 +265,8 @@ export interface EpubPluginSettings {
   noteTypes: NoteTypeDef[];
   /** 功能分组总开关 */
   featureGroups: FeatureGroupSettings;
+  /** 复制摘录时自动插入打开的 Markdown 笔记 */
+  autoPasteExcerpt: boolean;
 }
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
@@ -282,6 +284,7 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   excerptCalloutOpacity: 0.2,
   noteTypes: DEFAULT_NOTE_TYPES.map((t) => ({ ...t })),
   featureGroups: { ...DEFAULT_FEATURE_GROUPS },
+  autoPasteExcerpt: true,
 };
 
 export interface BookProgress {

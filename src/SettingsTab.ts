@@ -306,6 +306,19 @@ export class EpubSettingsTab extends PluginSettingTab {
         });
     });
 
+    this.addMemberSetting(containerEl, "reader", (s) => {
+      s.setName("复制摘录自动粘贴")
+        .setDesc("开启后，复制摘录会插入最近编辑的 Markdown 笔记；阅读器工具栏「粘贴」可快速切换")
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.autoPasteExcerpt !== false)
+            .onChange(async (value) => {
+              this.plugin.settings.autoPasteExcerpt = value;
+              await this.plugin.saveSettings();
+            })
+        );
+    });
+
     this.renderSourceLinkFormat(containerEl, "reader");
     this.renderDefaultExcerptColor(containerEl, "reader");
     this.endGroup(containerEl, "reader");

@@ -71,6 +71,7 @@ export class EpubReaderView extends FileView {
   private themesRegistered = false;
   private onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>;
   private onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>;
+  private onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
   private contextMenuContentDoc: Document | null = null;
@@ -149,7 +150,8 @@ export class EpubReaderView extends FileView {
     excerptPasteTarget: ExcerptPasteTarget,
     settings: EpubPluginSettings,
     onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>,
-    onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>
+    onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>,
+    onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>
   ) {
     super(leaf);
     this.openBridge = openBridge;
@@ -159,6 +161,7 @@ export class EpubReaderView extends FileView {
     this.settings = settings;
     this.onReadingThemeChange = onReadingThemeChange;
     this.onEpubHighlightOpacityChange = onEpubHighlightOpacityChange;
+    this.onAutoPasteExcerptChange = onAutoPasteExcerptChange;
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
     this.readingTheme = normalizeReadingTheme(settings.readingTheme);
@@ -392,6 +395,7 @@ export class EpubReaderView extends FileView {
     fontSizeUp.addEventListener("click", () => this.changeFontSize(2));
 
     this.buildThemeToolbar(toolbar);
+    this.buildAutoPasteToolbar(toolbar);
     if (this.annotationsEnabled()) {
       this.buildHighlightOpacityToolbar(toolbar);
     }
@@ -830,6 +834,35 @@ export class EpubReaderView extends FileView {
   private cssVar(name: string, fallback: string): string {
     const v = getComputedStyle(document.body).getPropertyValue(name).trim();
     return v || fallback;
+  }
+
+  private buildAutoPasteToolbar(toolbar: HTMLElement) {
+    const group = toolbar.createDiv({ cls: "epub-auto-paste" });
+    const label = group.createSpan({ cls: "epub-auto-paste-label", text: "粘贴" });
+    label.title = "复制摘录时自动插入打开的 Markdown 笔记";
+    const toggleBtn = group.createEl("button", {
+      cls: "epub-toolbar-btn epub-auto-paste-toggle",
+      attr: { id: "epub-auto-paste-btn", type: "button" },
+    });
+    this.syncAutoPasteToggle(toggleBtn);
+    toggleBtn.addEventListener("click", () => {
+      const next = !this.settings.autoPasteExcerpt;
+      this.settings.autoPasteExcerpt = next;
+      this.syncAutoPasteToggle(toggleBtn);
+      void this.onAutoPasteExcerptChange?.(next);
+    });
+  }
+
+  private syncAutoPasteToggle(btn?: HTMLElement | null) {
+    const toggleBtn =
+      btn ?? this.toolbarEl?.querySelector("#epub-auto-paste-btn");
+    if (!(toggleBtn instanceof HTMLButtonElement)) return;
+    const enabled = this.settings.autoPasteExcerpt !== false;
+    toggleBtn.textContent = enabled ? "开" : "关";
+    toggleBtn.title = enabled
+      ? "自动粘贴已开启：复制摘录会插入 Markdown"
+      : "自动粘贴已关闭：复制摘录仅写入剪贴板";
+    toggleBtn.toggleClass("is-on", enabled);
   }
 
   private buildThemeToolbar(toolbar: HTMLElement) {
@@ -1944,7 +1977,9 @@ export class EpubReaderView extends FileView {
 
     try {
       await navigator.clipboard.writeText(markdown);
-      const insert = await this.excerptPasteTarget.insertExcerptMarkdown(markdown);
+      const insert = this.settings.autoPasteExcerpt !== false
+        ? await this.excerptPasteTarget.insertExcerptMarkdown(markdown)
+        : undefined;
       return { copied: true, insert };
     } catch (err) {
       console.error("ob-epub: copy excerpt failed", err);
@@ -2546,6 +2581,7 @@ export class EpubReaderView extends FileView {
     } else {
       this.updateThemeToolbarActive();
       this.syncHighlightOpacityToolbar();
+      this.syncAutoPasteToggle();
     }
     this.applyAnnotationsFeatureState();
     this.fontSize = settings.fontSize;

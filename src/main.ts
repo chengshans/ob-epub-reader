@@ -85,6 +85,10 @@ export default class ObEpubPlugin extends Plugin {
         async (opacity) => {
           this.settings.epubHighlightOpacity = clampHighlightOpacity(opacity);
           await this.saveSettings();
+        },
+        async (enabled) => {
+          this.settings.autoPasteExcerpt = enabled;
+          await this.saveSettings({ skipViewUpdate: true });
         }
       );
     });
@@ -363,6 +367,7 @@ export default class ObEpubPlugin extends Plugin {
     );
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
+    this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
   }
 
@@ -374,6 +379,7 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
+    this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
     existing.settings = this.settings;
     await this.saveData(existing);
 
