@@ -27,7 +27,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Reading progress** — Auto-saved position; excerpt frontmatter stores percent, chapter, and reading time
 - **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
-- **Excerpt export** — Annotations sync to Markdown excerpt files with configurable back-to-source links (block reference or wiki link)
+- **Excerpt export** — Annotations sync to Markdown excerpt files with four configurable excerpt link formats
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading modes** — Paginated or scroll; adjustable font size
 - **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in toolbar; set default in settings)
@@ -48,36 +48,43 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 3. Excerpts are written to `{excerpt folder}/《Book Title》摘录.md`
 4. Click the note icon beside highlighted text, or use the sidebar list, to view, edit, or delete annotations
 
-Example excerpt block (default **block reference** format):
+Example excerpt block (default **Callout + title link** format):
 
 ```markdown
-> [!ob-epub|yellow] [[book.epub#cfi=...|Chapter 3]] ^ann-abc123
+> [!ob-epub|yellow] [[book.epub#cfi=/6/14!/4/2/1:0&end=...|Chapter 3]]
 > Selected passage text
 
 <!-- ob-epub-note-type: inspiration -->
 Optional thought text
 
-<!-- ob-epub-cfi: epubcfi(/6/14!/4/2,/1:0,/1:42) -->
-[回到原文](#^ann-abc123)
-
 ---
 ```
 
-The link block is surrounded by blank lines; there is no blank line between the CFI comment and `[回到原文]`. The `^ann-abc123` id matches the callout header block id—click the link to jump back to that passage in the EPUB.
+### Excerpt link formats
+
+Under **Settings → Excerpt title link format**, choose one of four presets. Changes apply only to new annotations; for existing excerpts, use **Convert existing excerpt links → Convert now** to batch-rewrite.
+
+| Preview | ID | Setting name | Write example | Color |
+| :--: | ---- | ------------ | ------------- | ----- |
+| ![Callout + title link](assets/readme-excerpt-formats/callout-title.png) | `callout-title` | Callout + title link | `> [!ob-epub\|purple] [[book.epub#cfi=...\|Chapter]]` + `> passage` | callout metadata |
+| ![Passage + trailing source link](assets/readme-excerpt-formats/inline-suffix.png) | `inline-suffix` | Passage + trailing source link | `Passage. [[book.epub#cfi=...\|Source]]` | not stored; reads back as `yellow` |
+| ![Colored passage + trailing source link](assets/readme-excerpt-formats/inline-colored.png) | `inline-colored` | Colored passage + trailing source link | `<span style="color: #8b5cf6;">Passage</span> [[...\|Source]]` | span hex → nearest highlight color |
+| ![Link as passage text](assets/readme-excerpt-formats/wiki-text-alias.png) | `wiki-text-alias` | Link as passage text | `[[book.epub#cfi=...\|Full excerpt text]]` | not stored; reads back as `yellow` |
+
+Thought block (shared by all four formats):
+
+```markdown
+<!-- ob-epub-note-type: inspiration -->
+Thought content
+```
+
+Multi-line excerpts: formats 2/3 (`inline-suffix`, `inline-colored`) keep line breaks; format 4 (`wiki-text-alias`) collapses line breaks to a single line (space-joined) when writing; escape `\|` and `\]` in aliases.
 
 ### Back to source
 
-Click **回到原文** in an excerpt file, or click an `ob-epub` callout, to jump to that passage in the EPUB reader (works in split view).
+Wiki links in excerpts (`[[book.epub#cfi=...|...]]`), **Source** links, or `ob-epub` callout title links all jump to the matching passage in the EPUB reader (works in split view).
 
-**Link format** (**Settings → Excerpt title link format**):
-
-| Format | Example | Notes |
-|--------|---------|-------|
-| **Wiki link** | `[[Book.epub#cfi=/6/14!/4/2/1:0&end=...|回到原文]]` | The only write format; CFI-only params make links portable across notes |
-
-New annotations are always written as wiki links. To rewrite existing excerpts, click **Convert existing excerpt links → Convert now**.
-
-> Legacy `obsidian://ob-epub-goto?file=...&cfi=...` links, old block-ref links, and legacy CFI-comment layouts are migrated to wiki links on first plugin load or via manual conversion.
+> Legacy `obsidian://ob-epub-goto?file=...&cfi=...` URLs, old block-ref links, and legacy CFI-comment layouts are migrated to the currently selected excerpt format on first plugin load or via manual conversion.
 
 ### Reading themes
 
@@ -113,7 +120,7 @@ Configure under **Settings → EPUB Marginalia**:
 | Option | Description | Default |
 |--------|-------------|---------|
 | Excerpt folder | Directory for excerpt Markdown files (progress stored in each book’s frontmatter) | `epub-books/anno` |
-| Excerpt title link format | Wiki link only; see above | Wiki link |
+| Excerpt title link format | Four presets; see above | Callout + title link |
 | Convert existing excerpt links | Batch-rewrite all `《Title》摘录.md` files in the excerpt folder to the current format | — |
 | Default reading mode | Paginated / scroll | Scroll |
 | Default font size | Reader font size (px) | 16 |

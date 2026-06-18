@@ -176,7 +176,13 @@ export class EpubSettingsTab extends PluginSettingTab {
 
   private renderSourceLinkFormat(containerEl: HTMLElement, groupId: SettingsGroupId): void {
     const formatSetting = this.addMemberSetting(containerEl, groupId, (s) => {
-      s.setName("摘录链接格式").setDesc("选中复制与新标注使用所选格式；修改设置不影响已有摘录。");
+      s.setName("摘录链接格式");
+    });
+    formatSetting.descEl.empty();
+    formatSetting.descEl.appendText("选中复制与新标注使用所选格式；");
+    formatSetting.descEl.createSpan({
+      cls: "ob-epub-settings-warn",
+      text: "修改设置后新建标注会更新原有标注，建议修改前先备份摘录文件夹。",
     });
 
     const formatRows = new Map<SourceLinkFormat, HTMLElement>();
@@ -294,7 +300,7 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     this.addGroupHeader(containerEl, "annotations", {
       title: "标注与摘录",
-      desc: "高亮、想法、摘录写入与侧栏标注；关闭后选中文字仅可复制",
+      desc: "高亮、想法、摘录写入与侧栏标注；关闭后选中文字可复制（可选颜色），不可画线与写入摘录",
       enabled: annotationsEnabled,
       onToggle: async (value) => {
         this.plugin.settings.featureGroups.annotationsAndExcerpts = value;

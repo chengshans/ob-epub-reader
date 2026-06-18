@@ -1457,6 +1457,8 @@ export class EpubReaderView extends FileView {
     menu.className = "epub-context-menu";
     menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
+    const annotationsOn = this.annotationsEnabled();
+
     const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 复制" });
     copyBtn.title = "按当前摘录格式复制到剪贴板";
     copyBtn.addEventListener("click", () => {
@@ -1464,39 +1466,33 @@ export class EpubReaderView extends FileView {
       void this.copySelectionAsExcerpt();
     });
 
-    if (!this.annotationsEnabled()) {
-      document.body.appendChild(menu);
-      this.contextMenu = menu;
-      this.positionMenu(menu, contents);
-      this.bindContextMenuDismiss(true, contents?.document);
-      return;
-    }
+    menu.createDiv({ cls: "epub-ctx-divider" });
 
-    const copyDivider = menu.createDiv({ cls: "epub-ctx-divider" });
-    void copyDivider;
-
-    // Color row: five drawing-line colors
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
     for (const c of HIGHLIGHT_COLORS) {
       const dot = colorRow.createDiv({ cls: "epub-color-dot" });
       dot.setAttribute("data-color", c.id);
-      dot.title = `画线 · ${c.label}`;
+      dot.title = annotationsOn ? `画线 · ${c.label}` : `复制 · ${c.label}`;
       dot.addEventListener("click", async () => {
         this.dismissContextMenu();
-        await this.addUnderline(c.id);
+        if (annotationsOn) {
+          await this.addUnderline(c.id);
+        } else {
+          await this.copySelectionAsExcerpt(c.id);
+        }
       });
     }
 
-    const divider = menu.createDiv({ cls: "epub-ctx-divider" });
-    void divider;
+    if (annotationsOn) {
+      menu.createDiv({ cls: "epub-ctx-divider" });
 
-    // 标注 (画线 + 可选想法)
-    const noteBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📝 标注" });
-    noteBtn.title = "写下自己的想法";
-    noteBtn.addEventListener("click", () => {
-      this.dismissContextMenu();
-      this.openNoteModal();
-    });
+      const noteBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📝 标注" });
+      noteBtn.title = "写下自己的想法";
+      noteBtn.addEventListener("click", () => {
+        this.dismissContextMenu();
+        this.openNoteModal();
+      });
+    }
 
     document.body.appendChild(menu);
     this.contextMenu = menu;
@@ -1944,14 +1940,14 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private async copySelectionAsExcerpt() {
+  private async copySelectionAsExcerpt(color: HighlightColor = "yellow") {
     if (!this.selectedCfi || !this.selectedText) return;
 
     const ann: Annotation = {
       id: "copy-preview",
       cfiRange: this.selectedCfi,
       text: this.selectedText,
-      color: "yellow",
+      color,
       chapter: this.currentChapter || "未知章节",
       created: new Date().toISOString(),
     };

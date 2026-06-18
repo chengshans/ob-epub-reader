@@ -26,6 +26,7 @@
 - **EPUB 书架** — 浏览 Vault 中所有 EPUB，查看各书阅读进度与累计阅读时长
 - **阅读进度** — 自动保存位置，摘录 frontmatter 记录进度百分比、章节与阅读时长
 - **文本高亮与标注** — 选中文字后可画线（黄/红/绿/蓝/紫）或添加想法
+- **复制与画线** -点击画线颜色自动复制，再关闭标注模式下仅复制
 - **五种想法类型** — 做笔记、灵感、准备实践、反复看、疑问；可在设置中自定义名称与图标
 - **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，支持四种可配置的摘录链接格式
 - **深度链接** — 使用 Wiki 链接 `#cfi=...` 从摘录跳回 EPUB 原文；旧版 `obsidian://ob-epub-goto` 与块引用格式可自动兼容并迁移
@@ -64,12 +65,12 @@
 
 在 **设置 → 摘录标题跳转格式** 可选择四种预设。修改设置仅影响新标注；已有摘录需点击 **转换已有摘录链接 → 立即转换** 批量转换。
 
-| ID | 设置名称 | 写入示例 | 颜色 |
-|----|----------|----------|------|
-| `callout-title` | Callout + 标题链接 | `> [!ob-epub\|purple] [[book.epub#cfi=...\|章节]]` + `> 正文` | callout metadata |
-| `inline-suffix` | 正文 + 文末「原文」 | `正文。[[book.epub#cfi=...\|原文]]` | 不保存，读回 `yellow` |
-| `inline-colored` | 着色正文 + 文末「原文」 | `<span style="color: #8b5cf6;">正文</span> [[...\|原文]]` | span hex → 最近高亮色 |
-| `wiki-text-alias` | 链接即正文 | `[[book.epub#cfi=...\|摘录全文]]` | 不保存，读回 `yellow` |
+| 演示 | ID | 设置名称 | 写入示例 | 颜色 |
+| :--: | ---- | -------- | -------- | ---- |
+| ![Callout + 标题链接](assets/readme-excerpt-formats/callout-title.png) | `callout-title` | Callout + 标题链接 | `> [!ob-epub\|purple] [[book.epub#cfi=...\|章节]]` + `> 正文` | callout metadata |
+| ![正文 + 文末「原文」](assets/readme-excerpt-formats/inline-suffix.png) | `inline-suffix` | 正文 + 文末「原文」 | `正文。[[book.epub#cfi=...\|原文]]` | 不保存，读回 `yellow` |
+| ![着色正文 + 文末「原文」](assets/readme-excerpt-formats/inline-colored.png) | `inline-colored` | 着色正文 + 文末「原文」 | `<span style="color: #8b5cf6;">正文</span> [[...\|原文]]` | span hex → 最近高亮色 |
+| ![链接即正文](assets/readme-excerpt-formats/wiki-text-alias.png) | `wiki-text-alias` | 链接即正文 | `[[book.epub#cfi=...\|摘录全文]]` | 不保存，读回 `yellow` |
 
 想法区块（四种格式共用）：
 
