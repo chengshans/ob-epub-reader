@@ -260,18 +260,6 @@ export class EpubSettingsTab extends PluginSettingTab {
       desc: "核心阅读能力，无总开关（禁用插件请在社区插件设置中操作）",
     });
 
-    this.renderGroupScopeList(
-      containerEl,
-      "reader",
-      [
-        "打开 EPUB 与章节目录",
-        "分页 / 滚动、字体与阅读主题",
-        "选中复制与摘录链接格式",
-        "从笔记跳回 EPUB 原文",
-      ],
-      "始终可用："
-    );
-
     this.addMemberSetting(containerEl, "reader", (s) => {
       s.setName("默认阅读模式")
         .setDesc("分页模式或滚动模式")

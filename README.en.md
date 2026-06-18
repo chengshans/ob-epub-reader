@@ -26,6 +26,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **EPUB bookshelf** — Browse all EPUBs in the vault with progress and cumulative reading time
 - **Reading progress** — Auto-saved position; excerpt frontmatter stores percent, chapter, and reading time
 - **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought
+- **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only; when a Markdown note is open, excerpts auto-insert at the last cursor
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
 - **Excerpt export** — Annotations sync to Markdown excerpt files with four configurable excerpt link formats
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
@@ -47,6 +48,8 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 2. Pick a highlight color, or choose **标注** to add a thought (one of five note types)
 3. Excerpts are written to `{excerpt folder}/《Book Title》摘录.md`
 4. Click the note icon beside highlighted text, or use the sidebar list, to view, edit, or delete annotations
+
+**Split-view co-reading**: With EPUB and Markdown side by side, **Copy** or a color dot writes the excerpt to the clipboard and inserts it at the last cursor in the recently edited note (reading mode: clipboard only).
 
 Example excerpt block (default **Callout + title link** format):
 

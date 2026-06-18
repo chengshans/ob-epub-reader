@@ -8,6 +8,7 @@ import { EpubSettingsTab } from "./SettingsTab";
 import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
+import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
 
 applyEpubjsCfiPatch();
@@ -16,6 +17,7 @@ export default class ObEpubPlugin extends Plugin {
   settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
   progressStore!: ProgressStore;
   annotationVaultStore!: AnnotationVaultStore;
+  excerptPasteTarget!: ExcerptPasteTarget;
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
   private lastGotoKey = "";
   private lastGotoAt = 0;
@@ -65,6 +67,8 @@ export default class ObEpubPlugin extends Plugin {
       this.openEpubAtCfi(file, cfi)
     );
 
+    this.excerptPasteTarget = registerExcerptPasteTarget(this);
+
     // Register the reader view
     this.registerView(EPUB_READER_VIEW_TYPE, (leaf) => {
       return new EpubReaderView(
@@ -72,6 +76,7 @@ export default class ObEpubPlugin extends Plugin {
         this,
         this.annotationVaultStore,
         this.progressStore,
+        this.excerptPasteTarget,
         this.settings,
         async (themeId) => {
           this.settings.readingTheme = themeId;

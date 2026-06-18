@@ -28,6 +28,7 @@ import {
   isAnnotationsAndExcerptsEnabled,
 } from "./types";
 import { buildExcerptBlock } from "./excerptBlockFormat";
+import { ExcerptInsertResult, ExcerptPasteTarget, noticeExcerptCopy } from "./ExcerptPasteTarget";
 import { NoteInputModal } from "./NoteInputModal";
 import { ConfirmModal } from "./ConfirmModal";
 import {
@@ -82,6 +83,7 @@ export class EpubReaderView extends FileView {
   private openBridge: EpubOpenBridge;
   private annotationVaultStore: AnnotationVaultStore;
   private progressStore: ProgressStore;
+  private excerptPasteTarget: ExcerptPasteTarget;
   private settings: EpubPluginSettings;
   private pendingCfi: string = "";
   private annotationWatcherCleanup: (() => void) | null = null;
@@ -144,6 +146,7 @@ export class EpubReaderView extends FileView {
     openBridge: EpubOpenBridge,
     annotationVaultStore: AnnotationVaultStore,
     progressStore: ProgressStore,
+    excerptPasteTarget: ExcerptPasteTarget,
     settings: EpubPluginSettings,
     onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>,
     onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>
@@ -152,6 +155,7 @@ export class EpubReaderView extends FileView {
     this.openBridge = openBridge;
     this.annotationVaultStore = annotationVaultStore;
     this.progressStore = progressStore;
+    this.excerptPasteTarget = excerptPasteTarget;
     this.settings = settings;
     this.onReadingThemeChange = onReadingThemeChange;
     this.onEpubHighlightOpacityChange = onEpubHighlightOpacityChange;
@@ -413,9 +417,15 @@ export class EpubReaderView extends FileView {
 
   private toggleToc() {
     this.tocVisible = !this.tocVisible;
-    if (this.sidebarEl) {
-      this.sidebarEl.toggleVisibility(this.tocVisible);
-    }
+    // 用 CSS 类收起侧边栏，避免 toggleVisibility 在 flex 布局中仍占位
+    this.sidebarEl?.toggleClass("is-collapsed", !this.tocVisible);
+    requestAnimationFrame(() => {
+      if (!this.rendition || !this.readerEl) return;
+      const r = this.readerEl.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        this.rendition.resize(r.width, r.height);
+      }
+    });
   }
 
   private setSidebarMode(mode: "toc" | "notes") {
@@ -1920,8 +1930,10 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private async copyAnnotationAsExcerpt(ann: Annotation): Promise<boolean> {
-    if (!this.file) return false;
+  private async copyAnnotationAsExcerpt(
+    ann: Annotation
+  ): Promise<{ copied: boolean; insert?: ExcerptInsertResult }> {
+    if (!this.file) return { copied: false };
 
     const markdown = buildExcerptBlock(
       ann,
@@ -1932,11 +1944,12 @@ export class EpubReaderView extends FileView {
 
     try {
       await navigator.clipboard.writeText(markdown);
-      return true;
+      const insert = await this.excerptPasteTarget.insertExcerptMarkdown(markdown);
+      return { copied: true, insert };
     } catch (err) {
       console.error("ob-epub: copy excerpt failed", err);
       new Notice("复制失败");
-      return false;
+      return { copied: false };
     }
   }
 
@@ -1952,8 +1965,9 @@ export class EpubReaderView extends FileView {
       created: new Date().toISOString(),
     };
 
-    if (await this.copyAnnotationAsExcerpt(ann)) {
-      new Notice("已复制摘录");
+    const result = await this.copyAnnotationAsExcerpt(ann);
+    if (result.copied) {
+      noticeExcerptCopy(result.insert);
     }
 
     this.clearSelection();
@@ -1982,11 +1996,17 @@ export class EpubReaderView extends FileView {
       await this.refreshHighlightsAfterMutation();
     }
     if (annToCopy) {
-      await this.copyAnnotationAsExcerpt(annToCopy);
+      const copyResult = await this.copyAnnotationAsExcerpt(annToCopy);
+      let msg = "✅ 已画线";
+      if (copyResult.insert?.inserted && copyResult.insert.fileDisplayName) {
+        msg += `，已插入《${copyResult.insert.fileDisplayName}》`;
+      }
+      new Notice(msg);
+    } else {
+      new Notice("✅ 已画线");
     }
     this.clearSelection();
     if (this.sidebarMode === "notes") this.renderNotesPanel();
-    new Notice("✅ 已画线");
   }
 
   private openNoteModal() {
@@ -2048,8 +2068,8 @@ export class EpubReaderView extends FileView {
     copyBtn.title = "按当前摘录格式复制到剪贴板";
     copyBtn.addEventListener("click", () => {
       this.dismissContextMenu();
-      void this.copyAnnotationAsExcerpt(ann).then((ok) => {
-        if (ok) new Notice("已复制摘录");
+      void this.copyAnnotationAsExcerpt(ann).then((result) => {
+        if (result.copied) noticeExcerptCopy(result.insert);
       });
     });
 

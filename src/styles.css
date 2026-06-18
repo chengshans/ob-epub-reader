@@ -244,6 +244,10 @@ a.ob-epub-goto-link {
   overflow: hidden;
 }
 
+.epub-sidebar.is-collapsed {
+  display: none;
+}
+
 .epub-sidebar-tabs {
   display: flex;
   flex-shrink: 0;
