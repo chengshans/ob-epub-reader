@@ -5,6 +5,7 @@ import {
   ExcerptMetadataCheckItem,
   ExcerptMetadataCheckReport,
   extractTitleFromExcerptName,
+  inferEpubPathFromExcerptLocation,
   inferFilefolderFromExcerptLocation,
   isDynamicExcerptFolder,
   resolveExcerptFolder,
@@ -218,30 +219,37 @@ export class AnnotationVaultStore {
   }
 
   /** Replace goto links in all chunks to match the current sourceLinkFormat setting. */
-  rewriteGotoLinksToCurrentFormat(content: string, epubSource?: string): string {
+  rewriteGotoLinksToCurrentFormat(
+    content: string,
+    epubSource?: string,
+    options?: { forceRewrite?: boolean }
+  ): string {
     if (!epubSource) return content;
 
     const annotations = this.parseContent(content, epubSource);
     if (annotations.length === 0) return content;
 
-    const blocks = extractAnnotationBlocksFromExcerpt(content);
-    const formatDate = (d: Date) => this.formatDate(d);
-    const needsUpdate =
-      blocks.length !== annotations.length ||
-      blocks.some((block, i) => {
-        const ann = annotations[i];
-        if (!ann) return true;
-        const body = stripChapterHeadingPrefix(block);
-        return !isChunkInCurrentFormat(
-          body,
-          ann,
-          epubSource,
-          this.settings.sourceLinkFormat,
-          formatDate
-        );
-      });
+    if (!options?.forceRewrite) {
+      const blocks = extractAnnotationBlocksFromExcerpt(content);
+      const formatDate = (d: Date) => this.formatDate(d);
+      const needsUpdate =
+        blocks.length !== annotations.length ||
+        blocks.some((block, i) => {
+          const ann = annotations[i];
+          if (!ann) return true;
+          const body = stripChapterHeadingPrefix(block);
+          return !isChunkInCurrentFormat(
+            body,
+            ann,
+            epubSource,
+            this.settings.sourceLinkFormat,
+            formatDate
+          );
+        });
 
-    if (!needsUpdate) return content;
+      if (!needsUpdate) return content;
+    }
+
     return this.recomposeExcerptFromContent(content, epubSource, annotations);
   }
 
@@ -267,8 +275,12 @@ export class AnnotationVaultStore {
     let updated = 0;
     for (const file of files) {
       const content = await this.app.vault.read(file);
-      const epubSource = this.extractEpubSourceFromFrontmatter(content);
-      const converted = this.rewriteGotoLinksToCurrentFormat(content, epubSource);
+      const epubSource = this.resolveEpubSourceForExcerpt(file.path, content);
+      if (!epubSource) continue;
+
+      const converted = this.rewriteGotoLinksToCurrentFormat(content, epubSource, {
+        forceRewrite: true,
+      });
       if (converted !== content) {
         this.pauseWatch();
         await this.app.vault.modify(file, converted);
@@ -408,7 +420,17 @@ export class AnnotationVaultStore {
 
   private extractEpubSourceFromFrontmatter(content: string): string | undefined {
     const body = this.extractFrontmatterBody(content);
-    return body?.match(/^epub-source:\s*(.+)$/m)?.[1]?.trim();
+    const raw = body?.match(/^epub-source:\s*(.+)$/m)?.[1];
+    return raw ? this.parseYamlScalar(raw) : undefined;
+  }
+
+  /** Resolve EPUB path from frontmatter, excerpt location, or wiki links in content. */
+  resolveEpubSourceForExcerpt(excerptPath: string, content: string): string | undefined {
+    return (
+      this.extractEpubSourceFromFrontmatter(content) ??
+      inferEpubPathFromExcerptLocation(excerptPath, this.settings.excerptFolder) ??
+      this.inferEpubPathFromExcerpt(excerptPath, content)
+    );
   }
 
   private parseYamlScalar(raw: string): string {

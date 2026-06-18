@@ -145,6 +145,23 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     expect(twice).toBe(once);
   });
 
+  it("forceRewrite recomposes even when format already matches", () => {
+    const store = createStore("callout-title");
+    const chunk = [
+      `> [!ob-epub|yellow] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER}]]`,
+      "> 摘录正文第一行",
+      "> 摘录正文第二行",
+    ].join("\n");
+    const withoutForce = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+    expect(withoutForce).toBe(chunk);
+
+    const withForce = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE, {
+      forceRewrite: true,
+    });
+    expect(withForce).not.toBe(chunk);
+    expect(withForce).toContain("<!-- ob-epub-chapter-body-start -->");
+  });
+
   it("is idempotent for inline-suffix format", () => {
     const store = createStore("inline-suffix");
     const chunk = `摘录正文[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|原文]]`;
@@ -276,5 +293,31 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     );
     const bodyEndCount = (result.match(/<!-- ob-epub-chapter-body-end -->/g) ?? []).length;
     expect(bodyEndCount).toBe(1);
+  });
+
+  it("converts using inferred epub path when frontmatter lacks epub-source", () => {
+    const inferredEpub = "epub-books/demo.epub";
+    const store = new AnnotationVaultStore({} as App, {
+      ...DEFAULT_SETTINGS,
+      excerptFolder: "{filefolder}/anno",
+      sourceLinkFormat: "inline-suffix",
+    });
+    const chunk = [
+      `> [!ob-epub|yellow] [[${inferredEpub}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文",
+    ].join("\n");
+    const excerptPath = "epub-books/anno/《demo》摘录.md";
+
+    expect(store.resolveEpubSourceForExcerpt(excerptPath, chunk)).toBe(inferredEpub);
+
+    const result = store.rewriteGotoLinksToCurrentFormat(
+      chunk,
+      store.resolveEpubSourceForExcerpt(excerptPath, chunk),
+      { forceRewrite: true }
+    );
+
+    expect(result).not.toMatch(/^>\s*\[!ob-epub/m);
+    expect(result).toContain("摘录正文[[");
+    expect(result).toContain("|原文]]");
   });
 });
