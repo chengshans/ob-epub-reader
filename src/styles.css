@@ -632,6 +632,12 @@ a.ob-epub-goto-link {
   color: var(--text-accent);
 }
 
+.epub-toc-item.is-current .epub-toc-label {
+  background: rgba(var(--interactive-accent-rgb, 123, 104, 238), 0.15);
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
 .epub-toc-toggle {
   padding: 5px 8px;
   cursor: pointer;

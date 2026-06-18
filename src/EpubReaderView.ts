@@ -132,6 +132,7 @@ export class EpubReaderView extends FileView {
   private progressEl: HTMLElement | null = null;
   private tocToggleBtn: HTMLElement | null = null;
   private tocVisible: boolean = true;
+  private tocHighlightedChapter = "";
   private sidebarMode: "toc" | "notes" = "toc";
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private wheelAccum: number = 0;
@@ -475,6 +476,7 @@ export class EpubReaderView extends FileView {
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
     this.tocSpineEntries = [];
+    this.tocHighlightedChapter = "";
     if (invalidateSession) this.resetNotesFilters();
 
     this.safeCleanup("resizeObserver", () => {
@@ -1159,7 +1161,9 @@ export class EpubReaderView extends FileView {
     const tocList = this.tocEl.querySelector(".epub-toc-list") ?? this.tocEl.createEl("ul", { cls: "epub-toc-list" });
     tocList.empty();
 
+    this.tocHighlightedChapter = "";
     this.renderTocItems(this.tocItems, tocList as HTMLElement, 0);
+    this.updateTocActiveState();
   }
 
   private syncChapterFromLocation(location?: any) {
@@ -1170,19 +1174,59 @@ export class EpubReaderView extends FileView {
     if (resolved) {
       this.currentChapter = resolved;
       this.notesChapterCollapsed.delete(normalizeChapterName(resolved));
+      this.updateTocActiveState();
+    }
+  }
+
+  private updateTocActiveState() {
+    if (!this.tocEl) return;
+
+    const current = normalizeChapterName(this.currentChapter);
+    if (current === this.tocHighlightedChapter) return;
+    this.tocHighlightedChapter = current;
+
+    const items = this.tocEl.querySelectorAll<HTMLElement>(".epub-toc-item");
+    let activeEl: HTMLElement | null = null;
+
+    for (const li of items) {
+      const label = li.dataset.tocLabel ?? "";
+      const isCurrent = normalizeChapterName(label) === current;
+      li.toggleClass("is-current", isCurrent);
+      if (isCurrent) activeEl = li;
+    }
+
+    if (activeEl) {
+      this.expandTocAncestors(activeEl);
+      activeEl.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  private expandTocAncestors(item: HTMLElement) {
+    let parent = item.parentElement;
+    while (parent) {
+      if (parent.hasClass("epub-toc-sublist") && parent.hasClass("is-collapsed")) {
+        parent.removeClass("is-collapsed");
+        const parentLi = parent.parentElement;
+        const toggle = parentLi?.querySelector(".epub-toc-toggle");
+        if (toggle) toggle.textContent = "▼";
+      }
+      parent = parent.parentElement;
     }
   }
 
   private renderTocItems(items: NavItem[], container: HTMLElement, depth: number) {
     for (const item of items) {
+      const itemLabel = item.label.trim();
       const li = container.createEl("li", { cls: "epub-toc-item" });
+      li.setAttr("data-toc-label", itemLabel);
       li.setCssProps({ paddingLeft: `${depth * 12}px` });
 
-      const label = li.createEl("span", { cls: "epub-toc-label", text: item.label.trim() });
+      const label = li.createEl("span", { cls: "epub-toc-label", text: itemLabel });
       label.addEventListener("click", () => {
         this.blockProgressSave = false;
         this.isBookInitializing = false;
-        this.currentChapter = item.label.trim();
+        this.currentChapter = itemLabel;
+        this.updateTocActiveState();
         this.rendition?.display(item.href);
       });
 
