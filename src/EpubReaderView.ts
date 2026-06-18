@@ -459,7 +459,7 @@ export class EpubReaderView extends FileView {
     if (this.file) {
       const savedCfi = this.currentCfi;
       this.destroyBook();
-      this.loadBook(this.file, savedCfi);
+      void this.loadBook(this.file, savedCfi, { preserveFlow: true });
     }
   }
 
@@ -521,7 +521,11 @@ export class EpubReaderView extends FileView {
     });
   }
 
-  private async loadBook(file: TFile, startCfi: string = "") {
+  private async loadBook(
+    file: TFile,
+    startCfi: string = "",
+    opts?: { preserveFlow?: boolean }
+  ) {
     if (!this.readerEl) return;
     this.readerEl.empty();
     const generation = this.beginBookSession();
@@ -569,7 +573,9 @@ export class EpubReaderView extends FileView {
       await this.loadTocData();
       if (this.isBookSessionStale(generation)) return;
 
-      this.applyPublicationReadingHints();
+      if (!opts?.preserveFlow) {
+        this.applyPublicationReadingHints();
+      }
 
       // 等一帧确保 readerEl 已有真实布局尺寸
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
@@ -1166,7 +1172,7 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  /** Honor publication rendition metadata; user toolbar toggle still overrides later. */
+  /** Honor publication rendition metadata on first open; toolbar toggle preserves user choice. */
   private applyPublicationReadingHints(): void {
     if (!this.book) return;
 
