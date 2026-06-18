@@ -94,7 +94,26 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     const formatSetting = new Setting(containerEl)
       .setName("摘录导出格式")
-      .setDesc(this.formatSettingDesc(this.plugin.settings.sourceLinkFormat));
+      .setDesc("新标注与选中复制使用所选格式；修改设置不影响已有摘录。");
+
+    const formatRows = new Map<SourceLinkFormat, HTMLElement>();
+    const tableWrap = containerEl.createDiv({ cls: "ob-epub-format-table-wrap" });
+    const table = tableWrap.createEl("table", { cls: "ob-epub-format-table" });
+    const headRow = table.createEl("thead").createEl("tr");
+    for (const heading of ["格式", "优点", "缺点"]) {
+      headRow.createEl("th", { text: heading });
+    }
+    const tbody = table.createEl("tbody");
+    for (const fmt of SOURCE_LINK_FORMATS) {
+      const row = tbody.createEl("tr");
+      if (fmt.id === this.plugin.settings.sourceLinkFormat) {
+        row.addClass("is-active");
+      }
+      row.createEl("td", { text: fmt.label });
+      row.createEl("td", { text: fmt.pros });
+      row.createEl("td", { text: fmt.cons });
+      formatRows.set(fmt.id, row);
+    }
 
     formatSetting.addDropdown((drop) => {
       for (const fmt of SOURCE_LINK_FORMATS) {
@@ -103,8 +122,11 @@ export class EpubSettingsTab extends PluginSettingTab {
       drop
         .setValue(this.plugin.settings.sourceLinkFormat)
         .onChange(async (value) => {
-          this.plugin.settings.sourceLinkFormat = value as SourceLinkFormat;
-          formatSetting.setDesc(this.formatSettingDesc(this.plugin.settings.sourceLinkFormat));
+          const format = value as SourceLinkFormat;
+          this.plugin.settings.sourceLinkFormat = format;
+          for (const [id, row] of formatRows) {
+            row.toggleClass("is-active", id === format);
+          }
           await this.plugin.saveSettings();
         });
     });
@@ -127,11 +149,8 @@ export class EpubSettingsTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    const convertSetting = new Setting(containerEl)
       .setName("转换已有摘录链接")
-      .setDesc(
-        "批量将摘录文件夹内所有《书名》摘录.md 转换为当前选中的摘录导出格式；使用 {filefolder} 时会扫描库内全部《书名》摘录.md"
-      )
       .addButton((btn) =>
         btn.setButtonText("立即转换").onClick(async () => {
           btn.setDisabled(true);
@@ -146,6 +165,15 @@ export class EpubSettingsTab extends PluginSettingTab {
           }
         })
       );
+    convertSetting.descEl.empty();
+    convertSetting.descEl.appendText(
+      "批量将摘录文件夹内所有《书名》摘录.md 转换为当前选中的摘录导出格式；使用 {filefolder} 时会扫描库内全部《书名》摘录.md"
+    );
+    convertSetting.descEl.createEl("br");
+    convertSetting.descEl.createSpan({
+      cls: "ob-epub-settings-warn",
+      text: "转换会改写摘录文件，建议先备份摘录文件夹",
+    });
 
     new Setting(containerEl)
       .setName("默认阅读模式")
@@ -289,10 +317,5 @@ export class EpubSettingsTab extends PluginSettingTab {
           })
       );
 
-  }
-
-  private formatSettingDesc(format: SourceLinkFormat): string {
-    const found = SOURCE_LINK_FORMATS.find((f) => f.id === format);
-    return found?.desc ?? SOURCE_LINK_FORMATS[0].desc;
   }
 }

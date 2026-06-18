@@ -143,26 +143,40 @@ export type SourceLinkFormat =
   | "inline-colored"
   | "wiki-text-alias";
 
-export const SOURCE_LINK_FORMATS: { id: SourceLinkFormat; label: string; desc: string }[] = [
+export const SOURCE_LINK_FORMATS: {
+  id: SourceLinkFormat;
+  label: string;
+  desc: string;
+  pros: string;
+  cons: string;
+}[] = [
   {
     id: "callout-title",
     label: "Callout + 标题链接",
     desc: "> [!ob-epub|颜色] [[书名.epub#cfi=...|章节]] + 正文；保留 callout 高亮色",
+    pros: "结构清晰、保留高亮色",
+    cons: "占行多、依赖 callout 主题",
   },
   {
     id: "inline-suffix",
     label: "正文 + 文末「原文」",
     desc: "正文后接 [[书名.epub#cfi=...|原文]]；不保存画线颜色，同步回阅读器时按黄色处理",
+    pros: "正文紧凑、多行保留",
+    cons: "不保留颜色、链接不醒目",
   },
   {
     id: "inline-colored",
     label: "着色正文 + 文末「原文」",
     desc: "<span style=\"color:…\">正文</span> [[书名.epub#cfi=...|原文]]；通过 span 保留颜色",
+    pros: "保留五色、较紧凑",
+    cons: "HTML 导出可能丢色",
   },
   {
     id: "wiki-text-alias",
     label: "链接即正文",
     desc: "[[书名.epub#cfi=...|摘录全文]] 单行；不保存画线颜色，同步回阅读器时按黄色处理",
+    pros: "最简一行",
+    cons: "多行合并、不保留颜色",
   },
 ];
 

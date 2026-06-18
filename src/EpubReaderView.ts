@@ -26,6 +26,7 @@ import {
   normalizeReadingTheme,
   resolveNoteTypes,
 } from "./types";
+import { buildExcerptBlock } from "./excerptBlockFormat";
 import { NoteInputModal } from "./NoteInputModal";
 import { ConfirmModal } from "./ConfirmModal";
 import {
@@ -1291,6 +1292,16 @@ export class EpubReaderView extends FileView {
     menu.className = "epub-context-menu";
     menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
+    const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 复制" });
+    copyBtn.title = "按当前摘录格式复制到剪贴板";
+    copyBtn.addEventListener("click", () => {
+      this.dismissContextMenu();
+      void this.copySelectionAsExcerpt();
+    });
+
+    const copyDivider = menu.createDiv({ cls: "epub-ctx-divider" });
+    void copyDivider;
+
     // Color row: five drawing-line colors
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
     for (const c of HIGHLIGHT_COLORS) {
@@ -1730,6 +1741,36 @@ export class EpubReaderView extends FileView {
     } finally {
       this.isRefreshingHighlights = false;
     }
+  }
+
+  private async copySelectionAsExcerpt() {
+    if (!this.file || !this.selectedCfi || !this.selectedText) return;
+
+    const ann: Annotation = {
+      id: "copy-preview",
+      cfiRange: this.selectedCfi,
+      text: this.selectedText,
+      color: "yellow",
+      chapter: this.currentChapter || "未知章节",
+      created: new Date().toISOString(),
+    };
+
+    const markdown = buildExcerptBlock(
+      ann,
+      this.file.path,
+      this.settings.sourceLinkFormat,
+      () => ""
+    );
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      new Notice("已复制摘录");
+    } catch (err) {
+      console.error("ob-epub: copy excerpt failed", err);
+      new Notice("复制失败");
+    }
+
+    this.clearSelection();
   }
 
   private async addUnderline(color: HighlightColor) {

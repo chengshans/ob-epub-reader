@@ -1104,6 +1104,40 @@ a.ob-epub-goto-link {
   color: var(--text-error, #e0533d);
 }
 
+.ob-epub-settings .ob-epub-format-table-wrap {
+  margin: 0 0 18px 0;
+  overflow-x: auto;
+}
+
+.ob-epub-settings .ob-epub-format-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ob-epub-settings .ob-epub-format-table th,
+.ob-epub-settings .ob-epub-format-table td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ob-epub-settings .ob-epub-format-table th {
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.ob-epub-settings .ob-epub-format-table tr.is-active td {
+  background: var(--background-modifier-hover);
+}
+
+.ob-epub-settings .ob-epub-format-table tr.is-active td:first-child {
+  font-weight: 600;
+}
+
 .ob-epub-excerpt-check-modal .ob-epub-excerpt-check-summary {
   margin-bottom: 12px;
   color: var(--text-muted);
