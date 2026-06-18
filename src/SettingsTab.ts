@@ -67,6 +67,24 @@ export class EpubSettingsTab extends PluginSettingTab {
       text: "移动 EPUB 或文件夹后，需手动更新摘录 frontmatter 中的 epub-source 为新路径，否则标题跳转链接会失效",
     });
 
+    const excerptFilenameSetting = new Setting(containerEl)
+      .setName("摘录文件名")
+      .addText((text) =>
+        text
+          .setPlaceholder("《{title}》摘录.md")
+          .setValue(this.plugin.settings.excerptFilename)
+          .onChange(async (value) => {
+            this.plugin.settings.excerptFilename = value || "《{title}》摘录.md";
+            await this.plugin.saveSettings();
+          })
+      );
+    excerptFilenameSetting.descEl.empty();
+    excerptFilenameSetting.descEl.appendText(
+      "新建摘录时使用的 Markdown 文件名。支持 {title}（EPUB 书名，不含扩展名）与 {filename}（EPUB 完整文件名，如 demo.epub）。"
+    );
+    excerptFilenameSetting.descEl.createEl("br");
+    excerptFilenameSetting.descEl.appendText("示例：《{title}》摘录.md、{title}-notes.md、{filename}.md");
+
     new Setting(containerEl)
       .setName("检查摘录元数据")
       .setDesc(

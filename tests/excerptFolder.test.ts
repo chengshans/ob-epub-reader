@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { App } from "obsidian";
 import { AnnotationVaultStore } from "../src/AnnotationVaultStore";
 import {
-  EXCERPT_MD_NAME_RE,
+  buildLooseExcerptNameRegex,
   inferEpubPathFromExcerptLocation,
   isDynamicExcerptFolder,
   epubTitlesMatch,
+  resolveExcerptFilename,
   resolveExcerptFolder,
 } from "../src/excerptFolder";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -37,10 +38,31 @@ describe("resolveExcerptFolder", () => {
   });
 });
 
-describe("EXCERPT_MD_NAME_RE", () => {
-  it("matches plugin excerpt filenames", () => {
-    expect(EXCERPT_MD_NAME_RE.test("《demo》摘录.md")).toBe(true);
-    expect(EXCERPT_MD_NAME_RE.test("notes.md")).toBe(false);
+describe("buildLooseExcerptNameRegex", () => {
+  it("matches default excerpt filenames", () => {
+    const re = buildLooseExcerptNameRegex("《{title}》摘录.md");
+    expect(re.test("《demo》摘录.md")).toBe(true);
+    expect(re.test("notes.md")).toBe(false);
+  });
+
+  it("matches custom excerpt filenames", () => {
+    const re = buildLooseExcerptNameRegex("{title}-notes.md");
+    expect(re.test("demo-notes.md")).toBe(true);
+    expect(re.test("《demo》摘录.md")).toBe(false);
+  });
+});
+
+describe("resolveExcerptFilename", () => {
+  it("resolves default template", () => {
+    expect(resolveExcerptFilename("《{title}》摘录.md", "books/demo.epub")).toBe(
+      "《demo》摘录.md"
+    );
+  });
+
+  it("resolves {filename} placeholder", () => {
+    expect(resolveExcerptFilename("{filename}.notes.md", "books/demo.epub")).toBe(
+      "demo.epub.notes.md"
+    );
   });
 });
 
@@ -71,6 +93,16 @@ describe("inferEpubPathFromExcerptLocation", () => {
       inferEpubPathFromExcerptLocation("epub-books/notes/《demo》摘录.md", "{filefolder}/anno")
     ).toBeNull();
   });
+
+  it("infers epub from custom filename template", () => {
+    expect(
+      inferEpubPathFromExcerptLocation(
+        "epub-books/小说/anno/demo-notes.md",
+        "{filefolder}/anno",
+        "{title}-notes.md"
+      )
+    ).toBe("epub-books/小说/demo.epub");
+  });
 });
 
 describe("AnnotationVaultStore.getAnnotationFilePath", () => {
@@ -91,6 +123,17 @@ describe("AnnotationVaultStore.getAnnotationFilePath", () => {
     });
     expect(store.getAnnotationFilePath("books/demo.epub")).toBe(
       "epub-books/anno/《demo》摘录.md"
+    );
+  });
+
+  it("uses custom filename template", () => {
+    const store = new AnnotationVaultStore({} as App, {
+      ...DEFAULT_SETTINGS,
+      excerptFolder: "epub-books/anno",
+      excerptFilename: "{title}-notes.md",
+    });
+    expect(store.getAnnotationFilePath("books/demo.epub")).toBe(
+      "epub-books/anno/demo-notes.md"
     );
   });
 });

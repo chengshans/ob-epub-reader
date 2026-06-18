@@ -192,6 +192,8 @@ export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
 
 export interface EpubPluginSettings {
   excerptFolder: string;
+  /** 摘录 Markdown 文件名模板，支持 {title}、{filename} 占位符 */
+  excerptFilename: string;
   /** 新标注与转换时使用的摘录标题跳转格式 */
   sourceLinkFormat: SourceLinkFormat;
   defaultFlow: "paginated" | "scrolled";
@@ -213,6 +215,7 @@ export interface EpubPluginSettings {
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
   excerptFolder: "epub-books/anno",
+  excerptFilename: "《{title}》摘录.md",
   sourceLinkFormat: "callout-title",
   defaultFlow: "scrolled",
   fontSize: 16,

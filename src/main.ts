@@ -41,8 +41,11 @@ export default class ObEpubPlugin extends Plugin {
     await this.migrateTitleGotoLinksOnce();
 
     // Click excerpt title / legacy「回到原文」/ callout → jump EPUB (works in split view)
-    registerExcerptGotoHandler(this, (file, cfi) => this.openEpubAtCfi(file, cfi), (annId, excerptPath) =>
-      this.annotationVaultStore.resolveGotoFromExcerpt(excerptPath, annId)
+    registerExcerptGotoHandler(
+      this,
+      (file, cfi) => this.openEpubAtCfi(file, cfi),
+      (annId, excerptPath) => this.annotationVaultStore.resolveGotoFromExcerpt(excerptPath, annId),
+      () => this.settings.excerptFilename
     );
 
     this.unpatchEpubWikiLinks = patchEpubWikiLinkNavigation(this.app, (file, cfi) =>

@@ -1,13 +1,14 @@
 import { App, normalizePath, TFile } from "obsidian";
 import { extractEpubCfiLiteral } from "./cfi/cfiString";
 import {
-  EXCERPT_MD_NAME_RE,
+  buildLooseExcerptNameRegex,
   ExcerptMetadataCheckItem,
   ExcerptMetadataCheckReport,
   extractTitleFromExcerptName,
   inferEpubPathFromExcerptLocation,
   inferFilefolderFromExcerptLocation,
   isDynamicExcerptFolder,
+  resolveExcerptFilename,
   resolveExcerptFolder,
 } from "./excerptFolder";
 import {
@@ -153,21 +154,22 @@ export class AnnotationVaultStore {
   }
 
   private listExcerptMarkdownFiles(): TFile[] {
-    const template = this.settings.excerptFolder;
+    const folderTemplate = this.settings.excerptFolder;
+    const filenameTemplate = this.settings.excerptFilename;
+    const nameRe = buildLooseExcerptNameRegex(filenameTemplate);
     const all = this.app.vault.getMarkdownFiles();
-    if (isDynamicExcerptFolder(template)) {
-      return all.filter((f) => EXCERPT_MD_NAME_RE.test(f.name));
+    if (isDynamicExcerptFolder(folderTemplate)) {
+      return all.filter((f) => nameRe.test(f.name));
     }
-    const folder = template.replace(/\/$/, "");
+    const folder = folderTemplate.replace(/\/$/, "");
     const prefix = folder ? `${folder}/` : "";
-    return all.filter((f) => f.path.startsWith(prefix) && f.name.endsWith("摘录.md"));
+    return all.filter((f) => f.path.startsWith(prefix) && nameRe.test(f.name));
   }
 
   getAnnotationFilePath(epubFilePath: string): string {
     const folder = this.resolveFolder(epubFilePath);
-    const basename = epubFilePath.split("/").pop() ?? epubFilePath;
-    const title = basename.replace(/\.epub$/i, "").trimEnd();
-    return normalizePath(`${folder}/《${title}》摘录.md`);
+    const filename = resolveExcerptFilename(this.settings.excerptFilename, epubFilePath);
+    return normalizePath(`${folder}/${filename}`);
   }
 
   /** Format as local `YYYY-MM-DD HH:mm:ss` (not UTC). */
@@ -321,9 +323,10 @@ export class AnnotationVaultStore {
       const epubSource = this.extractEpubSourceFromFrontmatter(content);
       const filefolder = inferFilefolderFromExcerptLocation(
         file.path,
-        this.settings.excerptFolder
+        this.settings.excerptFolder,
+        this.settings.excerptFilename
       );
-      const title = extractTitleFromExcerptName(file.name);
+      const title = extractTitleFromExcerptName(file.name, this.settings.excerptFilename);
       const localEpub =
         filefolder && title ? this.findEpubByTitleInFolder(filefolder, title) : null;
       const issues: ExcerptMetadataCheckItem["issues"] = [];
@@ -428,7 +431,11 @@ export class AnnotationVaultStore {
   resolveEpubSourceForExcerpt(excerptPath: string, content: string): string | undefined {
     return (
       this.extractEpubSourceFromFrontmatter(content) ??
-      inferEpubPathFromExcerptLocation(excerptPath, this.settings.excerptFolder) ??
+      inferEpubPathFromExcerptLocation(
+        excerptPath,
+        this.settings.excerptFolder,
+        this.settings.excerptFilename
+      ) ??
       this.inferEpubPathFromExcerpt(excerptPath, content)
     );
   }
@@ -644,10 +651,8 @@ export class AnnotationVaultStore {
     }
 
     const name = excerptPath.split("/").pop() ?? "";
-    const titleMatch = name.match(/^《([\s\S]+?)》摘录\.md$/);
-    if (!titleMatch) return undefined;
-
-    const title = titleMatch[1].trimEnd();
+    const title = extractTitleFromExcerptName(name, this.settings.excerptFilename);
+    if (!title) return undefined;
     const epubFiles = this.app.vault.getFiles().filter((f) => f.extension === "epub");
     const match =
       epubFiles.find((f) => f.basename === title) ??

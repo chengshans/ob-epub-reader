@@ -1,5 +1,6 @@
 import { App, MarkdownPostProcessorContext, MarkdownView, Notice, Plugin, TFile } from "obsidian";
 import { unescapeCfiString } from "./cfi/cfiString";
+import { buildLooseExcerptNameRegex, DEFAULT_EXCERPT_FILENAME } from "./excerptFolder";
 import {
   collectEpubLinkCandidates,
   isEpubWikiLinkAnchor,
@@ -92,16 +93,26 @@ export type GotoResolver = (
   excerptPath: string
 ) => Promise<{ file: string; cfi: string } | null>;
 
-function findExcerptPathForElement(app: App, el: HTMLElement): string | null {
+function isExcerptMarkdownPath(path: string, filenameTemplate?: string): boolean {
+  const name = path.split("/").pop() ?? path;
+  const template = filenameTemplate ?? DEFAULT_EXCERPT_FILENAME;
+  return buildLooseExcerptNameRegex(template).test(name);
+}
+
+function findExcerptPathForElement(
+  app: App,
+  el: HTMLElement,
+  filenameTemplate?: string
+): string | null {
   for (const leaf of app.workspace.getLeavesOfType("markdown")) {
     const view = leaf.view as MarkdownView;
     if (view.containerEl.contains(el)) {
       const path = view.file?.path;
-      if (path?.endsWith("摘录.md")) return path;
+      if (path && isExcerptMarkdownPath(path, filenameTemplate)) return path;
     }
   }
   const active = app.workspace.getActiveFile();
-  if (active?.path.endsWith("摘录.md")) return active.path;
+  if (active && isExcerptMarkdownPath(active.path, filenameTemplate)) return active.path;
   return null;
 }
 
@@ -194,9 +205,11 @@ function dispatchGoto(
   anchor: HTMLAnchorElement,
   goto: (file: string, cfi: string) => Promise<void>,
   resolveAnn: GotoResolver | undefined,
-  app: App
+  app: App,
+  getExcerptFilenameTemplate?: () => string
 ): boolean {
-  const excerptPath = findExcerptPathForElement(app, anchor) ?? undefined;
+  const excerptPath =
+    findExcerptPathForElement(app, anchor, getExcerptFilenameTemplate?.()) ?? undefined;
   const parsed = parseAnchorGoto(anchor, app, excerptPath);
   if (parsed) {
     void goto(parsed.file, parsed.cfi);
@@ -235,13 +248,14 @@ function tryHandleGotoClick(
   target: EventTarget | null,
   goto: (file: string, cfi: string) => Promise<void>,
   resolveAnn: GotoResolver | undefined,
-  app: App
+  app: App,
+  getExcerptFilenameTemplate?: () => string
 ): boolean {
   if (!(target instanceof HTMLElement)) return false;
 
   const anchor = target.closest("a") as HTMLAnchorElement | null;
   if (anchor && isGotoLinkElement(anchor)) {
-    const handled = dispatchGoto(anchor, goto, resolveAnn, app);
+    const handled = dispatchGoto(anchor, goto, resolveAnn, app, getExcerptFilenameTemplate);
     if (!handled) return false;
     return true;
   }
@@ -250,13 +264,13 @@ function tryHandleGotoClick(
   if (callout && !target.closest("a")) {
     const titleLink = findCalloutTitleAnchor(callout);
     if (titleLink) {
-      const handled = dispatchGoto(titleLink, goto, resolveAnn, app);
+      const handled = dispatchGoto(titleLink, goto, resolveAnn, app, getExcerptFilenameTemplate);
       if (!handled) return false;
       return true;
     }
     const legacyLink = findLegacyGotoLinkNear(callout);
     if (legacyLink) {
-      const handled = dispatchGoto(legacyLink, goto, resolveAnn, app);
+      const handled = dispatchGoto(legacyLink, goto, resolveAnn, app, getExcerptFilenameTemplate);
       if (!handled) return false;
       return true;
     }
@@ -268,12 +282,15 @@ function tryHandleGotoClick(
 export function registerExcerptGotoHandler(
   plugin: Plugin,
   openAtCfi: (file: string, cfi: string) => Promise<void>,
-  resolveAnn?: GotoResolver
+  resolveAnn?: GotoResolver,
+  getExcerptFilenameTemplate?: () => string
 ) {
   const goto = openAtCfi;
 
   const interceptGotoNavigation = (evt: MouseEvent) => {
-    if (!tryHandleGotoClick(evt.target, goto, resolveAnn, plugin.app)) return;
+    if (!tryHandleGotoClick(evt.target, goto, resolveAnn, plugin.app, getExcerptFilenameTemplate)) {
+      return;
+    }
     evt.preventDefault();
     evt.stopPropagation();
     evt.stopImmediatePropagation();
@@ -284,7 +301,7 @@ export function registerExcerptGotoHandler(
   plugin.registerDomEvent(document, "click", interceptGotoNavigation, { capture: true });
 
   plugin.registerMarkdownPostProcessor((el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
-    if (ctx.sourcePath.endsWith("摘录.md")) {
+    if (isExcerptMarkdownPath(ctx.sourcePath, getExcerptFilenameTemplate?.())) {
       hideObEpubCfiComments(el);
     }
     wireObEpubCallouts(el, goto, resolveAnn, ctx.sourcePath, plugin.app);
