@@ -1880,17 +1880,8 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private async copySelectionAsExcerpt() {
-    if (!this.file || !this.selectedCfi || !this.selectedText) return;
-
-    const ann: Annotation = {
-      id: "copy-preview",
-      cfiRange: this.selectedCfi,
-      text: this.selectedText,
-      color: "yellow",
-      chapter: this.currentChapter || "未知章节",
-      created: new Date().toISOString(),
-    };
+  private async copyAnnotationAsExcerpt(ann: Annotation): Promise<boolean> {
+    if (!this.file) return false;
 
     const markdown = buildExcerptBlock(
       ann,
@@ -1901,10 +1892,28 @@ export class EpubReaderView extends FileView {
 
     try {
       await navigator.clipboard.writeText(markdown);
-      new Notice("已复制摘录");
+      return true;
     } catch (err) {
       console.error("ob-epub: copy excerpt failed", err);
       new Notice("复制失败");
+      return false;
+    }
+  }
+
+  private async copySelectionAsExcerpt() {
+    if (!this.selectedCfi || !this.selectedText) return;
+
+    const ann: Annotation = {
+      id: "copy-preview",
+      cfiRange: this.selectedCfi,
+      text: this.selectedText,
+      color: "yellow",
+      chapter: this.currentChapter || "未知章节",
+      created: new Date().toISOString(),
+    };
+
+    if (await this.copyAnnotationAsExcerpt(ann)) {
+      new Notice("已复制摘录");
     }
 
     this.clearSelection();
@@ -1914,8 +1923,10 @@ export class EpubReaderView extends FileView {
     if (!this.annotationsEnabled()) return;
     if (!this.file || !this.selectedCfi || !this.selectedText) return;
     const existing = await this.annotationVaultStore.getByCfi(this.file.path, this.selectedCfi);
+    let annToCopy: Annotation | null = null;
     if (existing) {
       await this.annotationVaultStore.update(this.file.path, existing.id, { color });
+      annToCopy = { ...existing, color };
       await this.refreshHighlightsAfterMutation();
     } else {
       const ann: Annotation = {
@@ -1927,7 +1938,11 @@ export class EpubReaderView extends FileView {
         created: new Date().toISOString(),
       };
       await this.annotationVaultStore.add(this.file.path, ann);
+      annToCopy = ann;
       await this.refreshHighlightsAfterMutation();
+    }
+    if (annToCopy) {
+      await this.copyAnnotationAsExcerpt(annToCopy);
     }
     this.clearSelection();
     if (this.sidebarMode === "notes") this.renderNotesPanel();
@@ -1989,6 +2004,17 @@ export class EpubReaderView extends FileView {
     menu.className = "epub-context-menu epub-ann-menu";
     menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
+    const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 复制" });
+    copyBtn.title = "按当前摘录格式复制到剪贴板";
+    copyBtn.addEventListener("click", () => {
+      this.dismissContextMenu();
+      void this.copyAnnotationAsExcerpt(ann).then((ok) => {
+        if (ok) new Notice("已复制摘录");
+      });
+    });
+
+    menu.createDiv({ cls: "epub-ctx-divider" });
+
     // Recolor row
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
     for (const c of HIGHLIGHT_COLORS) {
@@ -2003,6 +2029,7 @@ export class EpubReaderView extends FileView {
         if (updated) {
           this.upsertCachedHighlight(updated);
           this.redrawLine(updated);
+          await this.copyAnnotationAsExcerpt(updated);
         }
         if (this.sidebarMode === "notes") this.renderNotesPanel();
       });
