@@ -444,9 +444,9 @@ export const NOTE_ICON_OFFSET_Y_MAX = 10;
 export const HIGHLIGHT_OPACITY_MIN = 0.15;
 export const HIGHLIGHT_OPACITY_MAX = 0.85;
 
-export const READING_SIDE_PADDING_MIN = 1;
+export const READING_SIDE_PADDING_MIN = 12;
 export const READING_SIDE_PADDING_MAX = 120;
-export const READING_SIDE_PADDING_STEP = 4;
+export const READING_SIDE_PADDING_STEP = 2;
 export const READING_SIDE_PADDING_DEFAULT = 12;
 
 export function clampReadingSidePadding(value: number): number {

@@ -62,6 +62,12 @@ const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-ic
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
 
+/** epub.js manager 最小访问面，用于分页模式同步 gap */
+type EpubLayoutManager = {
+  settings?: { gap?: number };
+  updateLayout?: () => void;
+};
+
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
   private rendition: Rendition | null = null;
@@ -520,10 +526,47 @@ export class EpubReaderView extends FileView {
     if (!this.rendition || !this.readerEl) return;
     const r = this.readerEl.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) {
+      this.syncPaginatedLayoutGap();
       this.rendition.resize(r.width, r.height);
       // epub.js resize 会重写 body 内联 padding，需重新注入主题覆盖
       this.applyThemeToAllContents();
     }
+  }
+
+  /** 分页/双栏：epub.js 用 gap/2 作为左右留白，与设置项对齐 */
+  private getReadingLayoutGap(): number {
+    return clampReadingSidePadding(this.settings.readingSidePadding) * 2;
+  }
+
+  private getEpubLayoutManager(): EpubLayoutManager | undefined {
+    return (this.rendition as { manager?: EpubLayoutManager } | null)?.manager;
+  }
+
+  /** 将 settings.readingSidePadding 同步到 epub.js 分页 layout.gap 并重算栏宽 */
+  private syncPaginatedLayoutGap(): void {
+    if (this.flow !== "paginated" || !this.rendition) return;
+    const manager = this.getEpubLayoutManager();
+    if (!manager?.settings) return;
+    manager.settings.gap = this.getReadingLayoutGap();
+    manager.updateLayout?.();
+  }
+
+  private applyReadingBodyPaddingInline(body: HTMLElement): void {
+    const bodyPadding = this.getReadingBodyPadding();
+    const sidePx = `${clampReadingSidePadding(this.settings.readingSidePadding)}px`;
+    body.style.removeProperty("padding");
+    body.style.removeProperty("padding-left");
+    body.style.removeProperty("padding-right");
+    body.style.removeProperty("padding-top");
+    body.style.removeProperty("padding-bottom");
+    body.style.setProperty("padding", bodyPadding, "important");
+    body.style.setProperty("padding-left", sidePx, "important");
+    body.style.setProperty("padding-right", sidePx, "important");
+  }
+
+  private refreshReadingSidePadding(): void {
+    this.syncPaginatedLayoutGap();
+    this.applyThemeToAllContents();
   }
 
   private getReadingBodyPadding(): string {
@@ -593,7 +636,7 @@ export class EpubReaderView extends FileView {
     const next = clampReadingSidePadding(this.settings.readingSidePadding + delta);
     if (next === clampReadingSidePadding(this.settings.readingSidePadding)) return;
     this.settings.readingSidePadding = next;
-    this.applyThemeToAllContents();
+    this.refreshReadingSidePadding();
     this.syncSidePaddingToolbar();
     if (this.onReadingSidePaddingChange) {
       void this.onReadingSidePaddingChange(next);
@@ -761,7 +804,6 @@ export class EpubReaderView extends FileView {
         allowScriptedContent: false,
         ignoreClass: CFI_IGNORE_CLASSES,
       });
-
       // Apply font size
       this.rendition.themes.fontSize(`${this.fontSize}px`);
 
@@ -825,6 +867,7 @@ export class EpubReaderView extends FileView {
       });
 
       await this.rendition.started;
+      this.syncPaginatedLayoutGap();
 
       // Navigate to saved position or start (highlights load on first "rendered")
       if (resumeCfi) {
@@ -1224,9 +1267,7 @@ export class EpubReaderView extends FileView {
       `${root} ::selection{background:${selectionBg};color:${textColor}}`,
       `${root} ::-moz-selection{background:${selectionBg};color:${textColor}}`,
     ];
-    if (this.isToolbarBottom() || this.flow === "scrolled") {
-      this.appendFullWidthContentRules(blocks, root);
-    }
+    this.appendFullWidthContentRules(blocks, root);
     if (this.flow === "scrolled") {
       blocks.push(
         `html[${READING_THEME_ATTR}]{max-width:none !important;margin:0 !important;width:100% !important}`,
@@ -1249,13 +1290,9 @@ export class EpubReaderView extends FileView {
 
       doc.documentElement.setAttribute(READING_THEME_ATTR, this.readingTheme);
 
-      // epub.js 会写内联 padding（分页模式还带 !important），清掉后由主题 CSS 接管
+      // epub.js 分页模式 columns() 会写带 !important 的内联 padding，需用同级 inline 覆盖
       if (doc.body) {
-        doc.body.style.removeProperty("padding");
-        doc.body.style.removeProperty("padding-left");
-        doc.body.style.removeProperty("padding-right");
-        doc.body.style.removeProperty("padding-top");
-        doc.body.style.removeProperty("padding-bottom");
+        this.applyReadingBodyPaddingInline(doc.body);
       }
 
       let styleEl = doc.getElementById(READING_THEME_STYLE_ID) as HTMLStyleElement | null;
@@ -2846,11 +2883,11 @@ export class EpubReaderView extends FileView {
       this.contentEl.toggleClass("is-toolbar-bottom", this.isToolbarBottom());
       this.syncStatusBarChrome();
       requestAnimationFrame(() => {
-        this.applyThemeToAllContents();
+        this.refreshReadingSidePadding();
         this.resizeRendition();
       });
     } else if (sidePaddingChanged) {
-      this.applyThemeToAllContents();
+      this.refreshReadingSidePadding();
     }
     const nextTheme = normalizeReadingTheme(settings.readingTheme);
     const themeChanged = nextTheme !== this.readingTheme;
