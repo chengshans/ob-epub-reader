@@ -1,0 +1,329 @@
+{
+  "commands": {
+    "openBookshelf": "打开 EPUB 书架",
+    "openReader": "在 EPUB 阅读器中打开"
+  },
+  "ribbon": {
+    "bookshelf": "EPUB 书架"
+  },
+  "notice": {
+    "selectEpubFirst": "请先选中一个 .epub 文件",
+    "gotoEpubFailed": "无法跳转到 EPUB 原文",
+    "bookshelfDisabled": "EPUB 书架已在设置中关闭",
+    "bookshelfOpenFailed": "无法打开侧边栏书架",
+    "epubNotFound": "找不到 EPUB 文件: {{path}}",
+    "convertDone": "已更新 {{count}} 个摘录文件",
+    "convertNone": "没有需要转换的摘录文件",
+    "convertFailed": "转换摘录链接失败，请查看控制台",
+    "checkDone": "已检查 {{count}} 个摘录文件，未发现问题",
+    "checkIssues": "发现 {{count}} 个摘录文件存在问题，详见弹窗",
+    "checkFailed": "检查摘录元数据失败，请查看控制台",
+    "gotoFailed": "无法跳转到原文位置",
+    "fixedLayoutWarning": "此书为固定版式 EPUB，排版可能与专用阅读器有差异。",
+    "progressSaveFailed": "阅读进度保存失败（{{path}}），请确认摘录文件夹存在且可写",
+    "updated": "已更新",
+    "copyFailed": "复制失败",
+    "highlighted": "已画线",
+    "highlightedAndInserted": "已画线，已插入《{{name}}》",
+    "annotationSaved": "标注已保存",
+    "annotationDeleted": "标注已删除",
+    "parseGotoFailed": "无法解析摘录跳转链接，请重新标注",
+    "insertedAndCopied": "已插入《{{name}}》并复制摘录",
+    "readingModeCopied": "目标笔记处于阅读模式，已复制到剪贴板",
+    "copiedExcerpt": "已复制摘录"
+  },
+  "bookshelf": {
+    "title": "EPUB 书架",
+    "heading": "EPUB 书架",
+    "empty": "Vault 中没有找到 EPUB 文件。",
+    "lastRead": "上次阅读：{{chapter}} · {{date}}",
+    "readTime": "已读 {{time}}",
+    "unknownChapter": "未知章节"
+  },
+  "reader": {
+    "sidebar": {
+      "toc": "目录",
+      "annotations": "标注"
+    },
+    "toolbar": {
+      "toggleToc": "切换目录",
+      "fontSmaller": "减小字体",
+      "fontLarger": "增大字体",
+      "flowPaginated": "分页",
+      "flowScrolled": "滚动",
+      "toggleFlow": "切换阅读模式",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "highlight": "高亮",
+      "highlightOpacity": "高亮透明度",
+      "highlightOpacityPercent": "高亮透明度 {{percent}}%",
+      "autoPaste": "复制摘录时自动插入打开的 Markdown 笔记",
+      "autoPasteOn": "自动粘贴已开启",
+      "autoPasteOff": "自动粘贴已关闭",
+      "autoPasteOnDesc": "自动粘贴已开启：复制摘录会插入 Markdown",
+      "autoPasteOffDesc": "自动粘贴已关闭：复制摘录仅写入剪贴板"
+    },
+    "loading": "正在加载 EPUB…",
+    "loadFailed": "加载失败: {{error}}",
+    "contextMenu": {
+      "copy": "复制",
+      "copyTitle": "按当前摘录格式复制到剪贴板",
+      "highlightDot": "画线 · {{color}}",
+      "copyDot": "复制 · {{color}}",
+      "annotate": "标注",
+      "annotateTitle": "写下自己的想法",
+      "changeColor": "改为{{color}}",
+      "editThought": "编辑想法",
+      "addThought": "添加想法",
+      "delete": "删除",
+      "viewEditThought": "{{type}} · 查看/编辑想法"
+    },
+    "notes": {
+      "countFiltered": "共 {{filtered}} 条",
+      "countFilteredOf": "共 {{filtered}} / {{total}} 条",
+      "expandAll": "展开全部",
+      "collapseAll": "折叠全部",
+      "expandAllTitle": "展开全部章节",
+      "collapseAllTitle": "折叠全部章节",
+      "searchPlaceholder": "搜索标注…",
+      "filterAll": "全部",
+      "filterAllTitle": "清除颜色与类型筛选",
+      "filterHighlightOnly": "仅画线",
+      "jump": "跳转",
+      "edit": "编辑",
+      "delete": "删除",
+      "empty": "暂无标注。选中文字后点击颜色画线或写想法。",
+      "noMatch": "没有匹配的标注。",
+      "loadFailed": "标注加载失败，请稍后重试。"
+    },
+    "modal": {
+      "editAnnotation": "编辑标注",
+      "deleteAnnotation": "删除标注",
+      "deleteConfirm": "确定删除这条标注？\n「{{preview}}」"
+    },
+    "unknownChapter": "未知章节"
+  },
+  "modal": {
+    "common": {
+      "cancel": "取消",
+      "save": "保存",
+      "delete": "删除",
+      "close": "关闭"
+    },
+    "note": {
+      "title": "写下你的想法",
+      "editTitle": "编辑想法",
+      "highlightColor": "画线颜色",
+      "noteType": "想法类型",
+      "placeholder": "在这里写下你的想法、疑问或联想…"
+    },
+    "excerptCheck": {
+      "title": "摘录元数据检查",
+      "summaryOk": "已检查 {{count}} 个摘录文件，未发现问题。",
+      "summaryIssues": "已检查 {{count}} 个摘录文件，{{issues}} 个存在问题。",
+      "epubSource": "epub-source: {{value}}",
+      "localEpub": "同级 EPUB: {{value}}",
+      "expectedPath": "当前设置应对应: {{value}}"
+    }
+  },
+  "settings": {
+    "language": {
+      "name": "界面语言",
+      "desc": "插件界面显示语言；不影响库内已有摘录文件",
+      "auto": "跟随 Obsidian"
+    },
+    "group": {
+      "expand": "展开分组",
+      "collapse": "折叠分组"
+    },
+    "groups": {
+      "reader": {
+        "title": "阅读器",
+        "desc": "核心阅读能力，无总开关（禁用插件请在社区插件设置中操作）"
+      },
+      "annotations": {
+        "title": "标注与摘录",
+        "desc": "高亮、想法、摘录写入与侧栏标注；关闭后选中文字可复制（可选颜色），不可画线与写入摘录",
+        "scopeLabel": "开启后可用：",
+        "scopeItems": {
+          "highlights": "文本高亮与五种想法",
+          "export": "摘录 Markdown 自动写入",
+          "sidebar": "侧栏「标注」列表",
+          "progress": "阅读进度写入摘录 frontmatter"
+        }
+      },
+      "bookshelf": {
+        "title": "书架与快捷入口",
+        "desc": "侧边栏书架、Ribbon 与相关命令",
+        "scopeLabel": "开启后可用：",
+        "scopeItems": {
+          "ribbon": "Ribbon「EPUB 书架」图标",
+          "command": "命令「打开 EPUB 书架」",
+          "view": "侧边栏书架视图"
+        },
+        "note": "「在 EPUB 阅读器中打开」属于阅读器核心，不受此开关影响。"
+      }
+    },
+    "sourceLinkFormat": {
+      "name": "摘录链接格式",
+      "desc": "选中复制与新标注使用所选格式；",
+      "warn": "修改设置后新建标注会更新原有标注，建议修改前先备份摘录文件夹。"
+    },
+    "formatTable": {
+      "format": "格式",
+      "pros": "优点",
+      "cons": "缺点"
+    },
+    "defaultExcerptColor": {
+      "name": "默认画线颜色",
+      "desc": "不保存颜色的摘录格式（正文 + 文末「原文」、链接即正文）在解析或格式转换时使用的画线颜色"
+    },
+    "defaultFlow": {
+      "name": "默认阅读模式",
+      "desc": "分页模式或滚动模式",
+      "paginated": "分页",
+      "scrolled": "滚动"
+    },
+    "fontSize": {
+      "name": "默认字体大小",
+      "desc": "阅读器内容区字体大小（px）"
+    },
+    "readingTheme": {
+      "name": "默认阅读主题",
+      "desc": "EPUB 正文区背景与文字配色"
+    },
+    "toolbarPlacement": {
+      "name": "工具栏位置",
+      "desc": "顶部显示：工具栏与进度条在阅读区上下；底部显示：常驻 Obsidian 窗口底栏",
+      "top": "顶部显示",
+      "bottom": "底部显示"
+    },
+    "autoPaste": {
+      "name": "复制摘录自动粘贴",
+      "desc": "开启后，复制摘录会插入最近编辑的 Markdown 笔记；阅读器工具栏「粘贴」可快速切换"
+    },
+    "excerptFolder": {
+      "name": "摘录文件夹",
+      "desc": "摘录 Markdown 保存目录；阅读进度写入各书摘录文件的 frontmatter。支持 {filefolder} 占位符（EPUB 所在目录），如 {filefolder}/anno。",
+      "warn": "移动 EPUB 或文件夹后，需手动更新摘录 frontmatter 中的 epub-source 为新路径，否则标题跳转链接会失效"
+    },
+    "excerptFilename": {
+      "name": "摘录文件名",
+      "placeholder": "《{title}》摘录.md",
+      "desc": "新建摘录时使用的 Markdown 文件名。支持 {title}（EPUB 书名，不含扩展名）与 {filename}（EPUB 完整文件名，如 demo.epub）。",
+      "examples": "示例：《{title}》摘录.md、{title}-notes.md、{filename}.md"
+    },
+    "excerptCalloutOpacity": {
+      "name": "摘录 callout 背景透明度",
+      "desc": "控制《书名》摘录.md 中 ob-epub callout 背景浓淡"
+    },
+    "convertLinks": {
+      "name": "转换已有摘录链接",
+      "button": "立即转换",
+      "desc": "批量将摘录文件夹内所有《书名》摘录.md 转换为当前选中的摘录导出格式；使用 {filefolder} 时会扫描库内全部《书名》摘录.md",
+      "warn": "转换会改写摘录文件，建议先备份摘录文件夹"
+    },
+    "checkMetadata": {
+      "name": "检查摘录元数据",
+      "desc": "检查摘录 frontmatter 的 epub-source 是否指向存在的 EPUB；仅当 epub-source 缺失或无效时，才按 {filefolder} 规则查找同级 EPUB",
+      "button": "开始检查"
+    },
+    "highlightOpacity": {
+      "name": "EPUB 高亮透明度",
+      "desc": "控制阅读器内画线/高亮层的透明度"
+    },
+    "noteTypes": {
+      "heading": "想法类型",
+      "desc": "标注时可选择的五种想法分类；修改名称与图标后，新标注与已有标注的显示会同步更新",
+      "fieldDesc": "图标与显示名称（内部 ID: {{id}}）",
+      "reset": "恢复默认想法类型"
+    },
+    "noteIcon": {
+      "heading": "想法图标",
+      "size": "图标大小",
+      "sizeDesc": "原文想法图标的直径（{{min}}–{{max}} px）",
+      "offsetX": "水平位置",
+      "offsetXDesc": "相对高亮右缘的偏移（{{min}} ~ +{{max}} px，正值向右）",
+      "offsetY": "垂直位置",
+      "offsetYDesc": "相对高亮垂直居中的偏移（{{min}} ~ +{{max}} px，正值向下）"
+    },
+    "formats": {
+      "callout-title": {
+        "label": "Callout + 标题链接",
+        "desc": "> [!ob-epub|颜色] [[书名.epub#cfi=...|章节]] + 正文；保留 callout 高亮色",
+        "pros": "结构清晰、保留高亮色",
+        "cons": "占行多、依赖 callout 主题"
+      },
+      "inline-suffix": {
+        "label": "正文 + 文末「原文」",
+        "desc": "正文后接 [[书名.epub#cfi=...|原文]]；不保存画线颜色，解析与转换时使用默认画线颜色",
+        "pros": "正文紧凑、多行保留",
+        "cons": "不保留颜色、链接不醒目"
+      },
+      "inline-colored": {
+        "label": "着色正文 + 文末「原文」",
+        "desc": "<span style=\"color:…\">正文</span> [[书名.epub#cfi=...|原文]]；通过 span 保留颜色",
+        "pros": "保留五色、较紧凑",
+        "cons": "HTML 导出可能丢色"
+      },
+      "wiki-text-alias": {
+        "label": "链接即正文",
+        "desc": "[[书名.epub#cfi=...|摘录全文]] 单行；不保存画线颜色，解析与转换时使用默认画线颜色",
+        "pros": "最简一行",
+        "cons": "多行合并、不保留颜色"
+      }
+    }
+  },
+  "excerpt": {
+    "linkAlias": "原文",
+    "gotoAlias": "回到原文",
+    "wikiTextAlias": "摘录全文",
+    "gotoTitle": "定位到 EPUB 原文",
+    "gotoClickTitle": "点击定位到 EPUB 原文",
+    "excerptHeading": "# 《{{title}}》摘录",
+    "chapterToc": "## 章节目录"
+  },
+  "excerptCheck": {
+    "issues": {
+      "missing-epub-source": "缺少 frontmatter 字段 epub-source",
+      "epub-source-not-found": "epub-source 指向的 EPUB 文件不存在",
+      "local-epub-not-found": "按当前摘录文件夹规则，同级目录下找不到对应 EPUB",
+      "excerpt-location-mismatch": "摘录文件不在当前设置应保存的路径",
+      "epub-source-local-mismatch": "epub-source 与按摘录位置推断的 EPUB 路径不一致"
+    }
+  },
+  "defaults": {
+    "excerptFilename": "《{title}》摘录.md",
+    "unknownChapter": "未知章节",
+    "readingThemes": {
+      "obsidian": "跟随 Obsidian",
+      "white": "默认白",
+      "yellow": "护眼黄",
+      "green": "护眼绿",
+      "sepia": "羊皮纸",
+      "dark": "夜间"
+    },
+    "noteTypes": {
+      "note": "做笔记",
+      "inspiration": "灵感",
+      "practice": "准备实践",
+      "revisit": "反复看",
+      "question": "疑问"
+    },
+    "highlightColors": {
+      "yellow": "黄",
+      "red": "红",
+      "green": "绿",
+      "blue": "蓝",
+      "purple": "紫"
+    }
+  },
+  "time": {
+    "hours": "{{n}}小时",
+    "minutes": "{{n}}分",
+    "seconds": "{{n}}秒"
+  },
+  "errors": {
+    "excerptFolderUnset": "摘录文件夹未设置"
+  }
+}

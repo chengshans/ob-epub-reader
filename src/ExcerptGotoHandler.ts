@@ -1,6 +1,8 @@
 import { App, MarkdownPostProcessorContext, MarkdownView, Notice, Plugin, TFile } from "obsidian";
 import { unescapeCfiString } from "./cfi/cfiString";
-import { buildLooseExcerptNameRegex, DEFAULT_EXCERPT_FILENAME } from "./excerptFolder";
+import { buildLooseExcerptNameRegex, getDefaultExcerptFilename } from "./excerptFolder";
+import { isKnownGotoLinkText } from "./i18n/excerptAliases";
+import { t } from "./i18n/i18n";
 import {
   collectEpubLinkCandidates,
   isEpubWikiLinkAnchor,
@@ -95,7 +97,7 @@ export type GotoResolver = (
 
 function isExcerptMarkdownPath(path: string, filenameTemplate?: string): boolean {
   const name = path.split("/").pop() ?? path;
-  const template = filenameTemplate ?? DEFAULT_EXCERPT_FILENAME;
+  const template = filenameTemplate ?? getDefaultExcerptFilename();
   return buildLooseExcerptNameRegex(template).test(name);
 }
 
@@ -197,7 +199,7 @@ function isObEpubGotoAnchor(anchor: HTMLAnchorElement): boolean {
 function isGotoLinkElement(el: HTMLAnchorElement): boolean {
   if (isObEpubGotoAnchor(el)) return true;
   const text = el.textContent?.trim();
-  return text === "回到原文" || text === "原文";
+  return isKnownGotoLinkText(text);
 }
 
 /** @returns true when navigation was handled (or async handler started). */
@@ -223,7 +225,7 @@ function dispatchGoto(
         void goto(resolved.file, resolved.cfi);
       } else {
         console.error("ob-epub: ann goto resolve failed", annId, excerptPath);
-        new Notice("无法解析摘录跳转链接，请重新标注");
+        new Notice(t("notice.parseGotoFailed"));
       }
     });
     return true;
@@ -235,7 +237,7 @@ function dispatchGoto(
   }
 
   console.error("ob-epub: failed to parse goto link", getAnchorGotoHref(anchor));
-  new Notice("无法解析摘录跳转链接，请重新标注或检查摘录格式");
+  new Notice(t("notice.parseGotoFailed"));
   return true;
 }
 
@@ -337,7 +339,7 @@ function applyGotoWire(
   anchor.dataset.obEpubGotoCfi = parsed.cfi;
   if (parsed.annId) anchor.dataset.obEpubGotoAnnId = parsed.annId;
   anchor.addClass("ob-epub-goto-link");
-  anchor.title = "定位到 EPUB 原文";
+  anchor.title = t("excerpt.gotoTitle");
   anchor.removeAttribute("href");
   anchor.removeAttribute("data-href");
 
@@ -399,7 +401,7 @@ async function wireObEpubCallouts(
 
     container.dataset.obEpubGotoWired = "1";
     container.addClass("ob-epub-goto-callout");
-    container.setAttr("title", "点击定位到 EPUB 原文");
+    container.setAttr("title", t("excerpt.gotoClickTitle"));
 
     container.addEventListener("click", (e) => {
       if ((e.target as HTMLElement).closest("a")) return;

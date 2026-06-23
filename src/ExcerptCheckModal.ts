@@ -1,8 +1,13 @@
 import { App, Modal, Setting } from "obsidian";
+import { t } from "./i18n/i18n";
 import {
-  EXCERPT_CHECK_ISSUE_LABELS,
+  ExcerptCheckIssue,
   ExcerptMetadataCheckReport,
 } from "./excerptFolder";
+
+function issueLabel(issue: ExcerptCheckIssue): string {
+  return t(`excerptCheck.issues.${issue}`);
+}
 
 export class ExcerptCheckModal extends Modal {
   private report: ExcerptMetadataCheckReport;
@@ -17,16 +22,19 @@ export class ExcerptCheckModal extends Modal {
     contentEl.empty();
     contentEl.addClass("ob-epub-excerpt-check-modal");
 
-    contentEl.createEl("h3", { text: "摘录元数据检查" });
+    contentEl.createEl("h3", { text: t("modal.excerptCheck.title") });
 
     const summary = contentEl.createDiv({ cls: "ob-epub-excerpt-check-summary" });
     if (this.report.withIssues === 0) {
       summary.createEl("p", {
-        text: `已检查 ${this.report.checked} 个摘录文件，未发现问题。`,
+        text: t("modal.excerptCheck.summaryOk", { count: this.report.checked }),
       });
     } else {
       summary.createEl("p", {
-        text: `已检查 ${this.report.checked} 个摘录文件，${this.report.withIssues} 个存在问题。`,
+        text: t("modal.excerptCheck.summaryIssues", {
+          count: this.report.checked,
+          issues: this.report.withIssues,
+        }),
       });
     }
 
@@ -41,30 +49,30 @@ export class ExcerptCheckModal extends Modal {
         if (item.epubSource) {
           block.createEl("div", {
             cls: "ob-epub-excerpt-check-meta",
-            text: `epub-source: ${item.epubSource}`,
+            text: t("modal.excerptCheck.epubSource", { value: item.epubSource }),
           });
         }
         if (item.localEpubPath) {
           block.createEl("div", {
             cls: "ob-epub-excerpt-check-meta",
-            text: `同级 EPUB: ${item.localEpubPath}`,
+            text: t("modal.excerptCheck.localEpub", { value: item.localEpubPath }),
           });
         }
         if (item.expectedExcerptPath) {
           block.createEl("div", {
             cls: "ob-epub-excerpt-check-meta",
-            text: `当前设置应对应: ${item.expectedExcerptPath}`,
+            text: t("modal.excerptCheck.expectedPath", { value: item.expectedExcerptPath }),
           });
         }
         const issuesEl = block.createEl("ul", { cls: "ob-epub-excerpt-check-issues" });
         for (const issue of item.issues) {
-          issuesEl.createEl("li", { text: EXCERPT_CHECK_ISSUE_LABELS[issue] });
+          issuesEl.createEl("li", { text: issueLabel(issue) });
         }
       }
     }
 
     new Setting(contentEl).addButton((btn) =>
-      btn.setButtonText("关闭").setCta().onClick(() => this.close())
+      btn.setButtonText(t("modal.common.close")).setCta().onClick(() => this.close())
     );
   }
 

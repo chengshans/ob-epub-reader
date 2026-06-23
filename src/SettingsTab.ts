@@ -1,15 +1,17 @@
 import { App, ExtraButtonComponent, Notice, PluginSettingTab, Setting } from "obsidian";
 import type ObEpubPlugin from "./main";
 import { ExcerptCheckModal } from "./ExcerptCheckModal";
+import { t } from "./i18n/i18n";
 import {
-  DEFAULT_NOTE_TYPES,
-  HIGHLIGHT_COLORS,
+  getDefaultNoteTypes,
+  getHighlightColors,
+  getReadingThemes,
+  getSourceLinkFormats,
   HIGHLIGHT_OPACITY_MAX,
   HIGHLIGHT_OPACITY_MIN,
   NoteType,
-  READING_THEMES,
+  PluginUiLocale,
   ReadingThemeId,
-  SOURCE_LINK_FORMATS,
   SourceLinkFormat,
   FeatureGroupId,
   isFeatureGroupCollapsed,
@@ -94,7 +96,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     }
     const btn = this.collapseButtons.get(groupId);
     btn?.setIcon(collapsed ? "chevron-right" : "chevron-down");
-    btn?.setTooltip(collapsed ? "展开分组" : "折叠分组");
+    btn?.setTooltip(collapsed ? t("settings.group.expand") : t("settings.group.collapse"));
   }
 
   private async toggleGroupCollapsed(groupId: SettingsGroupId): Promise<void> {
@@ -146,7 +148,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     header.addExtraButton((btn) => {
       this.collapseButtons.set(groupId, btn);
       btn.setIcon(collapsed ? "chevron-right" : "chevron-down");
-      btn.setTooltip(collapsed ? "展开分组" : "折叠分组");
+      btn.setTooltip(collapsed ? t("settings.group.expand") : t("settings.group.collapse"));
       btn.onClick(() => {
         void this.toggleGroupCollapsed(groupId);
       });
@@ -177,13 +179,13 @@ export class EpubSettingsTab extends PluginSettingTab {
 
   private renderSourceLinkFormat(containerEl: HTMLElement, groupId: SettingsGroupId): void {
     const formatSetting = this.addMemberSetting(containerEl, groupId, (s) => {
-      s.setName("摘录链接格式");
+      s.setName(t("settings.sourceLinkFormat.name"));
     });
     formatSetting.descEl.empty();
-    formatSetting.descEl.appendText("选中复制与新标注使用所选格式；");
+    formatSetting.descEl.appendText(t("settings.sourceLinkFormat.desc"));
     formatSetting.descEl.createSpan({
       cls: "ob-epub-settings-warn",
-      text: "修改设置后新建标注会更新原有标注，建议修改前先备份摘录文件夹。",
+      text: t("settings.sourceLinkFormat.warn"),
     });
 
     const formatRows = new Map<SourceLinkFormat, HTMLElement>();
@@ -191,11 +193,15 @@ export class EpubSettingsTab extends PluginSettingTab {
     this.tagGroup(tableWrap, groupId, "extra");
     const table = tableWrap.createEl("table", { cls: "ob-epub-format-table" });
     const headRow = table.createEl("thead").createEl("tr");
-    for (const heading of ["格式", "优点", "缺点"]) {
+    for (const heading of [
+      t("settings.formatTable.format"),
+      t("settings.formatTable.pros"),
+      t("settings.formatTable.cons"),
+    ]) {
       headRow.createEl("th", { text: heading });
     }
     const tbody = table.createEl("tbody");
-    for (const fmt of SOURCE_LINK_FORMATS) {
+    for (const fmt of getSourceLinkFormats()) {
       const row = tbody.createEl("tr");
       if (fmt.id === this.plugin.settings.sourceLinkFormat) {
         row.addClass("is-active");
@@ -207,7 +213,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     }
 
     formatSetting.addDropdown((drop) => {
-      for (const fmt of SOURCE_LINK_FORMATS) {
+      for (const fmt of getSourceLinkFormats()) {
         drop.addOption(fmt.id, fmt.label);
       }
       drop
@@ -225,13 +231,11 @@ export class EpubSettingsTab extends PluginSettingTab {
 
   private renderDefaultExcerptColor(containerEl: HTMLElement, groupId: SettingsGroupId): void {
     const setting = this.addMemberSetting(containerEl, groupId, (s) => {
-      s.setName("默认画线颜色").setDesc(
-        "不保存颜色的摘录格式（正文 + 文末「原文」、链接即正文）在解析或格式转换时使用的画线颜色"
-      );
+      s.setName(t("settings.defaultExcerptColor.name")).setDesc(t("settings.defaultExcerptColor.desc"));
     });
 
     const dots = setting.controlEl.createDiv({ cls: "epub-color-dots" });
-    for (const c of HIGHLIGHT_COLORS) {
+    for (const c of getHighlightColors()) {
       const dot = dots.createDiv({ cls: "epub-color-dot" });
       dot.setAttribute("data-color", c.id);
       dot.title = c.label;
@@ -254,19 +258,35 @@ export class EpubSettingsTab extends PluginSettingTab {
     containerEl.addClass("ob-epub-settings");
     this.collapseButtons.clear();
 
+    new Setting(containerEl)
+      .setName(t("settings.language.name"))
+      .setDesc(t("settings.language.desc"))
+      .addDropdown((drop) =>
+        drop
+          .addOption("auto", t("settings.language.auto"))
+          .addOption("zh", "简体中文")
+          .addOption("en", "English")
+          .setValue(this.plugin.settings.uiLocale ?? "auto")
+          .onChange(async (value) => {
+            this.plugin.settings.uiLocale = value as PluginUiLocale;
+            await this.plugin.applyUiLocale();
+            await this.plugin.saveSettings({ skipViewUpdate: true });
+          })
+      );
+
     // ── 阅读器（始终开启）──
     this.addGroupHeader(containerEl, "reader", {
-      title: "阅读器",
-      desc: "核心阅读能力，无总开关（禁用插件请在社区插件设置中操作）",
+      title: t("settings.groups.reader.title"),
+      desc: t("settings.groups.reader.desc"),
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
-      s.setName("默认阅读模式")
-        .setDesc("分页模式或滚动模式")
+      s.setName(t("settings.defaultFlow.name"))
+        .setDesc(t("settings.defaultFlow.desc"))
         .addDropdown((drop) =>
           drop
-            .addOption("paginated", "分页")
-            .addOption("scrolled", "滚动")
+            .addOption("paginated", t("settings.defaultFlow.paginated"))
+            .addOption("scrolled", t("settings.defaultFlow.scrolled"))
             .setValue(this.plugin.settings.defaultFlow)
             .onChange(async (value) => {
               this.plugin.settings.defaultFlow = value as "paginated" | "scrolled";
@@ -276,8 +296,8 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
-      s.setName("默认字体大小")
-        .setDesc("阅读器内容区字体大小（px）")
+      s.setName(t("settings.fontSize.name"))
+        .setDesc(t("settings.fontSize.desc"))
         .addSlider((slider) =>
           slider
             .setLimits(10, 32, 1)
@@ -291,10 +311,10 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
-      s.setName("默认阅读主题")
-        .setDesc("EPUB 正文区背景与文字配色")
+      s.setName(t("settings.readingTheme.name"))
+        .setDesc(t("settings.readingTheme.desc"))
         .addDropdown((drop) => {
-          for (const theme of READING_THEMES) {
+          for (const theme of getReadingThemes()) {
             drop.addOption(theme.id, theme.label);
           }
           drop
@@ -307,12 +327,12 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
-      s.setName("工具栏位置")
-        .setDesc("顶部显示：工具栏与进度条在阅读区上下；底部显示：常驻 Obsidian 窗口底栏")
+      s.setName(t("settings.toolbarPlacement.name"))
+        .setDesc(t("settings.toolbarPlacement.desc"))
         .addDropdown((drop) =>
           drop
-            .addOption("top", "顶部显示")
-            .addOption("bottom", "底部显示")
+            .addOption("top", t("settings.toolbarPlacement.top"))
+            .addOption("bottom", t("settings.toolbarPlacement.bottom"))
             .setValue(this.plugin.settings.toolbarPlacement ?? "bottom")
             .onChange(async (value) => {
               this.plugin.settings.toolbarPlacement =
@@ -323,8 +343,8 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
-      s.setName("复制摘录自动粘贴")
-        .setDesc("开启后，复制摘录会插入最近编辑的 Markdown 笔记；阅读器工具栏「粘贴」可快速切换")
+      s.setName(t("settings.autoPaste.name"))
+        .setDesc(t("settings.autoPaste.desc"))
         .addToggle((toggle) =>
           toggle
             .setValue(this.plugin.settings.autoPasteExcerpt !== false)
@@ -343,8 +363,8 @@ export class EpubSettingsTab extends PluginSettingTab {
     const annotationsEnabled = this.plugin.settings.featureGroups.annotationsAndExcerpts;
 
     this.addGroupHeader(containerEl, "annotations", {
-      title: "标注与摘录",
-      desc: "高亮、想法、摘录写入与侧栏标注；关闭后选中文字可复制（可选颜色），不可画线与写入摘录",
+      title: t("settings.groups.annotations.title"),
+      desc: t("settings.groups.annotations.desc"),
       enabled: annotationsEnabled,
       onToggle: async (value) => {
         this.plugin.settings.featureGroups.annotationsAndExcerpts = value;
@@ -357,16 +377,16 @@ export class EpubSettingsTab extends PluginSettingTab {
       containerEl,
       "annotations",
       [
-        "文本高亮与五种想法",
-        "摘录 Markdown 自动写入",
-        "侧栏「标注」列表",
-        "阅读进度写入摘录 frontmatter",
+        t("settings.groups.annotations.scopeItems.highlights"),
+        t("settings.groups.annotations.scopeItems.export"),
+        t("settings.groups.annotations.scopeItems.sidebar"),
+        t("settings.groups.annotations.scopeItems.progress"),
       ],
-      "开启后可用："
+      t("settings.groups.annotations.scopeLabel")
     );
 
     const excerptFolderSetting = this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("摘录文件夹").addText((text) =>
+      s.setName(t("settings.excerptFolder.name")).addText((text) =>
         text
           .setPlaceholder("{filefolder}/anno")
           .setValue(this.plugin.settings.excerptFolder)
@@ -377,36 +397,32 @@ export class EpubSettingsTab extends PluginSettingTab {
       );
     });
     excerptFolderSetting.descEl.empty();
-    excerptFolderSetting.descEl.appendText(
-      "摘录 Markdown 保存目录；阅读进度写入各书摘录文件的 frontmatter。支持 {filefolder} 占位符（EPUB 所在目录），如 {filefolder}/anno。"
-    );
+    excerptFolderSetting.descEl.appendText(t("settings.excerptFolder.desc"));
     excerptFolderSetting.descEl.createEl("br");
     excerptFolderSetting.descEl.createSpan({
       cls: "ob-epub-settings-warn",
-      text: "移动 EPUB 或文件夹后，需手动更新摘录 frontmatter 中的 epub-source 为新路径，否则标题跳转链接会失效",
+      text: t("settings.excerptFolder.warn"),
     });
 
     const excerptFilenameSetting = this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("摘录文件名").addText((text) =>
+      s.setName(t("settings.excerptFilename.name")).addText((text) =>
         text
-          .setPlaceholder("《{title}》摘录.md")
+          .setPlaceholder(t("settings.excerptFilename.placeholder"))
           .setValue(this.plugin.settings.excerptFilename)
           .onChange(async (value) => {
-            this.plugin.settings.excerptFilename = value || "《{title}》摘录.md";
+            this.plugin.settings.excerptFilename = value || t("defaults.excerptFilename");
             await this.plugin.saveSettings();
           })
       );
     });
     excerptFilenameSetting.descEl.empty();
-    excerptFilenameSetting.descEl.appendText(
-      "新建摘录时使用的 Markdown 文件名。支持 {title}（EPUB 书名，不含扩展名）与 {filename}（EPUB 完整文件名，如 demo.epub）。"
-    );
+    excerptFilenameSetting.descEl.appendText(t("settings.excerptFilename.desc"));
     excerptFilenameSetting.descEl.createEl("br");
-    excerptFilenameSetting.descEl.appendText("示例：《{title}》摘录.md、{title}-notes.md、{filename}.md");
+    excerptFilenameSetting.descEl.appendText(t("settings.excerptFilename.examples"));
 
     this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("摘录 callout 背景透明度")
-        .setDesc("控制《书名》摘录.md 中 ob-epub callout 背景浓淡")
+      s.setName(t("settings.excerptCalloutOpacity.name"))
+        .setDesc(t("settings.excerptCalloutOpacity.desc"))
         .addSlider((slider) =>
           slider
             .setLimits(
@@ -424,15 +440,17 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     const convertSetting = this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("转换已有摘录链接").addButton((btn) =>
-        btn.setButtonText("立即转换").onClick(async () => {
+      s.setName(t("settings.convertLinks.name")).addButton((btn) =>
+        btn.setButtonText(t("settings.convertLinks.button")).onClick(async () => {
           btn.setDisabled(true);
           try {
             const count = await this.plugin.annotationVaultStore.convertAllExcerptSourceLinks();
-            new Notice(count > 0 ? `已更新 ${count} 个摘录文件` : "没有需要转换的摘录文件");
+            new Notice(
+              count > 0 ? t("notice.convertDone", { count }) : t("notice.convertNone")
+            );
           } catch (err) {
             console.error("ob-epub: convert excerpt links failed", err);
-            new Notice("转换摘录链接失败，请查看控制台");
+            new Notice(t("notice.convertFailed"));
           } finally {
             btn.setDisabled(false);
           }
@@ -440,34 +458,30 @@ export class EpubSettingsTab extends PluginSettingTab {
       );
     });
     convertSetting.descEl.empty();
-    convertSetting.descEl.appendText(
-      "批量将摘录文件夹内所有《书名》摘录.md 转换为当前选中的摘录导出格式；使用 {filefolder} 时会扫描库内全部《书名》摘录.md"
-    );
+    convertSetting.descEl.appendText(t("settings.convertLinks.desc"));
     convertSetting.descEl.createEl("br");
     convertSetting.descEl.createSpan({
       cls: "ob-epub-settings-warn",
-      text: "转换会改写摘录文件，建议先备份摘录文件夹",
+      text: t("settings.convertLinks.warn"),
     });
 
     this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("检查摘录元数据")
-        .setDesc(
-          "检查摘录 frontmatter 的 epub-source 是否指向存在的 EPUB；仅当 epub-source 缺失或无效时，才按 {filefolder} 规则查找同级 EPUB"
-        )
+      s.setName(t("settings.checkMetadata.name"))
+        .setDesc(t("settings.checkMetadata.desc"))
         .addButton((btn) =>
-          btn.setButtonText("开始检查").onClick(async () => {
+          btn.setButtonText(t("settings.checkMetadata.button")).onClick(async () => {
             btn.setDisabled(true);
             try {
               const report = await this.plugin.annotationVaultStore.checkExcerptMetadata();
               new ExcerptCheckModal(this.app, report).open();
               if (report.withIssues === 0) {
-                new Notice(`已检查 ${report.checked} 个摘录文件，未发现问题`);
+                new Notice(t("notice.checkDone", { count: report.checked }));
               } else {
-                new Notice(`发现 ${report.withIssues} 个摘录文件存在问题，详见弹窗`);
+                new Notice(t("notice.checkIssues", { count: report.withIssues }));
               }
             } catch (err) {
               console.error("ob-epub: excerpt metadata check failed", err);
-              new Notice("检查摘录元数据失败，请查看控制台");
+              new Notice(t("notice.checkFailed"));
             } finally {
               btn.setDisabled(false);
             }
@@ -476,8 +490,8 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("EPUB 高亮透明度")
-        .setDesc("控制阅读器内画线/高亮层的透明度")
+      s.setName(t("settings.highlightOpacity.name"))
+        .setDesc(t("settings.highlightOpacity.desc"))
         .addSlider((slider) =>
           slider
             .setLimits(
@@ -494,20 +508,20 @@ export class EpubSettingsTab extends PluginSettingTab {
         );
     });
 
-    const noteTypesHeading = new Setting(containerEl).setName("想法类型").setHeading();
+    const noteTypesHeading = new Setting(containerEl)
+      .setName(t("settings.noteTypes.heading"))
+      .setHeading();
     this.tagGroup(noteTypesHeading.settingEl, "annotations", "member");
 
-    const noteTypesDesc = new Setting(containerEl).setDesc(
-      "标注时可选择的五种想法分类；修改名称与图标后，新标注与已有标注的显示会同步更新"
-    );
+    const noteTypesDesc = new Setting(containerEl).setDesc(t("settings.noteTypes.desc"));
     this.tagGroup(noteTypesDesc.settingEl, "annotations", "member");
 
     const noteTypes = resolveNoteTypes(this.plugin.settings.noteTypes);
     for (const def of noteTypes) {
-      const fallback = DEFAULT_NOTE_TYPES.find((t) => t.id === def.id)!;
+      const fallback = getDefaultNoteTypes().find((t) => t.id === def.id)!;
       const noteTypeSetting = this.addMemberSetting(containerEl, "annotations", (s) => {
         s.setName(fallback.label)
-          .setDesc(`图标与显示名称（内部 ID: ${def.id}）`)
+          .setDesc(t("settings.noteTypes.fieldDesc", { id: def.id }))
           .addText((text) => {
             text.inputEl.classList.add("ob-epub-note-type-icon-input");
             text.setPlaceholder("📝").setValue(def.icon).onChange(async (value) => {
@@ -524,20 +538,27 @@ export class EpubSettingsTab extends PluginSettingTab {
     }
 
     const resetNoteTypes = new Setting(containerEl).addButton((btn) =>
-      btn.setButtonText("恢复默认想法类型").onClick(async () => {
-        this.plugin.settings.noteTypes = DEFAULT_NOTE_TYPES.map((t) => ({ ...t }));
+      btn.setButtonText(t("settings.noteTypes.reset")).onClick(async () => {
+        this.plugin.settings.noteTypes = getDefaultNoteTypes().map((t) => ({ ...t }));
         await this.plugin.saveSettings();
         this.display();
       })
     );
     this.tagGroup(resetNoteTypes.settingEl, "annotations", "member");
 
-    const noteIconHeading = new Setting(containerEl).setName("想法图标").setHeading();
+    const noteIconHeading = new Setting(containerEl)
+      .setName(t("settings.noteIcon.heading"))
+      .setHeading();
     this.tagGroup(noteIconHeading.settingEl, "annotations", "member");
 
     this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("图标大小")
-        .setDesc(`原文想法图标的直径（${NOTE_ICON_SIZE_MIN}–${NOTE_ICON_SIZE_MAX} px）`)
+      s.setName(t("settings.noteIcon.size"))
+        .setDesc(
+          t("settings.noteIcon.sizeDesc", {
+            min: NOTE_ICON_SIZE_MIN,
+            max: NOTE_ICON_SIZE_MAX,
+          })
+        )
         .addSlider((slider) =>
           slider
             .setLimits(NOTE_ICON_SIZE_MIN, NOTE_ICON_SIZE_MAX, 1)
@@ -551,9 +572,12 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("水平位置")
+      s.setName(t("settings.noteIcon.offsetX"))
         .setDesc(
-          `相对高亮右缘的偏移（${NOTE_ICON_OFFSET_X_MIN} ~ +${NOTE_ICON_OFFSET_X_MAX} px，正值向右）`
+          t("settings.noteIcon.offsetXDesc", {
+            min: NOTE_ICON_OFFSET_X_MIN,
+            max: NOTE_ICON_OFFSET_X_MAX,
+          })
         )
         .addSlider((slider) =>
           slider
@@ -568,9 +592,12 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "annotations", (s) => {
-      s.setName("垂直位置")
+      s.setName(t("settings.noteIcon.offsetY"))
         .setDesc(
-          `相对高亮垂直居中的偏移（${NOTE_ICON_OFFSET_Y_MIN} ~ +${NOTE_ICON_OFFSET_Y_MAX} px，正值向下）`
+          t("settings.noteIcon.offsetYDesc", {
+            min: NOTE_ICON_OFFSET_Y_MIN,
+            max: NOTE_ICON_OFFSET_Y_MAX,
+          })
         )
         .addSlider((slider) =>
           slider
@@ -591,8 +618,8 @@ export class EpubSettingsTab extends PluginSettingTab {
     const bookshelfEnabled = this.plugin.settings.featureGroups.bookshelf;
 
     this.addGroupHeader(containerEl, "bookshelf", {
-      title: "书架与快捷入口",
-      desc: "侧边栏书架、Ribbon 与相关命令",
+      title: t("settings.groups.bookshelf.title"),
+      desc: t("settings.groups.bookshelf.desc"),
       enabled: bookshelfEnabled,
       onToggle: async (value) => {
         this.plugin.settings.featureGroups.bookshelf = value;
@@ -604,13 +631,17 @@ export class EpubSettingsTab extends PluginSettingTab {
     this.renderGroupScopeList(
       containerEl,
       "bookshelf",
-      ["Ribbon「EPUB 书架」图标", "命令「打开 EPUB 书架」", "侧边栏书架视图"],
-      "开启后可用："
+      [
+        t("settings.groups.bookshelf.scopeItems.ribbon"),
+        t("settings.groups.bookshelf.scopeItems.command"),
+        t("settings.groups.bookshelf.scopeItems.view"),
+      ],
+      t("settings.groups.bookshelf.scopeLabel")
     );
 
     const bookshelfNote = containerEl.createDiv({
       cls: "ob-epub-settings-group-scope-note ob-epub-group-extra",
-      text: "「在 EPUB 阅读器中打开」属于阅读器核心，不受此开关影响。",
+      text: t("settings.groups.bookshelf.note"),
     });
     this.tagGroup(bookshelfNote, "bookshelf", "extra");
 

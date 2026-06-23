@@ -3,6 +3,7 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { isCfiAhead } from "./cfi/compare";
 import { cfiSpineKey } from "./cfi/cfiMatch";
 import { isBalancedEpubCfi, unescapeCfiString } from "./cfi/cfiString";
+import { t } from "./i18n/i18n";
 import { BookProgress, EpubPluginSettings, isAnnotationsAndExcerptsEnabled } from "./types";
 
 export { cfiSpineKey } from "./cfi/cfiMatch";
@@ -95,7 +96,7 @@ export class ProgressStore {
   private getExcerptFolder(): string {
     const folder = (this.settings.excerptFolder || "epub-books/anno").trim().replace(/\/$/, "");
     if (!folder) {
-      throw new Error("摘录文件夹未设置");
+      throw new Error(t("errors.excerptFolderUnset"));
     }
     return normalizePath(folder);
   }

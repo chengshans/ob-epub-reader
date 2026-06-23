@@ -1,4 +1,5 @@
-import { buildEpubWikiLink } from "./epubSubpath";
+import { buildEpubWikiLink, legacyGotoWikiLinkLinePattern } from "./epubSubpath";
+import { legacyGotoMarkdownPattern } from "./i18n/excerptAliases";
 import type { Annotation, SourceLinkFormat } from "./types";
 
 const CHAPTER_DATE_RE = /^(.*?)\s·\s(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}(?::\d{2})?)$/;
@@ -119,10 +120,9 @@ export function isTitleLinkedHeader(headerRest: string): boolean {
 }
 
 export function hasLegacyStandaloneGotoLink(chunk: string): boolean {
-  if (/\[回到原文\]\([^)\n]+\)/.test(chunk)) return true;
-  return LEGACY_GOTO_WIKI_LINK_LINE_RE.test(chunk);
+  if (legacyGotoMarkdownPattern().test(chunk)) return true;
+  return legacyGotoWikiLinkLinePattern().test(chunk);
 }
 
-/** Standalone legacy wiki goto lines (`[[...|回到原文]]` on their own line). */
-export const LEGACY_GOTO_WIKI_LINK_LINE_RE =
-  /^>?\s*\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]\s*$/gm;
+/** @deprecated use legacyGotoWikiLinkLinePattern() from epubSubpath */
+export const LEGACY_GOTO_WIKI_LINK_LINE_RE = legacyGotoWikiLinkLinePattern();

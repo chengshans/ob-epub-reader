@@ -1,3 +1,5 @@
+import { i18next, isI18nInitialized, t } from "./i18n/i18n";
+
 export type ReadingThemeId = "obsidian" | "white" | "yellow" | "green" | "sepia" | "dark";
 
 export interface ReadingThemeDef {
@@ -12,10 +14,9 @@ export interface ReadingThemeDef {
   swatch: string;
 }
 
-export const READING_THEMES: ReadingThemeDef[] = [
+const READING_THEME_STYLES: Omit<ReadingThemeDef, "label">[] = [
   {
     id: "obsidian",
-    label: "跟随 Obsidian",
     background: "",
     text: "",
     link: "",
@@ -24,7 +25,6 @@ export const READING_THEMES: ReadingThemeDef[] = [
   },
   {
     id: "white",
-    label: "默认白",
     background: "#FFFFFF",
     text: "#333333",
     link: "#576B95",
@@ -33,7 +33,6 @@ export const READING_THEMES: ReadingThemeDef[] = [
   },
   {
     id: "yellow",
-    label: "护眼黄",
     background: "#FAF9DE",
     text: "#333333",
     link: "#576B95",
@@ -42,7 +41,6 @@ export const READING_THEMES: ReadingThemeDef[] = [
   },
   {
     id: "green",
-    label: "护眼绿",
     background: "#E3EDCD",
     text: "#333333",
     link: "#3A7D44",
@@ -51,7 +49,6 @@ export const READING_THEMES: ReadingThemeDef[] = [
   },
   {
     id: "sepia",
-    label: "羊皮纸",
     background: "#F4ECD8",
     text: "#5C4B37",
     link: "#8B6914",
@@ -60,7 +57,6 @@ export const READING_THEMES: ReadingThemeDef[] = [
   },
   {
     id: "dark",
-    label: "夜间",
     background: "#1C1C1E",
     text: "#A8A8A8",
     link: "#7EB6FF",
@@ -69,10 +65,23 @@ export const READING_THEMES: ReadingThemeDef[] = [
   },
 ];
 
-const READING_THEME_IDS = new Set<string>(READING_THEMES.map((t) => t.id));
+const READING_THEME_IDS = new Set<string>(READING_THEME_STYLES.map((theme) => theme.id));
+
+export function getReadingThemes(): ReadingThemeDef[] {
+  return READING_THEME_STYLES.map((theme) => ({
+    ...theme,
+    label: isI18nInitialized() ? t(`defaults.readingThemes.${theme.id}`) : theme.id,
+  }));
+}
+
+/** @deprecated Use getReadingThemes() after initializeI18n() */
+export const READING_THEMES: ReadingThemeDef[] = READING_THEME_STYLES.map((theme) => ({
+  ...theme,
+  label: theme.id,
+}));
 
 export function getReadingTheme(id: ReadingThemeId): ReadingThemeDef {
-  return READING_THEMES.find((t) => t.id === id) ?? READING_THEMES[0];
+  return getReadingThemes().find((theme) => theme.id === id) ?? getReadingThemes()[0];
 }
 
 export function normalizeReadingTheme(raw: string | undefined): ReadingThemeId {
@@ -90,16 +99,30 @@ export interface NoteTypeDef {
   icon: string;
 }
 
-export const DEFAULT_NOTE_TYPES: NoteTypeDef[] = [
-  { id: "note", label: "做笔记", icon: "📝" },
-  { id: "inspiration", label: "灵感", icon: "💡" },
-  { id: "practice", label: "准备实践", icon: "✅" },
-  { id: "revisit", label: "反复看", icon: "🔁" },
-  { id: "question", label: "疑问", icon: "❓" },
-];
+const NOTE_TYPE_ICONS: Record<NoteType, string> = {
+  note: "📝",
+  inspiration: "💡",
+  practice: "✅",
+  revisit: "🔁",
+  question: "❓",
+};
 
-/** @deprecated Use DEFAULT_NOTE_TYPES */
-export const NOTE_TYPES = DEFAULT_NOTE_TYPES;
+const NOTE_TYPE_IDS: NoteType[] = ["note", "inspiration", "practice", "revisit", "question"];
+
+export function getDefaultNoteTypes(): NoteTypeDef[] {
+  return NOTE_TYPE_IDS.map((id) => ({
+    id,
+    icon: NOTE_TYPE_ICONS[id],
+    label: isI18nInitialized() ? t(`defaults.noteTypes.${id}`) : id,
+  }));
+}
+
+/** Static fallback before i18n init (icons only; labels are ids). */
+export const DEFAULT_NOTE_TYPES: NoteTypeDef[] = NOTE_TYPE_IDS.map((id) => ({
+  id,
+  icon: NOTE_TYPE_ICONS[id],
+  label: id,
+}));
 
 const NOTE_TYPE_LABEL_MAX = 20;
 const NOTE_TYPE_ICON_MAX = 8;
@@ -116,24 +139,24 @@ function sanitizeNoteTypeDef(def: NoteTypeDef, fallback: NoteTypeDef): NoteTypeD
 
 /** Merge stored settings with defaults; always returns exactly five fixed ids. */
 export function resolveNoteTypes(stored?: NoteTypeDef[]): NoteTypeDef[] {
-  return DEFAULT_NOTE_TYPES.map((fallback) => {
-    const custom = stored?.find((t) => t.id === fallback.id);
+  return getDefaultNoteTypes().map((fallback) => {
+    const custom = stored?.find((entry) => entry.id === fallback.id);
     return sanitizeNoteTypeDef(custom ?? fallback, fallback);
   });
 }
 
 export function normalizeNoteType(raw: string | undefined, types: NoteTypeDef[]): NoteType {
-  const ids = new Set(types.map((t) => t.id));
+  const ids = new Set(types.map((entry) => entry.id));
   if (raw && ids.has(raw)) return raw as NoteType;
   return "note";
 }
 
 export function noteTypeIcon(id: NoteType | undefined, types: NoteTypeDef[]): string {
-  return types.find((t) => t.id === (id ?? "note"))?.icon ?? DEFAULT_NOTE_TYPES[0].icon;
+  return types.find((entry) => entry.id === (id ?? "note"))?.icon ?? NOTE_TYPE_ICONS.note;
 }
 
 export function noteTypeLabel(id: NoteType | undefined, types: NoteTypeDef[]): string {
-  return types.find((t) => t.id === (id ?? "note"))?.label ?? DEFAULT_NOTE_TYPES[0].label;
+  return types.find((entry) => entry.id === (id ?? "note"))?.label ?? getDefaultNoteTypes()[0].label;
 }
 
 /** 摘录导出 / 跳转链接的写入格式（四种固定预设） */
@@ -143,44 +166,33 @@ export type SourceLinkFormat =
   | "inline-colored"
   | "wiki-text-alias";
 
-export const SOURCE_LINK_FORMATS: {
+const SOURCE_LINK_FORMAT_IDS_LIST: SourceLinkFormat[] = [
+  "callout-title",
+  "inline-suffix",
+  "inline-colored",
+  "wiki-text-alias",
+];
+
+export function getSourceLinkFormats(): {
   id: SourceLinkFormat;
   label: string;
   desc: string;
   pros: string;
   cons: string;
-}[] = [
-  {
-    id: "callout-title",
-    label: "Callout + 标题链接",
-    desc: "> [!ob-epub|颜色] [[书名.epub#cfi=...|章节]] + 正文；保留 callout 高亮色",
-    pros: "结构清晰、保留高亮色",
-    cons: "占行多、依赖 callout 主题",
-  },
-  {
-    id: "inline-suffix",
-    label: "正文 + 文末「原文」",
-    desc: "正文后接 [[书名.epub#cfi=...|原文]]；不保存画线颜色，解析与转换时使用默认画线颜色",
-    pros: "正文紧凑、多行保留",
-    cons: "不保留颜色、链接不醒目",
-  },
-  {
-    id: "inline-colored",
-    label: "着色正文 + 文末「原文」",
-    desc: "<span style=\"color:…\">正文</span> [[书名.epub#cfi=...|原文]]；通过 span 保留颜色",
-    pros: "保留五色、较紧凑",
-    cons: "HTML 导出可能丢色",
-  },
-  {
-    id: "wiki-text-alias",
-    label: "链接即正文",
-    desc: "[[书名.epub#cfi=...|摘录全文]] 单行；不保存画线颜色，解析与转换时使用默认画线颜色",
-    pros: "最简一行",
-    cons: "多行合并、不保留颜色",
-  },
-];
+}[] {
+  return SOURCE_LINK_FORMAT_IDS_LIST.map((id) => ({
+    id,
+    label: t(`settings.formats.${id}.label`),
+    desc: t(`settings.formats.${id}.desc`),
+    pros: t(`settings.formats.${id}.pros`),
+    cons: t(`settings.formats.${id}.cons`),
+  }));
+}
 
-const SOURCE_LINK_FORMAT_IDS = new Set<string>(SOURCE_LINK_FORMATS.map((f) => f.id));
+/** @deprecated Use getSourceLinkFormats() */
+export const SOURCE_LINK_FORMATS = SOURCE_LINK_FORMAT_IDS_LIST.map((id) => ({ id, label: id, desc: "", pros: "", cons: "" }));
+
+const SOURCE_LINK_FORMAT_IDS = new Set<string>(SOURCE_LINK_FORMAT_IDS_LIST);
 
 export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
   if (value === "wiki-link") return "callout-title";
@@ -193,11 +205,8 @@ export function normalizeSourceLinkFormat(value: unknown): SourceLinkFormat {
 // ---- Feature groups (功能分组) ----
 
 export interface FeatureGroupSettings {
-  /** 高亮、想法、摘录写入、侧栏标注；默认开启 */
   annotationsAndExcerpts: boolean;
-  /** 书架侧栏、Ribbon、打开书架命令；默认开启 */
   bookshelf: boolean;
-  /** 设置页分组折叠状态 */
   readerCollapsed?: boolean;
   annotationsCollapsed?: boolean;
   bookshelfCollapsed?: boolean;
@@ -242,55 +251,57 @@ export function isBookshelfEnabled(settings: EpubPluginSettings): boolean {
 
 export type ToolbarPlacement = "top" | "bottom";
 
+export type PluginUiLocale = "auto" | "en" | "zh";
+
+export function normalizeUiLocale(raw: unknown): PluginUiLocale {
+  if (raw === "en" || raw === "zh" || raw === "auto") return raw;
+  return "auto";
+}
+
 export interface EpubPluginSettings {
   excerptFolder: string;
-  /** 摘录 Markdown 文件名模板，支持 {title}、{filename} 占位符 */
   excerptFilename: string;
-  /** 新标注与转换时使用的摘录标题跳转格式 */
   sourceLinkFormat: SourceLinkFormat;
-  /** 不保存颜色的摘录格式在解析/转换时使用的画线颜色 */
   defaultExcerptHighlightColor: HighlightColor;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
   readingTheme: ReadingThemeId;
-  /** 想法图标直径 (px) */
   noteIconSize: number;
-  /** 相对高亮右缘的水平偏移 (px)，正值向右 */
   noteIconOffsetX: number;
-  /** 垂直偏移 (px)，正值向下 */
   noteIconOffsetY: number;
-  /** EPUB 阅读器内 SVG 高亮透明度 (0.15–0.85) */
   epubHighlightOpacity: number;
-  /** 摘录 callout 背景透明度 (0.15–0.85) */
   excerptCalloutOpacity: number;
-  /** 五种想法类型的图标与显示名称（id 固定，仅可改 label / icon） */
   noteTypes: NoteTypeDef[];
-  /** 功能分组总开关 */
   featureGroups: FeatureGroupSettings;
-  /** 复制摘录时自动插入打开的 Markdown 笔记 */
   autoPasteExcerpt: boolean;
-  /** 工具栏与进度条位置：阅读区顶部 / Obsidian 底栏 */
   toolbarPlacement: ToolbarPlacement;
+  uiLocale: PluginUiLocale;
 }
 
-export const DEFAULT_SETTINGS: EpubPluginSettings = {
-  excerptFolder: "epub-books/anno",
-  excerptFilename: "《{title}》摘录.md",
-  sourceLinkFormat: "callout-title",
-  defaultExcerptHighlightColor: "yellow",
-  defaultFlow: "scrolled",
-  fontSize: 16,
-  readingTheme: "obsidian",
-  noteIconSize: 20,
-  noteIconOffsetX: 2,
-  noteIconOffsetY: 0,
-  epubHighlightOpacity: 0.38,
-  excerptCalloutOpacity: 0.2,
-  noteTypes: DEFAULT_NOTE_TYPES.map((t) => ({ ...t })),
-  featureGroups: { ...DEFAULT_FEATURE_GROUPS },
-  autoPasteExcerpt: true,
-  toolbarPlacement: "bottom",
-};
+export function getDefaultSettings(): EpubPluginSettings {
+  return {
+    excerptFolder: "epub-books/anno",
+    excerptFilename: isI18nInitialized() ? t("defaults.excerptFilename") : "{title} excerpts.md",
+    sourceLinkFormat: "callout-title",
+    defaultExcerptHighlightColor: "yellow",
+    defaultFlow: "scrolled",
+    fontSize: 16,
+    readingTheme: "obsidian",
+    noteIconSize: 20,
+    noteIconOffsetX: 2,
+    noteIconOffsetY: 0,
+    epubHighlightOpacity: 0.38,
+    excerptCalloutOpacity: 0.2,
+    noteTypes: getDefaultNoteTypes().map((entry) => ({ ...entry })),
+    featureGroups: { ...DEFAULT_FEATURE_GROUPS },
+    autoPasteExcerpt: true,
+    toolbarPlacement: "bottom",
+    uiLocale: "auto",
+  };
+}
+
+/** @deprecated Use getDefaultSettings() after initializeI18n() */
+export const DEFAULT_SETTINGS: EpubPluginSettings = getDefaultSettings();
 
 export function normalizeToolbarPlacement(
   raw: unknown,
@@ -298,7 +309,7 @@ export function normalizeToolbarPlacement(
 ): ToolbarPlacement {
   if (raw === "top" || raw === "bottom") return raw;
   if (legacyImmersiveDefault === false) return "top";
-  return DEFAULT_SETTINGS.toolbarPlacement;
+  return getDefaultSettings().toolbarPlacement;
 }
 
 export interface BookProgress {
@@ -309,17 +320,34 @@ export interface BookProgress {
   readingTimeSeconds?: number;
 }
 
-/** 将累计阅读秒数格式化为时分秒，如 390 → "6分30秒"，4980 → "1小时23分0秒" */
+export function unknownChapterLabel(): string {
+  return isI18nInitialized() ? t("defaults.unknownChapter") : "Unknown chapter";
+}
+
+function isChineseLocale(): boolean {
+  return isI18nInitialized() && (i18next.language === "zh" || i18next.language.startsWith("zh"));
+}
+
+/** 将累计阅读秒数格式化为可读时长 */
 export function formatReadingTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
+
+  if (isChineseLocale()) {
+    const parts: string[] = [];
+    if (hours > 0) parts.push(t("time.hours", { n: hours }));
+    if (minutes > 0 || hours > 0) parts.push(t("time.minutes", { n: minutes }));
+    parts.push(t("time.seconds", { n: secs }));
+    return parts.join("");
+  }
+
   const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0 || hours > 0) parts.push(`${minutes}分`);
-  parts.push(`${secs}秒`);
-  return parts.join("");
+  if (hours > 0) parts.push(t("time.hours", { n: hours }));
+  if (minutes > 0 || hours > 0) parts.push(t("time.minutes", { n: minutes }));
+  parts.push(t("time.seconds", { n: secs }));
+  return parts.join(" ");
 }
 
 /** 解析时分秒字符串或纯秒数字符串，返回累计秒数 */
@@ -335,12 +363,12 @@ export function parseReadingTime(value: string): number {
   }
 
   let seconds = 0;
-  const hourMatch = trimmed.match(/(\d+)小时/);
-  const minMatch = trimmed.match(/(\d+)分/);
-  const secMatch = trimmed.match(/(\d+)秒/);
-  if (hourMatch) seconds += Number(hourMatch[1]) * 3600;
-  if (minMatch) seconds += Number(minMatch[1]) * 60;
-  if (secMatch) seconds += Number(secMatch[1]);
+  const hourMatch = trimmed.match(/(\d+)小时|(\d+)h\b/i);
+  const minMatch = trimmed.match(/(\d+)分|(\d+)m\b/i);
+  const secMatch = trimmed.match(/(\d+)秒|(\d+)s\b/i);
+  if (hourMatch) seconds += Number(hourMatch[1] ?? hourMatch[2]) * 3600;
+  if (minMatch) seconds += Number(minMatch[1] ?? minMatch[2]) * 60;
+  if (secMatch) seconds += Number(secMatch[1] ?? secMatch[2]);
   return seconds;
 }
 
@@ -358,26 +386,42 @@ export interface HighlightColorDef {
   hex: string;
 }
 
-// Five drawing-line colors offered to the user.
-export const HIGHLIGHT_COLORS: HighlightColorDef[] = [
-  { id: "yellow", label: "黄", hex: "#e8b339" },
-  { id: "red", label: "红", hex: "#e0533d" },
-  { id: "green", label: "绿", hex: "#3aa675" },
-  { id: "blue", label: "蓝", hex: "#3b82c4" },
-  { id: "purple", label: "紫", hex: "#8b5cf6" },
-];
+const HIGHLIGHT_COLOR_HEX: Record<HighlightColor, string> = {
+  yellow: "#e8b339",
+  red: "#e0533d",
+  green: "#3aa675",
+  blue: "#3b82c4",
+  purple: "#8b5cf6",
+};
 
-export function colorHex(id: HighlightColor): string {
-  return HIGHLIGHT_COLORS.find((c) => c.id === id)?.hex ?? "#e8b339";
+const HIGHLIGHT_COLOR_IDS_LIST: HighlightColor[] = ["yellow", "red", "green", "blue", "purple"];
+
+export function getHighlightColors(): HighlightColorDef[] {
+  return HIGHLIGHT_COLOR_IDS_LIST.map((id) => ({
+    id,
+    hex: HIGHLIGHT_COLOR_HEX[id],
+    label: isI18nInitialized() ? t(`defaults.highlightColors.${id}`) : id,
+  }));
 }
 
-const HIGHLIGHT_COLOR_IDS = new Set<string>(HIGHLIGHT_COLORS.map((c) => c.id));
+/** @deprecated Use getHighlightColors() */
+export const HIGHLIGHT_COLORS: HighlightColorDef[] = HIGHLIGHT_COLOR_IDS_LIST.map((id) => ({
+  id,
+  hex: HIGHLIGHT_COLOR_HEX[id],
+  label: id,
+}));
+
+export function colorHex(id: HighlightColor): string {
+  return HIGHLIGHT_COLOR_HEX[id] ?? HIGHLIGHT_COLOR_HEX.yellow;
+}
+
+const HIGHLIGHT_COLOR_IDS = new Set<string>(HIGHLIGHT_COLOR_IDS_LIST);
 
 export function normalizeHighlightColor(value: unknown): HighlightColor {
   if (typeof value === "string" && HIGHLIGHT_COLOR_IDS.has(value)) {
     return value as HighlightColor;
   }
-  return HIGHLIGHT_COLORS[0].id;
+  return HIGHLIGHT_COLOR_IDS_LIST[0];
 }
 
 export const NOTE_ICON_SIZE_MIN = 14;
@@ -400,7 +444,6 @@ export function clampNoteIconSize(value: number): number {
   return Math.min(NOTE_ICON_SIZE_MAX, Math.max(NOTE_ICON_SIZE_MIN, Math.round(value)));
 }
 
-/** Emoji glyph size inside the circular note icon button (≈68% of diameter). */
 export function noteIconGlyphSize(iconSize: number): number {
   return Math.max(8, Math.round(clampNoteIconSize(iconSize) * 0.68));
 }
@@ -424,7 +467,6 @@ export interface Annotation {
   created: string;
 }
 
-/** Bridge from EpubReaderView back to the plugin for deep-link jumps. */
 export interface EpubOpenBridge {
   consumePendingCfi(filePath: string): string;
   attachStatusBarChrome(

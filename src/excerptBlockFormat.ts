@@ -20,10 +20,17 @@ import {
   parseEpubWikiLinkMarkdown,
 } from "./epubSubpath";
 import {
+  currentLinkAlias,
+  isKnownLinkAlias,
+  legacyGotoMarkdownPattern,
+  wikiLinkAliasSuffixPattern,
+} from "./i18n/excerptAliases";
+import { isI18nInitialized, t } from "./i18n/i18n";
+import {
   Annotation,
   colorHex,
+  getHighlightColors,
   HighlightColor,
-  HIGHLIGHT_COLORS,
   normalizeNoteType,
   NoteType,
   NoteTypeDef,
@@ -31,19 +38,38 @@ import {
 } from "./types";
 
 const CALLOUT_PREFIX = "ob-epub";
-const INLINE_LINK_ALIAS = "原文";
 const NOTE_TYPE_COMMENT_RE = /^<!--\s*ob-epub-note-type:\s*([a-z]+)\s*-->$/;
 const CFI_COMMENT_RE = /^<!--\s*ob-epub-cfi:\s*epubcfi\([\s\S]*?\)\s*-->$/;
 
-export const DEFAULT_EXCERPT_HIGHLIGHT_COLOR: HighlightColor = HIGHLIGHT_COLORS[0].id;
+export const DEFAULT_EXCERPT_HIGHLIGHT_COLOR: HighlightColor = "yellow";
+
+/** Legacy chapter TOC headings written before i18n (zh / en). */
+const LEGACY_CHAPTER_TOC_HEADINGS = ["## 章节目录", "## Table of contents"] as const;
+
+function isChapterTocHeading(text: string): boolean {
+  const trimmed = text.trim();
+  if (isI18nInitialized() && trimmed === t("excerpt.chapterToc")) return true;
+  return (LEGACY_CHAPTER_TOC_HEADINGS as readonly string[]).includes(trimmed);
+}
+
+function coloredInlineRe(): RegExp {
+  return new RegExp(
+    `<span\\s+style="color:\\s*(#[0-9a-fA-F]{3,8})\\s*;?">\\s*([\\s\\S]*?)\\s*<\\/span>\\s*(\\[\\[[^\\n]+\\.epub#cfi=[^\\n]+${wikiLinkAliasSuffixPattern()})`
+  );
+}
+
+function inlineSuffixLinkRe(): RegExp {
+  return new RegExp(`\\[\\[[^\\n]+\\.epub#cfi=[^\\n]+${wikiLinkAliasSuffixPattern()}`);
+}
+
+function lineHasLinkAliasSuffix(line: string): boolean {
+  return new RegExp(wikiLinkAliasSuffixPattern()).test(line);
+}
 
 export interface ParseExcerptOptions {
   /** 不保存颜色的格式在解析时使用的画线颜色 */
   defaultColor?: HighlightColor;
 }
-
-const COLORED_INLINE_RE =
-  /<span\s+style="color:\s*(#[0-9a-fA-F]{3,8})\s*;?">\s*([\s\S]*?)\s*<\/span>\s*(\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\])/;
 
 const LAYOUT_LINE_RE =
   /^<!--\s*ob-epub-chapter-|^- \[\[#|^##\s|^\s*$/;
@@ -53,7 +79,7 @@ export function highlightColorFromHex(
   defaultColor: HighlightColor = DEFAULT_EXCERPT_HIGHLIGHT_COLOR
 ): HighlightColor {
   const normalized = hex.trim().toLowerCase();
-  const found = HIGHLIGHT_COLORS.find((c) => c.hex.toLowerCase() === normalized);
+  const found = getHighlightColors().find((c) => c.hex.toLowerCase() === normalized);
   return found?.id ?? defaultColor;
 }
 
@@ -64,9 +90,7 @@ function extractCfiFromExcerptChunk(text: string): string | null {
     if (literal) return literal;
   }
 
-  const linkMatch = text.match(
-    /\[回到原文\]\(\s*(?:obsidian:\/\/ob-epub-goto\?|#ob-epub-goto\?)([^)\n]+)\)/
-  );
+  const linkMatch = text.match(legacyGotoMarkdownPattern());
   if (linkMatch) {
     try {
       const query = linkMatch[1].replace(/>$/, "");
@@ -123,7 +147,7 @@ function buildCalloutBlock(
 }
 
 function buildInlineSuffixBlock(ann: Annotation, epubPath: string): string {
-  const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, INLINE_LINK_ALIAS);
+  const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, currentLinkAlias());
   const lines = ann.text.split("\n");
   if (lines.length === 0) {
     return link;
@@ -136,7 +160,7 @@ function buildInlineSuffixBlock(ann: Annotation, epubPath: string): string {
 
 function buildInlineColoredBlock(ann: Annotation, epubPath: string): string {
   const hex = colorHex(ann.color);
-  const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, INLINE_LINK_ALIAS);
+  const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, currentLinkAlias());
   const span = `<span style="color: ${hex};">${ann.text}</span> ${link}`;
   const parts: string[] = [span];
   appendNoteSection(parts, ann);
@@ -219,7 +243,7 @@ function stripLayoutFromBlock(text: string): string {
 function isCorruptAnnotationText(text: string): boolean {
   return (
     text.includes("<!-- ob-epub-chapter-") ||
-    text.includes("## 章节目录") ||
+    isChapterTocHeading(text) ||
     /(^|\n)##\s/.test(text)
   );
 }
@@ -239,7 +263,7 @@ function parseCalloutChunk(trimmed: string, noteTypes: NoteTypeDef[]): Annotatio
   if (!headerMatch) return null;
 
   const color = headerMatch[1] as HighlightColor;
-  if (!HIGHLIGHT_COLORS.find((c) => c.id === color)) return null;
+  if (!getHighlightColors().find((c) => c.id === color)) return null;
 
   const parsedHeader = parseCalloutHeader(headerMatch[2], trimmed);
   if (!parsedHeader) return null;
@@ -267,7 +291,7 @@ function parseCalloutChunk(trimmed: string, noteTypes: NoteTypeDef[]): Annotatio
       const stripped = line.replace(/^>\s?/, "");
       if (stripped.startsWith(`[!${CALLOUT_PREFIX}`)) continue;
       if (/^\^ann-/.test(stripped)) continue;
-      if (/^\[回到原文\]\(/.test(stripped)) continue;
+      if (legacyGotoMarkdownPattern().test(stripped)) continue;
       textLines.push(stripped);
       quoteEndIndex = i + 1;
     }
@@ -291,7 +315,7 @@ function parseWikiTextAliasChunk(
   if (!wikiOnly) return null;
 
   const parsedLink = parseEpubWikiLinkMarkdown(firstLine);
-  if (!parsedLink || parsedLink.alias === INLINE_LINK_ALIAS) return null;
+  if (!parsedLink || isKnownLinkAlias(parsedLink.alias)) return null;
 
   const params = parseEpubSubpath(
     parsedLink.subpath.startsWith("#") ? parsedLink.subpath : `#${parsedLink.subpath}`
@@ -327,7 +351,7 @@ function parseInlineColoredChunk(
   defaultColor: HighlightColor
 ): Annotation | null {
   const body = stripLayoutFromBlock(trimmed);
-  const match = body.match(COLORED_INLINE_RE);
+  const match = body.match(coloredInlineRe());
   if (!match) return null;
 
   const parsedLink = parseEpubWikiLinkMarkdown(match[3]);
@@ -343,7 +367,7 @@ function parseInlineColoredChunk(
   const color = highlightColorFromHex(match[1], defaultColor);
   const text = match[2].trim();
   const lines = trimmed.split("\n");
-  const linkIdx = lines.findIndex((l) => l.includes("|原文]]"));
+  const linkIdx = lines.findIndex((l) => lineHasLinkAliasSuffix(l));
   const { note, noteType } = parseExcerptNote(lines, linkIdx >= 0 ? linkIdx + 1 : lines.length, noteTypes);
 
   return {
@@ -364,7 +388,7 @@ function parseInlineSuffixChunk(
   defaultColor: HighlightColor
 ): Annotation | null {
   const body = stripLayoutFromBlock(trimmed);
-  const linkMatch = body.match(/\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\]/);
+  const linkMatch = body.match(inlineSuffixLinkRe());
   if (!linkMatch) return null;
 
   const parsedLink = parseEpubWikiLinkMarkdown(linkMatch[0]);
@@ -386,7 +410,7 @@ function parseInlineSuffixChunk(
   const cfiRange = params.cfi;
   const id = resolveAnnotationId(null, cfiRange);
   const lines = trimmed.split("\n");
-  const linkIdx = lines.findIndex((l) => l.includes("|原文]]"));
+  const linkIdx = lines.findIndex((l) => lineHasLinkAliasSuffix(l));
   const { note, noteType } = parseExcerptNote(lines, linkIdx >= 0 ? linkIdx + 1 : lines.length, noteTypes);
 
   return {

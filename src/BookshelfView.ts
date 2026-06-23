@@ -1,7 +1,8 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
+import { t } from "./i18n/i18n";
 import { BOOKSHELF_ICON_ID } from "./icons/bookshelfIcon";
 import { ProgressStore } from "./ProgressStore";
-import { formatReadingTime } from "./types";
+import { formatReadingTime, unknownChapterLabel } from "./types";
 
 export const BOOKSHELF_VIEW_TYPE = "epub-bookshelf";
 
@@ -24,7 +25,7 @@ export class BookshelfView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "EPUB 书架";
+    return t("bookshelf.title");
   }
 
   getIcon(): string {
@@ -52,12 +53,12 @@ export class BookshelfView extends ItemView {
     container.empty();
     container.addClass("ob-epub-bookshelf-view");
 
-    container.createEl("h4", { cls: "bookshelf-heading", text: "📚 EPUB 书架" });
+    container.createEl("h4", { cls: "bookshelf-heading", text: `📚 ${t("bookshelf.heading")}` });
 
     const epubFiles = this.app.vault.getFiles().filter((f) => f.extension === "epub");
 
     if (epubFiles.length === 0) {
-      container.createEl("p", { cls: "bookshelf-empty", text: "Vault 中没有找到 EPUB 文件。" });
+      container.createEl("p", { cls: "bookshelf-empty", text: t("bookshelf.empty") });
       return;
     }
 
@@ -83,13 +84,16 @@ export class BookshelfView extends ItemView {
       if (progress) {
         meta.createEl("div", {
           cls: "bookshelf-last-read",
-          text: `上次阅读：${progress.chapter || "未知章节"} · ${progress.lastRead.slice(0, 10)}`,
+          text: t("bookshelf.lastRead", {
+            chapter: progress.chapter || unknownChapterLabel(),
+            date: progress.lastRead.slice(0, 10),
+          }),
         });
         const readingSeconds = progress.readingTimeSeconds ?? 0;
         if (readingSeconds > 0) {
           meta.createEl("div", {
             cls: "bookshelf-reading-time",
-            text: `已读 ${formatReadingTime(readingSeconds)}`,
+            text: t("bookshelf.readTime", { time: formatReadingTime(readingSeconds) }),
           });
         }
       }

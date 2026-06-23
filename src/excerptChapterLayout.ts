@@ -1,4 +1,6 @@
 import { compareCfi } from "./cfi/compare";
+import { wikiLinkAliasSuffixPattern } from "./i18n/excerptAliases";
+import { isI18nInitialized, t } from "./i18n/i18n";
 import type { Annotation } from "./types";
 
 export const UNKNOWN_CHAPTER = "未知章节";
@@ -27,15 +29,26 @@ function looksLikeAnnotationBlock(text: string): boolean {
   if (OB_EPUB_BLOCK_RE.test(body)) return true;
   if (/^\[\[[^\n]+\.epub#cfi=[^\n]+\|[^\n]+\]\]\s*$/m.test(body)) return true;
   if (/<span\s+style="color:\s*#/i.test(body)) return true;
-  if (/\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\]/.test(body)) return true;
+  if (new RegExp(wikiLinkAliasSuffixPattern()).test(body)) return true;
   return false;
+}
+
+/** Legacy chapter TOC title labels (zh / en). */
+const LEGACY_CHAPTER_TOC_LABELS = ["章节目录", "Table of contents"] as const;
+
+function isChapterTocLabel(name: string): boolean {
+  if (isI18nInitialized()) {
+    const current = t("excerpt.chapterToc").replace(/^##\s+/, "").trim();
+    if (name === current) return true;
+  }
+  return (LEGACY_CHAPTER_TOC_LABELS as readonly string[]).includes(name);
 }
 
 /** Extract chapter name from a segment that may include a `## 章节` heading. */
 export function extractChapterFromSegment(segment: string): string {
   const match = segment.trim().match(/^##\s+([^\n]+)/m);
   const name = match?.[1]?.trim() ?? "";
-  if (!name || name === "章节目录") return "";
+  if (!name || isChapterTocLabel(name)) return "";
   return name;
 }
 
@@ -173,7 +186,7 @@ export function sortChapterNames(
 }
 
 export function buildChapterTocMarkdown(chapters: string[], counts: Map<string, number>): string {
-  const lines = [CHAPTER_TOC_START, "## 章节目录", ""];
+  const lines = [CHAPTER_TOC_START, isI18nInitialized() ? t("excerpt.chapterToc") : "## 章节目录", ""];
   for (const chapter of chapters) {
     const count = counts.get(chapter) ?? 0;
     lines.push(`- [[#${chapter}|${chapter}]]（${count}）`);

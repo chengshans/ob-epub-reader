@@ -1,0 +1,329 @@
+{
+  "commands": {
+    "openBookshelf": "Open EPUB bookshelf",
+    "openReader": "Open in EPUB reader"
+  },
+  "ribbon": {
+    "bookshelf": "EPUB bookshelf"
+  },
+  "notice": {
+    "selectEpubFirst": "Select an .epub file first",
+    "gotoEpubFailed": "Cannot jump to EPUB source",
+    "bookshelfDisabled": "EPUB bookshelf is disabled in settings",
+    "bookshelfOpenFailed": "Cannot open bookshelf sidebar",
+    "epubNotFound": "EPUB file not found: {{path}}",
+    "convertDone": "Updated {{count}} excerpt file(s)",
+    "convertNone": "No excerpt files need conversion",
+    "convertFailed": "Excerpt link conversion failed; see console",
+    "checkDone": "Checked {{count}} excerpt file(s); no issues found",
+    "checkIssues": "{{count}} excerpt file(s) have issues; see dialog",
+    "checkFailed": "Excerpt metadata check failed; see console",
+    "gotoFailed": "Cannot jump to source location",
+    "fixedLayoutWarning": "This is a fixed-layout EPUB; layout may differ from dedicated readers.",
+    "progressSaveFailed": "Failed to save reading progress ({{path}}); check excerpt folder is writable",
+    "updated": "Updated",
+    "copyFailed": "Copy failed",
+    "highlighted": "Highlighted",
+    "highlightedAndInserted": "Highlighted and inserted into «{{name}}»",
+    "annotationSaved": "Annotation saved",
+    "annotationDeleted": "Annotation deleted",
+    "parseGotoFailed": "Cannot parse excerpt jump link; re-annotate or check excerpt format",
+    "insertedAndCopied": "Inserted into «{{name}}» and copied excerpt",
+    "readingModeCopied": "Target note is in reading mode; copied to clipboard",
+    "copiedExcerpt": "Excerpt copied"
+  },
+  "bookshelf": {
+    "title": "EPUB bookshelf",
+    "heading": "EPUB bookshelf",
+    "empty": "No EPUB files found in vault.",
+    "lastRead": "Last read: {{chapter}} · {{date}}",
+    "readTime": "Read {{time}}",
+    "unknownChapter": "Unknown chapter"
+  },
+  "reader": {
+    "sidebar": {
+      "toc": "Contents",
+      "annotations": "Annotations"
+    },
+    "toolbar": {
+      "toggleToc": "Toggle table of contents",
+      "fontSmaller": "Decrease font size",
+      "fontLarger": "Increase font size",
+      "flowPaginated": "Paginated",
+      "flowScrolled": "Scroll",
+      "toggleFlow": "Toggle reading mode",
+      "prevPage": "Previous page",
+      "nextPage": "Next page",
+      "highlight": "Highlight",
+      "highlightOpacity": "Highlight opacity",
+      "highlightOpacityPercent": "Highlight opacity {{percent}}%",
+      "autoPaste": "Auto-insert excerpts into open Markdown notes when copying",
+      "autoPasteOn": "Auto-paste on",
+      "autoPasteOff": "Auto-paste off",
+      "autoPasteOnDesc": "Auto-paste on: excerpts insert into Markdown",
+      "autoPasteOffDesc": "Auto-paste off: excerpts copy to clipboard only"
+    },
+    "loading": "Loading EPUB…",
+    "loadFailed": "Load failed: {{error}}",
+    "contextMenu": {
+      "copy": "Copy",
+      "copyTitle": "Copy to clipboard in current excerpt format",
+      "highlightDot": "Highlight · {{color}}",
+      "copyDot": "Copy · {{color}}",
+      "annotate": "Annotate",
+      "annotateTitle": "Write your thought",
+      "changeColor": "Change to {{color}}",
+      "editThought": "Edit thought",
+      "addThought": "Add thought",
+      "delete": "Delete",
+      "viewEditThought": "{{type}} · View/edit thought"
+    },
+    "notes": {
+      "countFiltered": "{{filtered}} total",
+      "countFilteredOf": "{{filtered}} / {{total}} total",
+      "expandAll": "Expand all",
+      "collapseAll": "Collapse all",
+      "expandAllTitle": "Expand all chapters",
+      "collapseAllTitle": "Collapse all chapters",
+      "searchPlaceholder": "Search annotations…",
+      "filterAll": "All",
+      "filterAllTitle": "Clear color and type filters",
+      "filterHighlightOnly": "Highlights only",
+      "jump": "Jump",
+      "edit": "Edit",
+      "delete": "Delete",
+      "empty": "No annotations yet. Select text and highlight or add a thought.",
+      "noMatch": "No matching annotations.",
+      "loadFailed": "Failed to load annotations. Try again later."
+    },
+    "modal": {
+      "editAnnotation": "Edit annotation",
+      "deleteAnnotation": "Delete annotation",
+      "deleteConfirm": "Delete this annotation?\n「{{preview}}」"
+    },
+    "unknownChapter": "Unknown chapter"
+  },
+  "modal": {
+    "common": {
+      "cancel": "Cancel",
+      "save": "Save",
+      "delete": "Delete",
+      "close": "Close"
+    },
+    "note": {
+      "title": "Write your thought",
+      "editTitle": "Edit thought",
+      "highlightColor": "Highlight color",
+      "noteType": "Note type",
+      "placeholder": "Write your thoughts, questions, or associations here…"
+    },
+    "excerptCheck": {
+      "title": "Excerpt metadata check",
+      "summaryOk": "Checked {{count}} excerpt file(s); no issues found.",
+      "summaryIssues": "Checked {{count}} excerpt file(s); {{issues}} have issues.",
+      "epubSource": "epub-source: {{value}}",
+      "localEpub": "Sibling EPUB: {{value}}",
+      "expectedPath": "Expected path: {{value}}"
+    }
+  },
+  "settings": {
+    "language": {
+      "name": "Display language",
+      "desc": "Plugin UI language; does not change excerpt files already in your vault",
+      "auto": "Follow Obsidian"
+    },
+    "group": {
+      "expand": "Expand group",
+      "collapse": "Collapse group"
+    },
+    "groups": {
+      "reader": {
+        "title": "Reader",
+        "desc": "Core reading features (disable the plugin in Community plugins settings)"
+      },
+      "annotations": {
+        "title": "Annotations & excerpts",
+        "desc": "Highlights, thoughts, excerpt export, and annotation sidebar; when off, selection copies only (optional color), no highlights or excerpt writes",
+        "scopeLabel": "When enabled:",
+        "scopeItems": {
+          "highlights": "Text highlights and five thought types",
+          "export": "Automatic excerpt Markdown export",
+          "sidebar": "Annotations sidebar list",
+          "progress": "Reading progress in excerpt frontmatter"
+        }
+      },
+      "bookshelf": {
+        "title": "Bookshelf & shortcuts",
+        "desc": "Sidebar bookshelf, ribbon icon, and related commands",
+        "scopeLabel": "When enabled:",
+        "scopeItems": {
+          "ribbon": "Ribbon «EPUB bookshelf» icon",
+          "command": "Command «Open EPUB bookshelf»",
+          "view": "Sidebar bookshelf view"
+        },
+        "note": "«Open in EPUB reader» is core reader functionality and is not affected by this toggle."
+      }
+    },
+    "sourceLinkFormat": {
+      "name": "Excerpt link format",
+      "desc": "Used for copy and new annotations; ",
+      "warn": "changing this updates existing annotations on new edits — back up your excerpt folder first."
+    },
+    "formatTable": {
+      "format": "Format",
+      "pros": "Pros",
+      "cons": "Cons"
+    },
+    "defaultExcerptColor": {
+      "name": "Default highlight color",
+      "desc": "Color used when parsing or converting formats that do not store color (inline suffix, wiki-text-alias)"
+    },
+    "defaultFlow": {
+      "name": "Default reading mode",
+      "desc": "Paginated or scroll mode",
+      "paginated": "Paginated",
+      "scrolled": "Scroll"
+    },
+    "fontSize": {
+      "name": "Default font size",
+      "desc": "Reader content font size (px)"
+    },
+    "readingTheme": {
+      "name": "Default reading theme",
+      "desc": "EPUB body background and text colors"
+    },
+    "toolbarPlacement": {
+      "name": "Toolbar placement",
+      "desc": "Top: toolbar and progress in reader area; Bottom: pinned to Obsidian status bar",
+      "top": "Top",
+      "bottom": "Bottom"
+    },
+    "autoPaste": {
+      "name": "Auto-paste excerpts",
+      "desc": "When on, copied excerpts insert into the most recently edited Markdown note; toggle quickly in reader toolbar"
+    },
+    "excerptFolder": {
+      "name": "Excerpt folder",
+      "desc": "Directory for excerpt Markdown; reading progress is written to each book's excerpt frontmatter. Supports {filefolder} (EPUB directory), e.g. {filefolder}/anno.",
+      "warn": "After moving EPUBs or folders, manually update epub-source in excerpt frontmatter or title links will break."
+    },
+    "excerptFilename": {
+      "name": "Excerpt filename",
+      "placeholder": "{title} excerpts.md",
+      "desc": "Markdown filename for new excerpts. Supports {title} (book title without extension) and {filename} (full EPUB filename, e.g. demo.epub).",
+      "examples": "Examples: {title} excerpts.md, {title}-notes.md, {filename}.md"
+    },
+    "excerptCalloutOpacity": {
+      "name": "Excerpt callout opacity",
+      "desc": "Background strength of ob-epub callouts in excerpt files"
+    },
+    "convertLinks": {
+      "name": "Convert existing excerpt links",
+      "button": "Convert now",
+      "desc": "Batch-convert all excerpt files to the selected export format; with {filefolder}, scans all matching excerpt files in vault.",
+      "warn": "Conversion rewrites excerpt files — back up your excerpt folder first."
+    },
+    "checkMetadata": {
+      "name": "Check excerpt metadata",
+      "desc": "Verify excerpt frontmatter epub-source points to an existing EPUB; only when missing or invalid, look for sibling EPUB via {filefolder} rules",
+      "button": "Start check"
+    },
+    "highlightOpacity": {
+      "name": "EPUB highlight opacity",
+      "desc": "Opacity of highlight layers in the reader"
+    },
+    "noteTypes": {
+      "heading": "Thought types",
+      "desc": "Five categories when annotating; label and icon changes apply to new and existing annotations",
+      "fieldDesc": "Icon and display name (internal ID: {{id}})",
+      "reset": "Restore default thought types"
+    },
+    "noteIcon": {
+      "heading": "Thought icons",
+      "size": "Icon size",
+      "sizeDesc": "Diameter of margin thought icons ({{min}}–{{max}} px)",
+      "offsetX": "Horizontal position",
+      "offsetXDesc": "Offset from highlight right edge ({{min}} ~ +{{max}} px, positive = right)",
+      "offsetY": "Vertical position",
+      "offsetYDesc": "Offset from highlight vertical center ({{min}} ~ +{{max}} px, positive = down)"
+    },
+    "formats": {
+      "callout-title": {
+        "label": "Callout + title link",
+        "desc": "> [!ob-epub|color] [[book.epub#cfi=...|chapter]] + body; keeps callout highlight color",
+        "pros": "Clear structure, keeps highlight color",
+        "cons": "More lines, depends on callout theme"
+      },
+      "inline-suffix": {
+        "label": "Body + trailing source link",
+        "desc": "Body followed by [[book.epub#cfi=...|Source]]; no stored color, uses default on parse/convert",
+        "pros": "Compact body, preserves line breaks",
+        "cons": "No color, link less visible"
+      },
+      "inline-colored": {
+        "label": "Colored body + trailing source link",
+        "desc": "<span style=\"color:…\">body</span> [[book.epub#cfi=...|Source]]; color via span",
+        "pros": "Keeps five colors, fairly compact",
+        "cons": "Color may be lost on HTML export"
+      },
+      "wiki-text-alias": {
+        "label": "Link as body",
+        "desc": "[[book.epub#cfi=...|full excerpt text]] single line; no stored color",
+        "pros": "Simplest single line",
+        "cons": "Multi-line merged, no color"
+      }
+    }
+  },
+  "excerpt": {
+    "linkAlias": "Source",
+    "gotoAlias": "Back to source",
+    "wikiTextAlias": "full excerpt text",
+    "gotoTitle": "Jump to EPUB source",
+    "gotoClickTitle": "Click to jump to EPUB source",
+    "excerptHeading": "# «{{title}}» excerpts",
+    "chapterToc": "## Table of contents"
+  },
+  "excerptCheck": {
+    "issues": {
+      "missing-epub-source": "Missing frontmatter field epub-source",
+      "epub-source-not-found": "epub-source points to a non-existent EPUB file",
+      "local-epub-not-found": "No matching EPUB found in sibling directory per excerpt folder rules",
+      "excerpt-location-mismatch": "Excerpt file is not at the path expected by current settings",
+      "epub-source-local-mismatch": "epub-source does not match EPUB path inferred from excerpt location"
+    }
+  },
+  "defaults": {
+    "excerptFilename": "{title} excerpts.md",
+    "unknownChapter": "Unknown chapter",
+    "readingThemes": {
+      "obsidian": "Follow Obsidian",
+      "white": "White",
+      "yellow": "Eye-care yellow",
+      "green": "Eye-care green",
+      "sepia": "Sepia",
+      "dark": "Dark"
+    },
+    "noteTypes": {
+      "note": "Take notes",
+      "inspiration": "Inspiration",
+      "practice": "Practice",
+      "revisit": "Revisit",
+      "question": "Question"
+    },
+    "highlightColors": {
+      "yellow": "Yellow",
+      "red": "Red",
+      "green": "Green",
+      "blue": "Blue",
+      "purple": "Purple"
+    }
+  },
+  "time": {
+    "hours": "{{n}}h",
+    "minutes": "{{n}}m",
+    "seconds": "{{n}}s"
+  },
+  "errors": {
+    "excerptFolderUnset": "Excerpt folder is not set"
+  }
+}

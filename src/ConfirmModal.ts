@@ -1,4 +1,5 @@
 import { App, ButtonComponent, Modal, Setting } from "obsidian";
+import { t } from "./i18n/i18n";
 
 function styleDestructiveButton(btn: ButtonComponent): ButtonComponent {
   btn.buttonEl.addClass("epub-confirm-delete");
@@ -19,7 +20,7 @@ export class ConfirmModal extends Modal {
     title: string,
     message: string,
     onConfirm: () => void,
-    confirmLabel = "删除"
+    confirmLabel = t("modal.common.delete")
   ) {
     super(app);
     this.titleText = title;
@@ -38,7 +39,7 @@ export class ConfirmModal extends Modal {
 
     new Setting(contentEl)
       .addButton((btn) =>
-        btn.setButtonText("取消").onClick(() => this.close())
+        btn.setButtonText(t("modal.common.cancel")).onClick(() => this.close())
       )
       .addButton((btn) =>
         styleDestructiveButton(btn.setButtonText(this.confirmLabel)).onClick(() => {

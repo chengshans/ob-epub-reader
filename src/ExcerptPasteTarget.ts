@@ -6,6 +6,7 @@ import {
   Plugin,
   WorkspaceLeaf,
 } from "obsidian";
+import { t } from "./i18n/i18n";
 
 export type ExcerptInsertReason = "no-target" | "preview-mode";
 
@@ -244,12 +245,12 @@ export function registerExcerptPasteTarget(plugin: Plugin): ExcerptPasteTarget {
 
 export function noticeExcerptCopy(insert: ExcerptInsertResult | undefined): void {
   if (insert?.inserted && insert.fileDisplayName) {
-    new Notice(`已插入《${insert.fileDisplayName}》并复制摘录`);
+    new Notice(t("notice.insertedAndCopied", { name: insert.fileDisplayName }));
     return;
   }
   if (insert?.reason === "preview-mode") {
-    new Notice("目标笔记处于阅读模式，已复制到剪贴板");
+    new Notice(t("notice.readingModeCopied"));
     return;
   }
-  new Notice("已复制摘录");
+  new Notice(t("notice.copiedExcerpt"));
 }

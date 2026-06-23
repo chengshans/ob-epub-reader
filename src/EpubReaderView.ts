@@ -4,14 +4,16 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { cfiProgressMatches } from "./cfi/cfiMatch";
 import { parseEpubSubpath } from "./epubSubpath";
 import { ProgressStore, normalizeCfi, normalizePercent } from "./ProgressStore";
+import { t } from "./i18n/i18n";
 import {
   EpubPluginSettings,
   EpubOpenBridge,
   Annotation,
   HighlightColor,
   NoteType,
-  HIGHLIGHT_COLORS,
-  READING_THEMES,
+  getHighlightColors,
+  getReadingThemes,
+  unknownChapterLabel,
   ReadingThemeId,
   colorHex,
   noteTypeIcon,
@@ -136,6 +138,7 @@ export class EpubReaderView extends FileView {
   private highlightOpacityRangeEl: HTMLInputElement | null = null;
   private sidebarEl: HTMLElement | null = null;
   private notesTabEl: HTMLElement | null = null;
+  private tocTabEl: HTMLElement | null = null;
   private tocEl: HTMLElement | null = null;
   private notesEl: HTMLElement | null = null;
   private readerEl: HTMLElement | null = null;
@@ -302,7 +305,7 @@ export class EpubReaderView extends FileView {
       await this.rendition.display(cfi);
     } catch (err) {
       console.error("CFI navigation failed:", err);
-      new Notice("无法跳转到原文位置");
+      new Notice(t("notice.gotoFailed"));
     } finally {
       this.isNavigating = false;
       this.scheduleHighlightSync();
@@ -338,8 +341,9 @@ export class EpubReaderView extends FileView {
     // Sidebar with tab switcher
     this.sidebarEl = bodyEl.createDiv({ cls: "epub-sidebar" });
     const tabs = this.sidebarEl.createDiv({ cls: "epub-sidebar-tabs" });
-    const tocTab = tabs.createEl("button", { cls: "epub-sidebar-tab is-active", text: "目录" });
-    this.notesTabEl = tabs.createEl("button", { cls: "epub-sidebar-tab", text: "标注" });
+    const tocTab = tabs.createEl("button", { cls: "epub-sidebar-tab is-active", text: t("reader.sidebar.toc") });
+    this.tocTabEl = tocTab;
+    this.notesTabEl = tabs.createEl("button", { cls: "epub-sidebar-tab", text: t("reader.sidebar.annotations") });
     tocTab.addEventListener("click", () => this.setSidebarMode("toc"));
     this.notesTabEl.addEventListener("click", () => this.setSidebarMode("notes"));
 
@@ -436,7 +440,7 @@ export class EpubReaderView extends FileView {
 
     // TOC toggle
     this.tocToggleBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "☰" });
-    this.tocToggleBtn.title = "切换目录";
+    this.tocToggleBtn.title = t("reader.toolbar.toggleToc");
     this.tocToggleBtn.addEventListener("click", () => this.toggleToc());
 
     // Book title
@@ -448,11 +452,11 @@ export class EpubReaderView extends FileView {
 
     // Font size controls
     const fontSizeDown = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "A-" });
-    fontSizeDown.title = "减小字体";
+    fontSizeDown.title = t("reader.toolbar.fontSmaller");
     fontSizeDown.addEventListener("click", () => this.changeFontSize(-2));
 
     const fontSizeUp = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "A+" });
-    fontSizeUp.title = "增大字体";
+    fontSizeUp.title = t("reader.toolbar.fontLarger");
     fontSizeUp.addEventListener("click", () => this.changeFontSize(2));
 
     this.buildThemeToolbar(toolbar);
@@ -464,19 +468,19 @@ export class EpubReaderView extends FileView {
     // Flow toggle
     const flowBtn = toolbar.createEl("button", {
       cls: "epub-toolbar-btn",
-      text: this.flow === "paginated" ? "📄 分页" : "📜 滚动",
+      text: this.flowButtonText(),
       attr: { id: "epub-flow-btn" },
     });
-    flowBtn.title = "切换阅读模式";
+    flowBtn.title = t("reader.toolbar.toggleFlow");
     flowBtn.addEventListener("click", () => this.toggleFlow());
 
     // Prev / Next
     const prevBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "◀" });
-    prevBtn.title = "上一页";
+    prevBtn.title = t("reader.toolbar.prevPage");
     prevBtn.addEventListener("click", () => this.rendition?.prev());
 
     const nextBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "▶" });
-    nextBtn.title = "下一页";
+    nextBtn.title = t("reader.toolbar.nextPage");
     nextBtn.addEventListener("click", () => this.rendition?.next());
   }
 
@@ -534,9 +538,9 @@ export class EpubReaderView extends FileView {
     this.tocEl?.toggleClass("is-hidden", mode !== "toc");
     this.notesEl?.toggleClass("is-hidden", mode !== "notes");
     const tabs = this.sidebarEl?.querySelectorAll(".epub-sidebar-tab");
-    tabs?.forEach((t, i) => {
+    tabs?.forEach((tab, i) => {
       const active = (i === 0 && mode === "toc") || (i === 1 && mode === "notes");
-      t.toggleClass("is-active", active);
+      tab.toggleClass("is-active", active);
     });
     if (mode === "notes") void this.renderNotesPanel();
   }
@@ -548,11 +552,17 @@ export class EpubReaderView extends FileView {
     }
   }
 
+  private flowButtonText(): string {
+    return this.flow === "paginated"
+      ? `📄 ${t("reader.toolbar.flowPaginated")}`
+      : `📜 ${t("reader.toolbar.flowScrolled")}`;
+  }
+
   private toggleFlow() {
     this.flow = this.flow === "paginated" ? "scrolled" : "paginated";
     this.syncFlowLayoutClass();
     const btn = this.toolbarEl?.querySelector("#epub-flow-btn") as HTMLElement | null;
-    if (btn) btn.textContent = this.flow === "paginated" ? "📄 分页" : "📜 滚动";
+    if (btn) btn.textContent = this.flowButtonText();
 
     if (this.file) {
       const savedCfi = this.currentCfi;
@@ -639,7 +649,7 @@ export class EpubReaderView extends FileView {
     this.blockProgressSave = !!resumeCfi;
     this.isBookInitializing = true;
 
-    const loadingEl = this.readerEl.createEl("div", { cls: "epub-loading", text: "正在加载 EPUB…" });
+    const loadingEl = this.readerEl.createEl("div", { cls: "epub-loading", text: t("reader.loading") });
 
     try {
       const arrayBuffer = await this.app.vault.adapter.readBinary(file.path);
@@ -826,7 +836,7 @@ export class EpubReaderView extends FileView {
       // Refresh notes panel if currently shown
       if (this.sidebarMode === "notes") this.renderNotesPanel();
     } catch (err) {
-      loadingEl.textContent = `加载失败: ${err}`;
+      loadingEl.textContent = t("reader.loadFailed", { error: String(err) });
       console.error("EPUB load error:", err);
     } finally {
       if (this.isBookSessionStale(generation)) {
@@ -942,7 +952,7 @@ export class EpubReaderView extends FileView {
       cls: "epub-toolbar-btn epub-auto-paste-toggle",
       attr: { id: "epub-auto-paste-btn", type: "button" },
     });
-    toggleBtn.title = "复制摘录时自动插入打开的 Markdown 笔记";
+    toggleBtn.title = t("reader.toolbar.autoPaste");
     this.syncAutoPasteToggle(toggleBtn);
     toggleBtn.addEventListener("click", () => {
       const next = !this.settings.autoPasteExcerpt;
@@ -958,10 +968,10 @@ export class EpubReaderView extends FileView {
     if (!(toggleBtn instanceof HTMLButtonElement)) return;
     const enabled = this.settings.autoPasteExcerpt !== false;
     toggleBtn.textContent = enabled ? "🌟" : "★";
-    toggleBtn.setAttr("aria-label", enabled ? "自动粘贴已开启" : "自动粘贴已关闭");
+    toggleBtn.setAttr("aria-label", enabled ? t("reader.toolbar.autoPasteOn") : t("reader.toolbar.autoPasteOff"));
     toggleBtn.title = enabled
-      ? "自动粘贴已开启：复制摘录会插入 Markdown"
-      : "自动粘贴已关闭：复制摘录仅写入剪贴板";
+      ? t("reader.toolbar.autoPasteOnDesc")
+      : t("reader.toolbar.autoPasteOffDesc");
     toggleBtn.toggleClass("is-on", enabled);
   }
 
@@ -969,7 +979,7 @@ export class EpubReaderView extends FileView {
     const swatches = toolbar.createDiv({ cls: "epub-theme-swatches" });
     this.themeSwatchesEl = swatches;
 
-    for (const theme of READING_THEMES) {
+    for (const theme of getReadingThemes()) {
       const swatch = swatches.createEl("button", {
         cls: "epub-theme-swatch",
         type: "button",
@@ -1005,8 +1015,8 @@ export class EpubReaderView extends FileView {
 
   private buildHighlightOpacityToolbar(toolbar: HTMLElement) {
     const group = toolbar.createDiv({ cls: "epub-highlight-opacity" });
-    const label = group.createSpan({ cls: "epub-highlight-opacity-label", text: "高亮" });
-    label.title = "高亮透明度";
+    const label = group.createSpan({ cls: "epub-highlight-opacity-label", text: t("reader.toolbar.highlight") });
+    label.title = t("reader.toolbar.highlightOpacity");
 
     const range = group.createEl("input", {
       cls: "epub-highlight-opacity-range",
@@ -1023,7 +1033,9 @@ export class EpubReaderView extends FileView {
     range.addEventListener("input", () => {
       const opacity = clampHighlightOpacity(Number(range.value) / 100);
       this.settings.epubHighlightOpacity = opacity;
-      range.title = `高亮透明度 ${Math.round(opacity * 100)}%`;
+      range.title = t("reader.toolbar.highlightOpacityPercent", {
+        percent: Math.round(opacity * 100),
+      });
       void this.refreshHighlights();
     });
     range.addEventListener("change", () => {
@@ -1039,7 +1051,7 @@ export class EpubReaderView extends FileView {
     const opacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     const percent = Math.round(opacity * 100);
     this.highlightOpacityRangeEl.value = String(percent);
-    this.highlightOpacityRangeEl.title = `高亮透明度 ${percent}%`;
+    this.highlightOpacityRangeEl.title = t("reader.toolbar.highlightOpacityPercent", { percent });
   }
 
   private async setReadingTheme(id: ReadingThemeId) {
@@ -1076,7 +1088,7 @@ export class EpubReaderView extends FileView {
       };
     }
 
-    const theme = READING_THEMES.find((t) => t.id === this.readingTheme)!;
+    const theme = getReadingThemes().find((themeDef) => themeDef.id === this.readingTheme)!;
     return {
       background: theme.background,
       textColor: theme.text,
@@ -1236,7 +1248,7 @@ export class EpubReaderView extends FileView {
       )
     );
 
-    for (const theme of READING_THEMES) {
+    for (const theme of getReadingThemes()) {
       if (theme.id === "obsidian") continue;
       this.rendition.themes.register(
         theme.id,
@@ -1297,11 +1309,11 @@ export class EpubReaderView extends FileView {
 
     const flowBtn = this.toolbarEl?.querySelector("#epub-flow-btn") as HTMLElement | null;
     if (flowBtn) {
-      flowBtn.textContent = this.flow === "paginated" ? "📄 分页" : "📜 滚动";
+      flowBtn.textContent = this.flowButtonText();
     }
 
     if (meta?.layout === "pre-paginated") {
-      new Notice("此书为固定版式 EPUB，排版可能与专用阅读器有差异。");
+      new Notice(t("notice.fixedLayoutWarning"));
     }
 
     this.syncFlowLayoutClass();
@@ -1461,7 +1473,7 @@ export class EpubReaderView extends FileView {
           ? this.progressStore.getProgressFilePath(this.file.path)
           : this.progressStore.getProgressFilePath();
         console.error("ob-epub: progress save failed", path, err);
-        new Notice(`阅读进度保存失败（${path}），请确认摘录文件夹存在且可写`);
+        new Notice(t("notice.progressSaveFailed", { path }));
       });
     }, 800);
   }
@@ -1644,8 +1656,8 @@ export class EpubReaderView extends FileView {
 
     const annotationsOn = this.annotationsEnabled();
 
-    const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 复制" });
-    copyBtn.title = "按当前摘录格式复制到剪贴板";
+    const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: `📋 ${t("reader.contextMenu.copy")}` });
+    copyBtn.title = t("reader.contextMenu.copyTitle");
     copyBtn.addEventListener("click", () => {
       this.dismissContextMenu();
       void this.copySelectionAsExcerpt();
@@ -1654,10 +1666,12 @@ export class EpubReaderView extends FileView {
     menu.createDiv({ cls: "epub-ctx-divider" });
 
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
-    for (const c of HIGHLIGHT_COLORS) {
+    for (const c of getHighlightColors()) {
       const dot = colorRow.createDiv({ cls: "epub-color-dot" });
       dot.setAttribute("data-color", c.id);
-      dot.title = annotationsOn ? `画线 · ${c.label}` : `复制 · ${c.label}`;
+      dot.title = annotationsOn
+        ? t("reader.contextMenu.highlightDot", { color: c.label })
+        : t("reader.contextMenu.copyDot", { color: c.label });
       dot.addEventListener("click", async () => {
         this.dismissContextMenu();
         if (annotationsOn) {
@@ -1671,8 +1685,8 @@ export class EpubReaderView extends FileView {
     if (annotationsOn) {
       menu.createDiv({ cls: "epub-ctx-divider" });
 
-      const noteBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📝 标注" });
-      noteBtn.title = "写下自己的想法";
+      const noteBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: `📝 ${t("reader.contextMenu.annotate")}` });
+      noteBtn.title = t("reader.contextMenu.annotateTitle");
       noteBtn.addEventListener("click", () => {
         this.dismissContextMenu();
         this.openNoteModal();
@@ -1858,7 +1872,9 @@ export class EpubReaderView extends FileView {
     const btn = document.createElement("button");
     btn.className = NOTE_ICON_CLASS;
     btn.type = "button";
-    btn.title = `${noteTypeLabel(annotation.noteType, this.resolvedNoteTypes)} · 查看/编辑想法`;
+    btn.title = t("reader.contextMenu.viewEditThought", {
+      type: noteTypeLabel(annotation.noteType, this.resolvedNoteTypes),
+    });
     btn.setAttribute("data-cfi", annotation.cfiRange);
     btn.setAttribute("data-id", annotation.id);
     btn.setAttribute("data-color", annotation.color);
@@ -1947,7 +1963,7 @@ export class EpubReaderView extends FileView {
 
   private openNoteEditor(
     ann: Annotation,
-    title = "编辑标注",
+    title = t("reader.modal.editAnnotation"),
     noticeOnSave = true
   ) {
     if (!this.file) return;
@@ -1972,7 +1988,7 @@ export class EpubReaderView extends FileView {
           }
         }
         if (this.sidebarMode === "notes") this.renderNotesPanel();
-        if (noticeOnSave) new Notice("✅ 已更新");
+        if (noticeOnSave) new Notice(t("notice.updated"));
       },
       title
     ).open();
@@ -2125,7 +2141,7 @@ export class EpubReaderView extends FileView {
       return { copied: true, insert };
     } catch (err) {
       console.error("ob-epub: copy excerpt failed", err);
-      new Notice("复制失败");
+      new Notice(t("notice.copyFailed"));
       return { copied: false };
     }
   }
@@ -2138,7 +2154,7 @@ export class EpubReaderView extends FileView {
       cfiRange: this.selectedCfi,
       text: this.selectedText,
       color,
-      chapter: this.currentChapter || "未知章节",
+      chapter: this.currentChapter || unknownChapterLabel(),
       created: new Date().toISOString(),
     };
 
@@ -2165,7 +2181,7 @@ export class EpubReaderView extends FileView {
         cfiRange: this.selectedCfi,
         text: this.selectedText,
         color,
-        chapter: this.currentChapter || "未知章节",
+        chapter: this.currentChapter || unknownChapterLabel(),
         created: new Date().toISOString(),
       };
       await this.annotationVaultStore.add(this.file.path, ann);
@@ -2174,13 +2190,15 @@ export class EpubReaderView extends FileView {
     }
     if (annToCopy) {
       const copyResult = await this.copyAnnotationAsExcerpt(annToCopy);
-      let msg = "✅ 已画线";
       if (copyResult.insert?.inserted && copyResult.insert.fileDisplayName) {
-        msg += `，已插入《${copyResult.insert.fileDisplayName}》`;
+        new Notice(
+          t("notice.highlightedAndInserted", { name: copyResult.insert.fileDisplayName })
+        );
+      } else {
+        new Notice(t("notice.highlighted"));
       }
-      new Notice(msg);
     } else {
-      new Notice("✅ 已画线");
+      new Notice(t("notice.highlighted"));
     }
     this.clearSelection();
     if (this.sidebarMode === "notes") this.renderNotesPanel();
@@ -2192,7 +2210,7 @@ export class EpubReaderView extends FileView {
     const filePath = this.file.path;
     const cfiRange = this.selectedCfi;
     const text = this.selectedText;
-    const chapter = this.currentChapter || "未知章节";
+    const chapter = this.currentChapter || unknownChapterLabel();
 
     new NoteInputModal(
       this.app,
@@ -2214,7 +2232,7 @@ export class EpubReaderView extends FileView {
         await this.refreshHighlightsAfterMutation();
         this.clearSelection();
         if (this.sidebarMode === "notes") this.renderNotesPanel();
-        new Notice(note ? "✅ 标注已保存" : "✅ 已画线");
+        new Notice(note ? t("notice.annotationSaved") : t("notice.highlighted"));
       }
     ).open();
     this.clearSelection();
@@ -2241,8 +2259,8 @@ export class EpubReaderView extends FileView {
     menu.className = "epub-context-menu epub-ann-menu";
     menu.addEventListener("mousedown", (e) => e.stopPropagation());
 
-    const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: "📋 复制" });
-    copyBtn.title = "按当前摘录格式复制到剪贴板";
+    const copyBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: `📋 ${t("reader.contextMenu.copy")}` });
+    copyBtn.title = t("reader.contextMenu.copyTitle");
     copyBtn.addEventListener("click", () => {
       this.dismissContextMenu();
       void this.copyAnnotationAsExcerpt(ann).then((result) => {
@@ -2254,11 +2272,11 @@ export class EpubReaderView extends FileView {
 
     // Recolor row
     const colorRow = menu.createDiv({ cls: "epub-ctx-colors" });
-    for (const c of HIGHLIGHT_COLORS) {
+    for (const c of getHighlightColors()) {
       const dot = colorRow.createDiv({ cls: "epub-color-dot" });
       dot.setAttribute("data-color", c.id);
       if (c.id === ann.color) dot.addClass("is-active");
-      dot.title = `改为${c.label}`;
+      dot.title = t("reader.contextMenu.changeColor", { color: c.label });
       dot.addEventListener("click", async () => {
         this.dismissContextMenu();
         await this.annotationVaultStore.update(filePath, ann.id, { color: c.id });
@@ -2274,13 +2292,18 @@ export class EpubReaderView extends FileView {
 
     menu.createDiv({ cls: "epub-ctx-divider" });
 
-    const editBtn = menu.createEl("button", { cls: "epub-ctx-btn", text: ann.note ? "📝 编辑想法" : "📝 添加想法" });
+    const editBtn = menu.createEl("button", {
+      cls: "epub-ctx-btn",
+      text: ann.note
+        ? `📝 ${t("reader.contextMenu.editThought")}`
+        : `📝 ${t("reader.contextMenu.addThought")}`,
+    });
     editBtn.addEventListener("click", () => {
       this.dismissContextMenu();
       this.openNoteEditor(ann);
     });
 
-    const delBtn = menu.createEl("button", { cls: "epub-ctx-btn is-danger", text: "🗑 删除" });
+    const delBtn = menu.createEl("button", { cls: "epub-ctx-btn is-danger", text: `🗑 ${t("reader.contextMenu.delete")}` });
     delBtn.addEventListener("click", () => {
       this.dismissContextMenu();
       this.confirmDeleteAnnotation(ann);
@@ -2301,7 +2324,7 @@ export class EpubReaderView extends FileView {
     this.cachedHighlights = this.cachedHighlights.filter((a) => a.id !== id);
     await this.annotationVaultStore.remove(this.file.path, id);
     if (this.sidebarMode === "notes") this.renderNotesPanel();
-    new Notice("🗑 标注已删除");
+    new Notice(t("notice.annotationDeleted"));
   }
 
   private resetNotesFilters() {
@@ -2320,8 +2343,8 @@ export class EpubReaderView extends FileView {
       ann.text.length > 60 ? ann.text.slice(0, 60) + "…" : ann.text;
     new ConfirmModal(
       this.app,
-      "删除标注",
-      `确定删除这条标注？\n「${preview}」`,
+      t("reader.modal.deleteAnnotation"),
+      t("reader.modal.deleteConfirm", { preview }),
       () => void this.removeAnnotation(ann.id, ann.cfiRange)
     ).open();
   }
@@ -2389,9 +2412,9 @@ export class EpubReaderView extends FileView {
   private updateNotesCount(total: number, filtered: number) {
     if (!this.notesCountEl) return;
     if (this.isNotesFilterActive() && filtered !== total) {
-      this.notesCountEl.setText(`共 ${filtered} / ${total} 条`);
+      this.notesCountEl.setText(t("reader.notes.countFilteredOf", { filtered, total }));
     } else {
-      this.notesCountEl.setText(`共 ${filtered} 条`);
+      this.notesCountEl.setText(t("reader.notes.countFiltered", { filtered }));
     }
   }
 
@@ -2435,8 +2458,12 @@ export class EpubReaderView extends FileView {
     this.notesCollapseAllBtn.toggleVisibility(show);
     if (!show) return;
     const allCollapsed = this.areAllNoteChaptersCollapsed(list);
-    this.notesCollapseAllBtn.setText(allCollapsed ? "▶ 展开全部" : "▼ 折叠全部");
-    this.notesCollapseAllBtn.title = allCollapsed ? "展开全部章节" : "折叠全部章节";
+    this.notesCollapseAllBtn.setText(
+      allCollapsed ? `▶ ${t("reader.notes.expandAll")}` : `▼ ${t("reader.notes.collapseAll")}`
+    );
+    this.notesCollapseAllBtn.title = allCollapsed
+      ? t("reader.notes.expandAllTitle")
+      : t("reader.notes.collapseAllTitle");
   }
 
   private buildNotesToolbar(parent: HTMLElement) {
@@ -2445,9 +2472,9 @@ export class EpubReaderView extends FileView {
     const head = toolbar.createDiv({ cls: "epub-notes-toolbar-head" });
     this.notesCollapseAllBtn = head.createEl("button", {
       cls: "epub-notes-collapse-all",
-      text: "▼ 折叠全部",
+      text: `▼ ${t("reader.notes.collapseAll")}`,
     });
-    this.notesCollapseAllBtn.title = "折叠全部章节";
+    this.notesCollapseAllBtn.title = t("reader.notes.collapseAllTitle");
     this.notesCollapseAllBtn.addEventListener("click", () => {
       this.toggleAllNotesChaptersCollapse(this.cachedHighlights);
     });
@@ -2455,7 +2482,7 @@ export class EpubReaderView extends FileView {
     const search = toolbar.createEl("input", {
       cls: "epub-notes-search",
       type: "search",
-      attr: { placeholder: "搜索标注…" },
+      attr: { placeholder: t("reader.notes.searchPlaceholder") },
     });
     search.value = this.notesSearchQuery;
     this.notesSearchInputEl = search;
@@ -2470,9 +2497,9 @@ export class EpubReaderView extends FileView {
     const colorRow = toolbar.createDiv({ cls: "epub-notes-filter-row" });
     const allColorBtn = colorRow.createEl("button", {
       cls: "epub-notes-filter-all",
-      text: "全部",
+      text: t("reader.notes.filterAll"),
     });
-    allColorBtn.title = "清除颜色与类型筛选";
+    allColorBtn.title = t("reader.notes.filterAllTitle");
     allColorBtn.toggleClass(
       "is-active",
       this.notesColorFilter.size === 0 && this.notesTypeFilter === null
@@ -2485,7 +2512,7 @@ export class EpubReaderView extends FileView {
     });
 
     const dots = colorRow.createDiv({ cls: "epub-color-dots" });
-    for (const c of HIGHLIGHT_COLORS) {
+    for (const c of getHighlightColors()) {
       const dot = dots.createDiv({ cls: "epub-color-dot" });
       dot.setAttribute("data-color", c.id);
       dot.title = c.label;
@@ -2504,7 +2531,7 @@ export class EpubReaderView extends FileView {
     const typeRow = toolbar.createDiv({ cls: "epub-notes-type-row" });
     const allTypeChip = typeRow.createEl("button", {
       cls: "epub-note-type-chip",
-      text: "全部",
+      text: t("reader.notes.filterAll"),
     });
     if (this.notesTypeFilter === null) allTypeChip.addClass("is-active");
     allTypeChip.addEventListener("click", () => {
@@ -2515,7 +2542,7 @@ export class EpubReaderView extends FileView {
 
     const highlightChip = typeRow.createEl("button", {
       cls: "epub-note-type-chip",
-      text: "仅画线",
+      text: t("reader.notes.filterHighlightOnly"),
     });
     if (this.notesTypeFilter === "highlight-only") highlightChip.addClass("is-active");
     highlightChip.addEventListener("click", () => {
@@ -2525,14 +2552,14 @@ export class EpubReaderView extends FileView {
       this.refreshNotesListView(this.cachedHighlights);
     });
 
-    for (const t of this.resolvedNoteTypes) {
+    for (const typeDef of this.resolvedNoteTypes) {
       const chip = typeRow.createEl("button", {
         cls: "epub-note-type-chip",
-        text: `${t.icon} ${t.label}`,
+        text: `${typeDef.icon} ${typeDef.label}`,
       });
-      if (this.notesTypeFilter === t.id) chip.addClass("is-active");
+      if (this.notesTypeFilter === typeDef.id) chip.addClass("is-active");
       chip.addEventListener("click", () => {
-        this.notesTypeFilter = this.notesTypeFilter === t.id ? null : t.id;
+        this.notesTypeFilter = this.notesTypeFilter === typeDef.id ? null : typeDef.id;
         this.syncNotesToolbarState(toolbar);
         this.refreshNotesListView(this.cachedHighlights);
       });
@@ -2597,19 +2624,19 @@ export class EpubReaderView extends FileView {
     }
 
     const actions = li.createDiv({ cls: "epub-note-item-actions" });
-    const jumpBtn = actions.createEl("button", { cls: "epub-note-action", text: "跳转" });
+    const jumpBtn = actions.createEl("button", { cls: "epub-note-action", text: t("reader.notes.jump") });
     jumpBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       void this.navigateToCfi(ann.cfiRange);
     });
-    const editBtn = actions.createEl("button", { cls: "epub-note-action", text: "编辑" });
+    const editBtn = actions.createEl("button", { cls: "epub-note-action", text: t("reader.notes.edit") });
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      this.openNoteEditor(ann, "编辑标注", false);
+      this.openNoteEditor(ann, t("reader.modal.editAnnotation"), false);
     });
     const delBtn = actions.createEl("button", {
       cls: "epub-note-action is-danger",
-      text: "删除",
+      text: t("reader.notes.delete"),
     });
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2624,7 +2651,7 @@ export class EpubReaderView extends FileView {
     if (allList.length === 0) {
       this.notesListEl.createDiv({
         cls: "epub-notes-empty",
-        text: "暂无标注。选中文字后点击颜色画线或写想法。",
+        text: t("reader.notes.empty"),
       });
       return;
     }
@@ -2632,7 +2659,7 @@ export class EpubReaderView extends FileView {
     if (filtered.length === 0) {
       this.notesListEl.createDiv({
         cls: "epub-notes-empty",
-        text: "没有匹配的标注。",
+        text: t("reader.notes.noMatch"),
       });
       return;
     }
@@ -2702,7 +2729,7 @@ export class EpubReaderView extends FileView {
         if (gen !== this.notesPanelRenderGen) return;
         this.notesEl.createDiv({
           cls: "epub-notes-empty",
-          text: "标注加载失败，请稍后重试。",
+          text: t("reader.notes.loadFailed"),
         });
         return;
       }
@@ -2752,5 +2779,17 @@ export class EpubReaderView extends FileView {
       void this.refreshHighlights();
     }
     if (this.sidebarMode === "notes") void this.renderNotesPanel();
+  }
+
+  /** Refresh user-visible labels after plugin locale change (no epub.js reload). */
+  refreshLocaleUi(): void {
+    this.tocTabEl?.setText(t("reader.sidebar.toc"));
+    this.notesTabEl?.setText(t("reader.sidebar.annotations"));
+    if (this.toolbarEl) {
+      this.buildToolbar(this.toolbarEl);
+    }
+    if (this.sidebarMode === "notes" && this.notesEl) {
+      void this.renderNotesPanel();
+    }
   }
 }

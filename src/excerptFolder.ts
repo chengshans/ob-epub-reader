@@ -1,9 +1,15 @@
 import { normalizePath } from "obsidian";
+import { isI18nInitialized, t } from "./i18n/i18n";
 
 export const EXCERPT_FOLDER_PLACEHOLDER = "{filefolder}";
 export const EXCERPT_TITLE_PLACEHOLDER = "{title}";
 export const EXCERPT_FILENAME_PLACEHOLDER = "{filename}";
+/** @deprecated Use getDefaultExcerptFilename() — kept for regex fallbacks and legacy defaults. */
 export const DEFAULT_EXCERPT_FILENAME = "《{title}》摘录.md";
+
+export function getDefaultExcerptFilename(): string {
+  return isI18nInitialized() ? t("defaults.excerptFilename") : DEFAULT_EXCERPT_FILENAME;
+}
 
 const PLACEHOLDER_SPLIT_RE = /(\{title\}|\{filename\})/;
 
@@ -231,11 +237,3 @@ export interface ExcerptMetadataCheckReport {
   withIssues: number;
   items: ExcerptMetadataCheckItem[];
 }
-
-export const EXCERPT_CHECK_ISSUE_LABELS: Record<ExcerptCheckIssue, string> = {
-  "missing-epub-source": "缺少 frontmatter 字段 epub-source",
-  "epub-source-not-found": "epub-source 指向的 EPUB 文件不存在",
-  "local-epub-not-found": "按当前摘录文件夹规则，同级目录下找不到对应 EPUB",
-  "excerpt-location-mismatch": "摘录文件不在当前设置应保存的路径",
-  "epub-source-local-mismatch": "epub-source 与按摘录位置推断的 EPUB 路径不一致",
-};

@@ -12,6 +12,12 @@ import {
   resolveExcerptFolder,
 } from "./excerptFolder";
 import {
+  aliasAlternation,
+  KNOWN_GOTO_ALIASES,
+  legacyGotoMarkdownPattern,
+} from "./i18n/excerptAliases";
+import { isI18nInitialized, t } from "./i18n/i18n";
+import {
   buildGroupedAnnotationBody,
   composeExcerptContent,
   extractAnnotationBlocksFromExcerpt,
@@ -117,9 +123,7 @@ export class AnnotationVaultStore {
       if (literal) return literal;
     }
 
-    const linkMatch = text.match(
-      /\[回到原文\]\(\s*(?:obsidian:\/\/ob-epub-goto\?|#ob-epub-goto\?)([^)\n]+)\)/
-    );
+    const linkMatch = text.match(legacyGotoMarkdownPattern());
     if (linkMatch) {
       try {
         const query = linkMatch[1].replace(/>$/, "");
@@ -208,13 +212,14 @@ export class AnnotationVaultStore {
 
   /** Strip legacy angle-bracket wrappers and other broken link syntax. */
   fixLegacyGotoLinksInContent(content: string, epubSource?: string): string {
+    const gotoLabel = aliasAlternation(KNOWN_GOTO_ALIASES);
     let result = content.replace(
-      /\[回到原文\]\(<(obsidian:\/\/ob-epub-goto\?[^>]+)>\)/g,
-      "[回到原文]($1)"
+      new RegExp(`\\[(${gotoLabel})\\]\\(<(obsidian:\\/\\/ob-epub-goto\\?[^>]+)>\\)`, "g"),
+      (_match, label: string, url: string) => `[${label}](${url})`
     );
     result = result.replace(
-      /\[回到原文\]\((obsidian:\/\/ob-epub-goto\?[^)\n]+)\)>/g,
-      "[回到原文]($1)"
+      new RegExp(`\\[(${gotoLabel})\\]\\((obsidian:\\/\\/ob-epub-goto\\?[^)\\n]+)\\)>`, "g"),
+      (_match, label: string, url: string) => `[${label}](${url})`
     );
 
     if (epubSource) {
@@ -379,9 +384,7 @@ export class AnnotationVaultStore {
   }
 
   private extractCfiFromLegacyLink(text: string): string | null {
-    const linkMatch = text.match(
-      /\[回到原文\]\(\s*(?:obsidian:\/\/ob-epub-goto\?|#ob-epub-goto\?)([^)\n]+)\)/
-    );
+    const linkMatch = text.match(legacyGotoMarkdownPattern());
     if (!linkMatch) return null;
     try {
       const params = new URLSearchParams(linkMatch[1]);
@@ -403,13 +406,14 @@ export class AnnotationVaultStore {
 
   /** Repair bare ".epub&cfi=…" lines that leaked outside markdown links. */
   private repairBrokenGotoLines(content: string, epubSource: string): string {
+    const gotoLabel = aliasAlternation(KNOWN_GOTO_ALIASES);
     const chunks = splitExcerptChunks(content);
     const repaired = chunks.map((chunk) => {
       const annId = chunk.match(/\^(ann-[a-z0-9-]+)/i)?.[1];
       if (!annId) return chunk;
 
       let updated = chunk.replace(
-        /^(?!.*\[回到原文\]).*\.epub&cfi=(epubcfi\([^)\n]+)>?\s*$/gm,
+        new RegExp(`^(?!.*\\[(?:${gotoLabel})\\]).*\\.epub&cfi=(epubcfi\\([^)\\n]+)>?\\s*$`, "gm"),
         (_line, cfi: string) => {
           const clean = cfi.replace(/>$/, "");
           return this.buildCfiComment(clean);
@@ -417,7 +421,7 @@ export class AnnotationVaultStore {
       );
 
       updated = updated.replace(
-        /^(?!.*\[回到原文\])\s*obsidian:\/\/ob-epub-goto\?([^\n]+)>?\s*$/gm,
+        new RegExp(`^(?!.*\\[(?:${gotoLabel})\\])\\s*obsidian:\\/\\/ob-epub-goto\\?([^\\n]+)>?\\s*$`, "gm"),
         (_line, query: string) => {
           const params = new URLSearchParams(query.replace(/>$/, ""));
           const cfi = params.get("cfi");
@@ -696,7 +700,7 @@ export class AnnotationVaultStore {
       `created: ${this.formatDate(now).slice(0, 10)}`,
       `---`,
       ``,
-      `# 《${title}》摘录`,
+      `# ${isI18nInitialized() ? t("excerpt.excerptHeading", { title }) : `《${title}》摘录`}`,
       ``,
     ].join("\n");
     return await this.app.vault.create(mdPath, frontmatter);

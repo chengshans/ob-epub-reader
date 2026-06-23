@@ -1,5 +1,6 @@
 import { App, Modal, Setting } from "obsidian";
-import { HighlightColor, HIGHLIGHT_COLORS, NoteType, NoteTypeDef } from "./types";
+import { t } from "./i18n/i18n";
+import { HighlightColor, getHighlightColors, NoteType, NoteTypeDef } from "./types";
 
 interface NoteResult {
   note: string;
@@ -26,7 +27,7 @@ export class NoteInputModal extends Modal {
     noteTypes: NoteTypeDef[],
     initial: { note?: string; color?: HighlightColor; noteType?: NoteType },
     onSubmit: (result: NoteResult) => void,
-    titleText = "写下你的想法"
+    titleText = t("modal.note.title")
   ) {
     super(app);
     this.selectedText = selectedText;
@@ -63,10 +64,10 @@ export class NoteInputModal extends Modal {
     );
 
     const colorRow = contentEl.createDiv({ cls: "epub-note-colors" });
-    colorRow.createEl("span", { cls: "epub-note-colors-label", text: "画线颜色" });
+    colorRow.createEl("span", { cls: "epub-note-colors-label", text: t("modal.note.highlightColor") });
     const dots = colorRow.createDiv({ cls: "epub-color-dots" });
     const dotEls: Record<string, HTMLElement> = {};
-    for (const c of HIGHLIGHT_COLORS) {
+    for (const c of getHighlightColors()) {
       const dot = dots.createDiv({ cls: "epub-color-dot" });
       dot.setAttribute("data-color", c.id);
       dot.title = c.label;
@@ -81,36 +82,36 @@ export class NoteInputModal extends Modal {
     }
 
     const typeRow = contentEl.createDiv({ cls: "epub-note-type-row" });
-    typeRow.createEl("span", { cls: "epub-note-colors-label", text: "想法类型" });
+    typeRow.createEl("span", { cls: "epub-note-colors-label", text: t("modal.note.noteType") });
     const chips = typeRow.createDiv({ cls: "epub-note-type-chips" });
     const chipEls: Record<string, HTMLElement> = {};
-    for (const t of this.noteTypes) {
+    for (const entry of this.noteTypes) {
       const chip = chips.createDiv({ cls: "epub-note-type-chip" });
-      chip.setText(`${t.icon} ${t.label}`);
-      chip.title = t.label;
-      chip.setAttribute("data-type", t.id);
-      if (t.id === this.noteType) chip.addClass("is-active");
+      chip.setText(`${entry.icon} ${entry.label}`);
+      chip.title = entry.label;
+      chip.setAttribute("data-type", entry.id);
+      if (entry.id === this.noteType) chip.addClass("is-active");
       chip.addEventListener("click", () => {
-        this.noteType = t.id;
+        this.noteType = entry.id;
         Object.values(chipEls).forEach((c) => c.removeClass("is-active"));
         chip.addClass("is-active");
       });
-      chipEls[t.id] = chip;
+      chipEls[entry.id] = chip;
     }
 
     const ta = contentEl.createEl("textarea", { cls: "epub-note-textarea" });
-    ta.placeholder = "在这里写下你的想法、疑问或联想…";
+    ta.placeholder = t("modal.note.placeholder");
     ta.value = this.note;
     ta.rows = 6;
     window.setTimeout(() => ta.focus(), 30);
 
     new Setting(contentEl)
       .addButton((btn) =>
-        btn.setButtonText("取消").onClick(() => this.close())
+        btn.setButtonText(t("modal.common.cancel")).onClick(() => this.close())
       )
       .addButton((btn) =>
         btn
-          .setButtonText("保存")
+          .setButtonText(t("modal.common.save"))
           .setCta()
           .onClick(() => this.submit(ta))
       );

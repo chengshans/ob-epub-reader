@@ -1,11 +1,12 @@
 import { Notice, Plugin, TFile, addIcon, normalizePath } from "obsidian";
+import { initializeI18n, applyPluginLocale, t } from "./i18n/i18n";
 import { BOOKSHELF_ICON_ID, BOOKSHELF_ICON_SVG } from "./icons/bookshelfIcon";
 import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
@@ -14,7 +15,7 @@ import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
 applyEpubjsCfiPatch();
 
 export default class ObEpubPlugin extends Plugin {
-  settings: EpubPluginSettings = { ...DEFAULT_SETTINGS };
+  settings!: EpubPluginSettings;
   progressStore!: ProgressStore;
   annotationVaultStore!: AnnotationVaultStore;
   excerptPasteTarget!: ExcerptPasteTarget;
@@ -23,6 +24,8 @@ export default class ObEpubPlugin extends Plugin {
   private lastGotoAt = 0;
   private unpatchEpubWikiLinks: (() => void) | null = null;
   private bookshelfRibbonEl: HTMLElement | null = null;
+  private settingsTab!: EpubSettingsTab;
+  private readonly pluginCommandIds = ["open-bookshelf", "open-epub-reader"] as const;
   private statusBarEl: HTMLElement | null = null;
   private statusBarToolbarSlot: HTMLElement | null = null;
   private statusBarProgressSlot: HTMLElement | null = null;
@@ -33,6 +36,11 @@ export default class ObEpubPlugin extends Plugin {
   } | null = null;
 
   async onload() {
+    const data = await this.loadData();
+    const uiLocale = normalizeUiLocale(
+      (data?.settings as EpubPluginSettings | undefined)?.uiLocale
+    );
+    await initializeI18n(uiLocale);
     await this.loadSettings();
 
     this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
@@ -126,24 +134,16 @@ export default class ObEpubPlugin extends Plugin {
       });
     });
 
-    this.bookshelfRibbonEl = this.addRibbonIcon(BOOKSHELF_ICON_ID, "EPUB 书架", () => {
-      void this.openBookshelf();
-    });
+    this.bookshelfRibbonEl = this.registerPluginRibbon();
 
     // Register .epub file extension → open with this view
     this.registerExtensions(["epub"], EPUB_READER_VIEW_TYPE);
 
     // Settings tab
-    this.addSettingTab(new EpubSettingsTab(this.app, this));
+    this.settingsTab = new EpubSettingsTab(this.app, this);
+    this.addSettingTab(this.settingsTab);
 
-    // Command: open bookshelf sidebar
-    this.addCommand({
-      id: "open-bookshelf",
-      name: "打开 EPUB 书架",
-      callback: () => {
-        void this.openBookshelf();
-      },
-    });
+    this.registerPluginCommands();
 
     this.registerEvent(
       this.app.vault.on("create", (file) => {
@@ -160,20 +160,6 @@ export default class ObEpubPlugin extends Plugin {
       })
     );
 
-    // Command: open current epub
-    this.addCommand({
-      id: "open-epub-reader",
-      name: "在 EPUB 阅读器中打开",
-      callback: () => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile?.extension === "epub") {
-          this.openEpubFile(activeFile);
-        } else {
-          new Notice("请先选中一个 .epub 文件");
-        }
-      },
-    });
-
     // Deep-link: obsidian://ob-epub-goto?file=...&cfi=...
     // NOTE: Cannot register "open" — Obsidian core already owns that action.
     this.registerObsidianProtocolHandler("ob-epub-goto", async (params) => {
@@ -188,12 +174,61 @@ export default class ObEpubPlugin extends Plugin {
         await this.openEpubAtCfi(filePath, typeof cfi === "string" ? cfi : "");
       } catch (err) {
         console.error("ob-epub: protocol goto failed", err);
-        new Notice("无法跳转到 EPUB 原文");
+        new Notice(t("notice.gotoEpubFailed"));
       }
     });
 
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
     this.applyFeatureGroups();
+  }
+
+  private registerPluginRibbon(): HTMLElement {
+    const el = this.addRibbonIcon(BOOKSHELF_ICON_ID, t("ribbon.bookshelf"), () => {
+      void this.openBookshelf();
+    });
+    return el;
+  }
+
+  private registerPluginCommands(): void {
+    for (const id of this.pluginCommandIds) {
+      this.app.commands.removeCommand(`${this.manifest.id}:${id}`);
+    }
+
+    this.addCommand({
+      id: "open-bookshelf",
+      name: t("commands.openBookshelf"),
+      callback: () => {
+        void this.openBookshelf();
+      },
+    });
+
+    this.addCommand({
+      id: "open-epub-reader",
+      name: t("commands.openReader"),
+      callback: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile?.extension === "epub") {
+          this.openEpubFile(activeFile);
+        } else {
+          new Notice(t("notice.selectEpubFirst"));
+        }
+      },
+    });
+  }
+
+  async applyUiLocale(): Promise<void> {
+    await applyPluginLocale(this.settings.uiLocale);
+    this.registerPluginCommands();
+    if (this.bookshelfRibbonEl) {
+      this.bookshelfRibbonEl.setAttr("aria-label", t("ribbon.bookshelf"));
+    }
+    this.refreshBookshelfViews();
+    for (const leaf of this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE)) {
+      (leaf.view as EpubReaderView).refreshLocaleUi();
+    }
+    if (this.app.setting.activeTab === this.settingsTab) {
+      this.settingsTab.display();
+    }
   }
 
   private applyExcerptCalloutOpacity(opacity: number): void {
@@ -289,7 +324,7 @@ export default class ObEpubPlugin extends Plugin {
 
   async openBookshelf(): Promise<void> {
     if (!isBookshelfEnabled(this.settings)) {
-      new Notice("EPUB 书架已在设置中关闭");
+      new Notice(t("notice.bookshelfDisabled"));
       return;
     }
     const { workspace } = this.app;
@@ -298,7 +333,7 @@ export default class ObEpubPlugin extends Plugin {
     if (!leaf) {
       const leftLeaf = workspace.getLeftLeaf(false);
       if (!leftLeaf) {
-        new Notice("无法打开侧边栏书架");
+        new Notice(t("notice.bookshelfOpenFailed"));
         return;
       }
       await leftLeaf.setViewState({ type: BOOKSHELF_VIEW_TYPE, active: true });
@@ -447,7 +482,7 @@ export default class ObEpubPlugin extends Plugin {
       this.app.vault.getAbstractFileByPath(normalized);
 
     if (!(file instanceof TFile) || file.extension !== "epub") {
-      new Notice(`找不到 EPUB 文件: ${filePath}`);
+      new Notice(t("notice.epubNotFound", { path: filePath }));
       return;
     }
 
@@ -478,7 +513,7 @@ export default class ObEpubPlugin extends Plugin {
 
   async loadSettings() {
     const data = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings ?? {});
+    this.settings = Object.assign({}, getDefaultSettings(), data?.settings ?? {});
     this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
@@ -495,6 +530,10 @@ export default class ObEpubPlugin extends Plugin {
       (data?.settings as { toolbarPlacement?: unknown } | undefined)?.toolbarPlacement ??
         this.settings.toolbarPlacement,
       legacyImmersive
+    );
+    this.settings.uiLocale = normalizeUiLocale(
+      (data?.settings as { uiLocale?: unknown } | undefined)?.uiLocale ??
+        this.settings.uiLocale
     );
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
   }

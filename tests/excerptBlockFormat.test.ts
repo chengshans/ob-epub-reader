@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 import {
   buildExcerptBlock,
   DEFAULT_EXCERPT_HIGHLIGHT_COLOR,
@@ -7,14 +7,19 @@ import {
   parseExcerptChunk,
 } from "../src/excerptBlockFormat";
 import { escapeWikiAlias, unescapeWikiAlias } from "../src/epubSubpath";
-import { DEFAULT_SETTINGS, type Annotation, type SourceLinkFormat } from "../src/types";
+import { getDefaultSettings, type Annotation, type SourceLinkFormat } from "../src/types";
+import { setupI18n } from "./setupI18n";
+import { resetI18nForTests } from "../src/i18n/i18n";
 
 const SAMPLE_CFI = "epubcfi(/6/14!/4/2,/1:0,/1:42)";
 const EPUB_SOURCE = "epub-books/苦论 (E.M.齐奥朗) .epub";
 const CREATED = "2026-06-17T18:29:31.000Z";
 const CHAPTER = "语言的萎缩";
 const TEXT = "未实现的艺术家的魔力……一个失败者的魔力。";
-const NOTE_TYPES = DEFAULT_SETTINGS.noteTypes;
+
+function noteTypes() {
+  return getDefaultSettings().noteTypes;
+}
 
 function sampleAnn(overrides: Partial<Annotation> = {}): Annotation {
   return {
@@ -40,7 +45,7 @@ function formatDate(date: Date): string {
 
 function roundTrip(format: SourceLinkFormat, ann = sampleAnn()) {
   const built = buildExcerptBlock(ann, EPUB_SOURCE, format, formatDate);
-  const parsed = parseExcerptChunk(built, EPUB_SOURCE, NOTE_TYPES);
+  const parsed = parseExcerptChunk(built, EPUB_SOURCE, noteTypes());
   return { built, parsed };
 }
 
@@ -58,7 +63,7 @@ describe("excerptBlockFormat", () => {
     expect(parsed?.color).toBe(DEFAULT_EXCERPT_HIGHLIGHT_COLOR);
 
     const built = buildExcerptBlock(sampleAnn(), EPUB_SOURCE, "inline-suffix", formatDate);
-    const withPurple = parseExcerptChunk(built, EPUB_SOURCE, NOTE_TYPES, { defaultColor: "purple" });
+    const withPurple = parseExcerptChunk(built, EPUB_SOURCE, noteTypes(), { defaultColor: "purple" });
     expect(withPurple?.color).toBe("purple");
   });
 
@@ -125,7 +130,31 @@ describe("excerptBlockFormat", () => {
       "<!-- ob-epub-chapter-toc-start --> ## 章节目录",
       '<span style="color: #e0533d ;">我之所以活着。</span>]]',
     ].join("");
-    const ann = parseExcerptChunk(corrupt, EPUB_SOURCE, DEFAULT_SETTINGS.noteTypes);
+    const ann = parseExcerptChunk(corrupt, EPUB_SOURCE, noteTypes());
     expect(ann?.text).toBe("我之所以活着。");
+  });
+});
+
+describe("excerptBlockFormat English aliases", () => {
+  beforeAll(async () => {
+    resetI18nForTests();
+    await setupI18n("en");
+  });
+
+  it("round-trips inline-suffix with Source alias", () => {
+    const ann = sampleAnn();
+    const built = buildExcerptBlock(ann, EPUB_SOURCE, "inline-suffix", formatDate);
+    expect(built).toContain("|Source]]");
+    const parsed = parseExcerptChunk(built, EPUB_SOURCE, noteTypes());
+    expect(parsed?.text).toBe(TEXT);
+  });
+
+  it("parses legacy Chinese alias after switching to English locale", () => {
+    const zhChunk = [
+      "正文",
+      `[[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|原文]]`,
+    ].join("\n");
+    const parsed = parseExcerptChunk(zhChunk, EPUB_SOURCE, noteTypes());
+    expect(parsed?.text).toBe("正文");
   });
 });

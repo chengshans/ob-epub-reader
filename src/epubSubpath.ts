@@ -1,5 +1,13 @@
 import { extractEpubCfiLiteral } from "./cfi/cfiString";
 import { compactCfiToWire, expandWireToNavigateCfi } from "./cfi/cfiCompact";
+import {
+  aliasAlternation,
+  currentGotoAlias,
+  KNOWN_GOTO_ALIASES,
+  legacyGotoMarkdownPattern,
+  legacyGotoWikiLinkPattern,
+  wikiLinkAliasSuffixPattern,
+} from "./i18n/excerptAliases";
 
 /** Split `path/file.epub#fragment|alias` (Obsidian wikilink text) into path + subpath. */
 export function splitWikiLinkText(linktext: string): { path: string; subpath: string } {
@@ -65,7 +73,7 @@ export function buildEpubSubpath(input: EpubWikiLinkInput): string {
 export function buildEpubWikiLink(
   epubPath: string,
   input: EpubWikiLinkInput,
-  alias = "回到原文"
+  alias = currentGotoAlias()
 ): string {
   const fragment = buildEpubSubpath(input).slice(1);
   return `[[${epubPath}#${fragment}|${escapeWikiAlias(alias)}]]`;
@@ -128,36 +136,53 @@ export function parseEpubWikiLinkMarkdown(
 /** Match EPUB wiki links in markdown; CFI wire form may contain `]` (e.g. `[calibre_pb_0]`). */
 export const EPUB_WIKI_LINK_MD_RE = /\[\[[^\]]+\.epub#cfi=.+\|[^\]]+\]\]/g;
 
-/** Legacy standalone goto wiki links with alias「回到原文」. */
-export const LEGACY_GOTO_WIKI_LINK_RE = /\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]/g;
+/** Legacy standalone goto wiki links (all known goto aliases). */
+export function legacyGotoWikiLinkGlobalPattern(): RegExp {
+  return legacyGotoWikiLinkPattern("g");
+}
 
-/** @deprecated use LEGACY_GOTO_WIKI_LINK_RE */
-export const GOTO_WIKI_LINK_RE = LEGACY_GOTO_WIKI_LINK_RE;
+/** @deprecated use legacyGotoWikiLinkGlobalPattern() or legacyGotoWikiLinkPattern() */
+export const LEGACY_GOTO_WIKI_LINK_RE = legacyGotoWikiLinkGlobalPattern();
+
+/** @deprecated use legacyGotoWikiLinkGlobalPattern() */
+export const GOTO_WIKI_LINK_RE = legacyGotoWikiLinkGlobalPattern();
 
 /** Line-anchored variant for stripping standalone legacy wiki goto lines. */
-export const LEGACY_GOTO_WIKI_LINK_LINE_RE =
-  /^>?\s*\[\[[^\]]+\.epub#cfi=.+\|回到原文\]\]\s*$/gm;
+export function legacyGotoWikiLinkLinePattern(): RegExp {
+  return new RegExp(
+    `^>?\\s*\\[\\[[^\\]]+\\.epub#cfi=.+\\|(?:${aliasAlternation(KNOWN_GOTO_ALIASES)})\\]\\]\\s*$`,
+    "gm"
+  );
+}
 
-/** @deprecated use LEGACY_GOTO_WIKI_LINK_LINE_RE */
-export const GOTO_WIKI_LINK_LINE_RE = LEGACY_GOTO_WIKI_LINK_LINE_RE;
+/** @deprecated use legacyGotoWikiLinkLinePattern() */
+export const LEGACY_GOTO_WIKI_LINK_LINE_RE = legacyGotoWikiLinkLinePattern();
 
-const LEGACY_WIKI_GOTO_PARSE_RE = /\[\[([^\]|]+\.epub)#(.+)\|回到原文\]\]/i;
+/** @deprecated use legacyGotoWikiLinkLinePattern() */
+export const GOTO_WIKI_LINK_LINE_RE = legacyGotoWikiLinkLinePattern();
+
+function legacyWikiGotoParseRe(): RegExp {
+  return new RegExp(
+    `\\[\\[([^\\]|]+\\.epub)#(.+)\\|(?:${aliasAlternation(KNOWN_GOTO_ALIASES)})\\]\\]`,
+    "i"
+  );
+}
 
 /** Strip legacy `text` / `chapter` / `color` params from legacy wiki goto links. */
 export function slimWikiGotoLink(link: string): string | null {
-  const match = link.match(LEGACY_WIKI_GOTO_PARSE_RE);
+  const match = link.match(legacyWikiGotoParseRe());
   if (!match) return null;
 
   const parsed = parseEpubSubpath(`#${match[2]}`);
   if (!parsed?.cfi) return null;
 
-  const slim = buildEpubWikiLink(match[1], { cfiRange: parsed.cfi }, "回到原文");
+  const slim = buildEpubWikiLink(match[1], { cfiRange: parsed.cfi }, currentGotoAlias());
   return slim === link ? null : slim;
 }
 
 /** Replace verbose legacy wiki goto links in excerpt markdown with cfi/end-only form. */
 export function slimWikiGotoLinksInContent(content: string): string {
-  return content.replace(LEGACY_GOTO_WIKI_LINK_RE, (link) => slimWikiGotoLink(link) ?? link);
+  return content.replace(legacyGotoWikiLinkGlobalPattern(), (link) => slimWikiGotoLink(link) ?? link);
 }
 
 /** Extract navigate CFI from any EPUB wiki link markdown in text. */
@@ -173,9 +198,11 @@ export function extractCfiFromWikiLink(text: string): string | null {
 /** True when line is a goto source link (block-ref, markdown, or wiki). */
 export function isSourceLinkLine(line: string): boolean {
   const trimmed = line.trim();
-  if (/^\[回到原文\]\(/.test(trimmed)) return true;
+  if (legacyGotoMarkdownPattern().test(trimmed)) return true;
   if (/^\[\[[^\]]+\.epub#cfi=/i.test(trimmed)) return true;
-  if (/\[\[[^\n]+\.epub#cfi=[^\n]+\|原文\]\]\s*$/.test(trimmed)) return true;
+  if (new RegExp(`\\[\\[[^\\n]+\\.epub#cfi=[^\\n]+${wikiLinkAliasSuffixPattern()}\\]\\]\\s*$`).test(trimmed)) {
+    return true;
+  }
   return false;
 }
 
