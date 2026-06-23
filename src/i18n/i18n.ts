@@ -2,7 +2,9 @@ import i18next from "i18next";
 import { resolvePluginLocale } from "./detect";
 import type { PluginUiLocale } from "../types";
 import en from "./locales/en.json";
+import ja from "./locales/ja.json";
 import zh from "./locales/zh.json";
+import zhTW from "./locales/zh-TW.json";
 
 let initialized = false;
 
@@ -16,6 +18,8 @@ export async function initializeI18n(preference: PluginUiLocale = "auto"): Promi
     resources: {
       en: { translation: en },
       zh: { translation: zh },
+      ja: { translation: ja },
+      "zh-TW": { translation: zhTW },
     },
     interpolation: { escapeValue: false },
   });

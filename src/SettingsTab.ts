@@ -265,6 +265,8 @@ export class EpubSettingsTab extends PluginSettingTab {
         drop
           .addOption("auto", t("settings.language.auto"))
           .addOption("zh", "简体中文")
+          .addOption("zh-TW", "繁體中文")
+          .addOption("ja", "日本語")
           .addOption("en", "English")
           .setValue(this.plugin.settings.uiLocale ?? "auto")
           .onChange(async (value) => {

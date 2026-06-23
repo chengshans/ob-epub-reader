@@ -1,5 +1,5 @@
 module.exports = {
-  locales: ["en", "zh"],
+  locales: ["en", "zh", "zh-TW", "ja"],
   defaultNamespace: "translation",
   input: ["src/**/*.{ts,tsx}"],
   output: "src/i18n/locales/$LOCALE.json",

@@ -1,10 +1,10 @@
 import { isI18nInitialized, t } from "./i18n";
 
 /** All link aliases ever written — parsing must accept every entry. */
-export const KNOWN_LINK_ALIASES = ["原文", "Source"] as const;
+export const KNOWN_LINK_ALIASES = ["原文", "Source", "ソース"] as const;
 
 /** All goto aliases ever written — parsing must accept every entry. */
-export const KNOWN_GOTO_ALIASES = ["回到原文", "Back to source"] as const;
+export const KNOWN_GOTO_ALIASES = ["回到原文", "Back to source", "原文に戻る"] as const;
 
 /** Markdown link text for legacy obsidian:// goto URLs. */
 export const KNOWN_GOTO_MARKDOWN_LABELS = [...KNOWN_GOTO_ALIASES] as const;

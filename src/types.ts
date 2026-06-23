@@ -251,10 +251,18 @@ export function isBookshelfEnabled(settings: EpubPluginSettings): boolean {
 
 export type ToolbarPlacement = "top" | "bottom";
 
-export type PluginUiLocale = "auto" | "en" | "zh";
+export type PluginUiLocale = "auto" | "en" | "zh" | "zh-TW" | "ja";
 
 export function normalizeUiLocale(raw: unknown): PluginUiLocale {
-  if (raw === "en" || raw === "zh" || raw === "auto") return raw;
+  if (
+    raw === "en" ||
+    raw === "zh" ||
+    raw === "zh-TW" ||
+    raw === "ja" ||
+    raw === "auto"
+  ) {
+    return raw;
+  }
   return "auto";
 }
 
@@ -363,10 +371,10 @@ export function parseReadingTime(value: string): number {
   }
 
   let seconds = 0;
-  const hourMatch = trimmed.match(/(\d+)小时|(\d+)h\b/i);
+  const hourMatch = trimmed.match(/(\d+)小时|(\d+)小時|(\d+)h\b/i);
   const minMatch = trimmed.match(/(\d+)分|(\d+)m\b/i);
   const secMatch = trimmed.match(/(\d+)秒|(\d+)s\b/i);
-  if (hourMatch) seconds += Number(hourMatch[1] ?? hourMatch[2]) * 3600;
+  if (hourMatch) seconds += Number(hourMatch[1] ?? hourMatch[2] ?? hourMatch[3]) * 3600;
   if (minMatch) seconds += Number(minMatch[1] ?? minMatch[2]) * 60;
   if (secMatch) seconds += Number(secMatch[1] ?? secMatch[2]);
   return seconds;

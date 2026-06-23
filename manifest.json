@@ -1,7 +1,7 @@
 {
   "id": "ob-epub-reader",
   "name": "EPUB Marginalia",
-  "version": "1.3.23",
+  "version": "1.3.24",
   "minAppVersion": "1.8.0",
   "description": "Read EPUB files with TOC, highlights, margin notes, and excerpts.",
   "author": "chengshans",

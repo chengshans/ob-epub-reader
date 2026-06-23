@@ -255,13 +255,13 @@
         "cons": "More lines, depends on callout theme"
       },
       "inline-suffix": {
-        "label": "Body + trailing source link",
+        "label": "Body + trailing 「Source」",
         "desc": "Body followed by [[book.epub#cfi=...|Source]]; no stored color, uses default on parse/convert",
         "pros": "Compact body, preserves line breaks",
         "cons": "No color, link less visible"
       },
       "inline-colored": {
-        "label": "Colored body + trailing source link",
+        "label": "Colored body + trailing 「Source」",
         "desc": "<span style=\"color:…\">body</span> [[book.epub#cfi=...|Source]]; color via span",
         "pros": "Keeps five colors, fairly compact",
         "cons": "Color may be lost on HTML export"

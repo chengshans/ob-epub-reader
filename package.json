@@ -1,6 +1,6 @@
 {
   "name": "ob-epub-reader",
-  "version": "1.3.23",
+  "version": "1.3.24",
   "description": "EPUB reader with highlights, margin notes, and excerpts.",
   "main": "main.js",
   "scripts": {
@@ -33,6 +33,7 @@
     "happy-dom": "^20.0.0",
     "i18next-parser": "^9.0.2",
     "obsidian": "latest",
+    "opencc-js": "^1.3.1",
     "patch-package": "^8.0.1",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"

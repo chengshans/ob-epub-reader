@@ -1,0 +1,329 @@
+{
+  "commands": {
+    "openBookshelf": "EPUB 本棚を開く",
+    "openReader": "EPUB リーダーで開く"
+  },
+  "ribbon": {
+    "bookshelf": "EPUB 本棚"
+  },
+  "notice": {
+    "selectEpubFirst": "先に .epub ファイルを選択してください",
+    "gotoEpubFailed": "EPUB 原文へジャンプできません",
+    "bookshelfDisabled": "EPUB 本棚は設定で無効になっています",
+    "bookshelfOpenFailed": "サイドバー本棚を開けません",
+    "epubNotFound": "EPUB ファイルが見つかりません: {{path}}",
+    "convertDone": "{{count}} 件の抜粋ファイルを更新しました",
+    "convertNone": "変換が必要な抜粋ファイルはありません",
+    "convertFailed": "抜粋リンクの変換に失敗しました。コンソールを確認してください",
+    "checkDone": "{{count}} 件の抜粋ファイルを確認しました。問題はありません",
+    "checkIssues": "{{count}} 件の抜粋ファイルに問題があります。ダイアログを確認してください",
+    "checkFailed": "抜粋メタデータの確認に失敗しました。コンソールを確認してください",
+    "gotoFailed": "原文の位置へジャンプできません",
+    "fixedLayoutWarning": "この EPUB は固定レイアウトです。専用リーダーと表示が異なる場合があります。",
+    "progressSaveFailed": "読書進捗の保存に失敗しました（{{path}}）。抜粋フォルダが書き込み可能か確認してください",
+    "updated": "更新しました",
+    "copyFailed": "コピーに失敗しました",
+    "highlighted": "ハイライトしました",
+    "highlightedAndInserted": "ハイライトし、「{{name}}」に挿入しました",
+    "annotationSaved": "注釈を保存しました",
+    "annotationDeleted": "注釈を削除しました",
+    "parseGotoFailed": "抜粋ジャンプリンクを解析できません。再注釈するか抜粋形式を確認してください",
+    "insertedAndCopied": "「{{name}}」に挿入し、抜粋をコピーしました",
+    "readingModeCopied": "対象ノートは閲覧モードです。クリップボードにコピーしました",
+    "copiedExcerpt": "抜粋をコピーしました"
+  },
+  "bookshelf": {
+    "title": "EPUB 本棚",
+    "heading": "EPUB 本棚",
+    "empty": "Vault に EPUB ファイルが見つかりません。",
+    "lastRead": "前回の閲覧: {{chapter}} · {{date}}",
+    "readTime": "読了 {{time}}",
+    "unknownChapter": "不明な章"
+  },
+  "reader": {
+    "sidebar": {
+      "toc": "目次",
+      "annotations": "注釈"
+    },
+    "toolbar": {
+      "toggleToc": "目次の表示切替",
+      "fontSmaller": "フォントを小さく",
+      "fontLarger": "フォントを大きく",
+      "flowPaginated": "ページ送り",
+      "flowScrolled": "スクロール",
+      "toggleFlow": "閲覧モードの切替",
+      "prevPage": "前のページ",
+      "nextPage": "次のページ",
+      "highlight": "ハイライト",
+      "highlightOpacity": "ハイライトの不透明度",
+      "highlightOpacityPercent": "ハイライトの不透明度 {{percent}}%",
+      "autoPaste": "コピー時に開いている Markdown ノートへ自動挿入",
+      "autoPasteOn": "自動貼り付け ON",
+      "autoPasteOff": "自動貼り付け OFF",
+      "autoPasteOnDesc": "自動貼り付け ON: 抜粋を Markdown に挿入",
+      "autoPasteOffDesc": "自動貼り付け OFF: 抜粋はクリップボードのみ"
+    },
+    "loading": "EPUB を読み込み中…",
+    "loadFailed": "読み込み失敗: {{error}}",
+    "contextMenu": {
+      "copy": "コピー",
+      "copyTitle": "現在の抜粋形式でクリップボードにコピー",
+      "highlightDot": "ハイライト · {{color}}",
+      "copyDot": "コピー · {{color}}",
+      "annotate": "注釈",
+      "annotateTitle": "考えを書く",
+      "changeColor": "{{color}} に変更",
+      "editThought": "考えを編集",
+      "addThought": "考えを追加",
+      "delete": "削除",
+      "viewEditThought": "{{type}} · 考えを表示/編集"
+    },
+    "notes": {
+      "countFiltered": "計 {{filtered}} 件",
+      "countFilteredOf": "計 {{filtered}} / {{total}} 件",
+      "expandAll": "すべて展開",
+      "collapseAll": "すべて折りたたむ",
+      "expandAllTitle": "すべての章を展開",
+      "collapseAllTitle": "すべての章を折りたたむ",
+      "searchPlaceholder": "注釈を検索…",
+      "filterAll": "すべて",
+      "filterAllTitle": "色とタイプのフィルタを解除",
+      "filterHighlightOnly": "ハイライトのみ",
+      "jump": "ジャンプ",
+      "edit": "編集",
+      "delete": "削除",
+      "empty": "注釈はまだありません。テキストを選択してハイライトまたは考えを追加してください。",
+      "noMatch": "一致する注釈がありません。",
+      "loadFailed": "注釈の読み込みに失敗しました。後でもう一度お試しください。"
+    },
+    "modal": {
+      "editAnnotation": "注釈を編集",
+      "deleteAnnotation": "注釈を削除",
+      "deleteConfirm": "この注釈を削除しますか？\n「{{preview}}」"
+    },
+    "unknownChapter": "不明な章"
+  },
+  "modal": {
+    "common": {
+      "cancel": "キャンセル",
+      "save": "保存",
+      "delete": "削除",
+      "close": "閉じる"
+    },
+    "note": {
+      "title": "考えを書く",
+      "editTitle": "考えを編集",
+      "highlightColor": "ハイライト色",
+      "noteType": "考えのタイプ",
+      "placeholder": "ここに考え、疑問、連想を書いてください…"
+    },
+    "excerptCheck": {
+      "title": "抜粋メタデータの確認",
+      "summaryOk": "{{count}} 件の抜粋ファイルを確認しました。問題はありません。",
+      "summaryIssues": "{{count}} 件の抜粋ファイルを確認しました。{{issues}} 件に問題があります。",
+      "epubSource": "epub-source: {{value}}",
+      "localEpub": "同階層 EPUB: {{value}}",
+      "expectedPath": "想定パス: {{value}}"
+    }
+  },
+  "settings": {
+    "language": {
+      "name": "表示言語",
+      "desc": "プラグイン UI の言語。Vault 内の既存抜粋ファイルには影響しません",
+      "auto": "Obsidian に従う"
+    },
+    "group": {
+      "expand": "グループを展開",
+      "collapse": "グループを折りたたむ"
+    },
+    "groups": {
+      "reader": {
+        "title": "リーダー",
+        "desc": "コア閲覧機能（プラグインの無効化はコミュニティプラグイン設定で行ってください）"
+      },
+      "annotations": {
+        "title": "注釈と抜粋",
+        "desc": "ハイライト、考え、抜粋書き出し、注釈サイドバー。オフ時は選択コピーのみ（色任意）、ハイライトと抜粋書き込み不可",
+        "scopeLabel": "有効時に利用可能:",
+        "scopeItems": {
+          "highlights": "テキストハイライトと 5 種類の考え",
+          "export": "抜粋 Markdown の自動書き出し",
+          "sidebar": "注釈サイドバーリスト",
+          "progress": "抜粋 frontmatter への読書進捗"
+        }
+      },
+      "bookshelf": {
+        "title": "本棚とショートカット",
+        "desc": "サイドバー本棚、リボンアイコン、関連コマンド",
+        "scopeLabel": "有効時に利用可能:",
+        "scopeItems": {
+          "ribbon": "リボン「EPUB 本棚」アイコン",
+          "command": "コマンド「EPUB 本棚を開く」",
+          "view": "サイドバー本棚ビュー"
+        },
+        "note": "「EPUB リーダーで開く」はリーダーコア機能で、この切替の影響を受けません。"
+      }
+    },
+    "sourceLinkFormat": {
+      "name": "抜粋リンク形式",
+      "desc": "選択コピーと新規注釈に使用；",
+      "warn": "変更すると新規編集時に既存注釈も更新されます。先に抜粋フォルダをバックアップしてください。"
+    },
+    "formatTable": {
+      "format": "形式",
+      "pros": "利点",
+      "cons": "欠点"
+    },
+    "defaultExcerptColor": {
+      "name": "デフォルトハイライト色",
+      "desc": "色を保存しない形式（本文 + 末尾「ソース」、リンクを本文に）の解析・変換時に使うハイライト色"
+    },
+    "defaultFlow": {
+      "name": "デフォルト閲覧モード",
+      "desc": "ページ送りまたはスクロール",
+      "paginated": "ページ送り",
+      "scrolled": "スクロール"
+    },
+    "fontSize": {
+      "name": "デフォルトフォントサイズ",
+      "desc": "リーダー本文のフォントサイズ（px）"
+    },
+    "readingTheme": {
+      "name": "デフォルト閲覧テーマ",
+      "desc": "EPUB 本文の背景と文字色"
+    },
+    "toolbarPlacement": {
+      "name": "ツールバー位置",
+      "desc": "上部: リーダー内にツールバーと進捗；下部: Obsidian ステータスバーに固定",
+      "top": "上部",
+      "bottom": "下部"
+    },
+    "autoPaste": {
+      "name": "抜粋の自動貼り付け",
+      "desc": "オン時、コピーした抜粋を最近編集した Markdown ノートに挿入。リーダーツールバーで素早く切替可能"
+    },
+    "excerptFolder": {
+      "name": "抜粋フォルダ",
+      "desc": "抜粋 Markdown の保存先。読書進捗は各書籍の抜粋 frontmatter に書き込みます。{filefolder}（EPUB ディレクトリ）対応、例: {filefolder}/anno。",
+      "warn": "EPUB やフォルダ移動後は、抜粋 frontmatter の epub-source を手動更新しないとタイトルリンクが無効になります。"
+    },
+    "excerptFilename": {
+      "name": "抜粋ファイル名",
+      "placeholder": "「{title}」抜粋.md",
+      "desc": "新規抜粋の Markdown ファイル名。{title}（拡張子なし書名）と {filename}（EPUB ファイル名、例 demo.epub）に対応。",
+      "examples": "例: 「{title}」抜粋.md、{title}-notes.md、{filename}.md"
+    },
+    "excerptCalloutOpacity": {
+      "name": "抜粋 callout 背景の不透明度",
+      "desc": "抜粋ファイル内 ob-epub callout 背景の濃さ"
+    },
+    "convertLinks": {
+      "name": "既存抜粋リンクを変換",
+      "button": "今すぐ変換",
+      "desc": "抜粋フォルダ内のすべての抜粋ファイルを選択形式に一括変換。{filefolder} 使用時は Vault 内の該当ファイルをスキャン。",
+      "warn": "変換は抜粋ファイルを書き換えます。先にバックアップしてください。"
+    },
+    "checkMetadata": {
+      "name": "抜粋メタデータを確認",
+      "desc": "抜粋 frontmatter の epub-source が存在する EPUB を指すか確認。欠落・無効時のみ {filefolder} 規則で同階層 EPUB を検索",
+      "button": "確認を開始"
+    },
+    "highlightOpacity": {
+      "name": "EPUB ハイライト不透明度",
+      "desc": "リーダー内ハイライト層の不透明度"
+    },
+    "noteTypes": {
+      "heading": "考えのタイプ",
+      "desc": "注釈時に選べる 5 分類。名称とアイコン変更は新旧注釈に反映",
+      "fieldDesc": "アイコンと表示名（内部 ID: {{id}}）",
+      "reset": "デフォルトの考えタイプに戻す"
+    },
+    "noteIcon": {
+      "heading": "考えアイコン",
+      "size": "アイコンサイズ",
+      "sizeDesc": "余白考えアイコンの直径（{{min}}–{{max}} px）",
+      "offsetX": "水平位置",
+      "offsetXDesc": "ハイライト右端からのオフセット（{{min}} ~ +{{max}} px、正で右）",
+      "offsetY": "垂直位置",
+      "offsetYDesc": "ハイライト垂直中央からのオフセット（{{min}} ~ +{{max}} px、正で下）"
+    },
+    "formats": {
+      "callout-title": {
+        "label": "Callout + タイトルリンク",
+        "desc": "> [!ob-epub|色] [[書名.epub#cfi=...|章]] + 本文；callout ハイライト色を保持",
+        "pros": "構造が明確、ハイライト色を保持",
+        "cons": "行数が多い、callout テーマ依存"
+      },
+      "inline-suffix": {
+        "label": "本文 + 末尾「ソース」",
+        "desc": "本文の後に [[書名.epub#cfi=...|ソース]]；色非保存、解析・変換時はデフォルト色",
+        "pros": "本文がコンパクト、改行を保持",
+        "cons": "色なし、リンクが目立ちにくい"
+      },
+      "inline-colored": {
+        "label": "色付き本文 + 末尾「ソース」",
+        "desc": "<span style=\"color:…\">本文</span> [[書名.epub#cfi=...|ソース]]；span で色を保持",
+        "pros": "5 色を保持、比較的コンパクト",
+        "cons": "HTML 書き出しで色が失われる場合あり"
+      },
+      "wiki-text-alias": {
+        "label": "リンクを本文に",
+        "desc": "[[書名.epub#cfi=...|抜粋全文]] 1 行；色非保存",
+        "pros": "最もシンプルな 1 行",
+        "cons": "複数行が結合、色なし"
+      }
+    }
+  },
+  "excerpt": {
+    "linkAlias": "ソース",
+    "gotoAlias": "原文に戻る",
+    "wikiTextAlias": "抜粋全文",
+    "gotoTitle": "EPUB 原文へジャンプ",
+    "gotoClickTitle": "クリックで EPUB 原文へジャンプ",
+    "excerptHeading": "# 「{{title}}」抜粋",
+    "chapterToc": "## 目次"
+  },
+  "excerptCheck": {
+    "issues": {
+      "missing-epub-source": "frontmatter フィールド epub-source がありません",
+      "epub-source-not-found": "epub-source が存在しない EPUB を指しています",
+      "local-epub-not-found": "抜粋フォルダ規則で同階層に該当 EPUB が見つかりません",
+      "excerpt-location-mismatch": "抜粋ファイルが現在の設定の保存パスにありません",
+      "epub-source-local-mismatch": "epub-source が抜粋位置から推定した EPUB パスと一致しません"
+    }
+  },
+  "defaults": {
+    "excerptFilename": "「{title}」抜粋.md",
+    "unknownChapter": "不明な章",
+    "readingThemes": {
+      "obsidian": "Obsidian に従う",
+      "white": "白",
+      "yellow": "目に優しい黄",
+      "green": "目に優しい緑",
+      "sepia": "セピア",
+      "dark": "ダーク"
+    },
+    "noteTypes": {
+      "note": "メモ",
+      "inspiration": "ひらめき",
+      "practice": "実践予定",
+      "revisit": "再読",
+      "question": "疑問"
+    },
+    "highlightColors": {
+      "yellow": "黄",
+      "red": "赤",
+      "green": "緑",
+      "blue": "青",
+      "purple": "紫"
+    }
+  },
+  "time": {
+    "hours": "{{n}}時間",
+    "minutes": "{{n}}分",
+    "seconds": "{{n}}秒"
+  },
+  "errors": {
+    "excerptFolderUnset": "抜粋フォルダが設定されていません"
+  }
+}
