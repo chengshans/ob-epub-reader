@@ -22,8 +22,10 @@ import {
   clampNoteIconOffsetX,
   clampNoteIconOffsetY,
   clampHighlightOpacity,
+  clampReadingSidePadding,
   HIGHLIGHT_OPACITY_MIN,
   HIGHLIGHT_OPACITY_MAX,
+  READING_SIDE_PADDING_STEP,
   noteIconGlyphSize,
   normalizeReadingTheme,
   resolveNoteTypes,
@@ -59,10 +61,6 @@ const NOTE_ICON_CLASS = "epub-note-icon";
 const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-icon";
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
-const READING_PADDING_TOP_PAGINATED = "2em 3em";
-const READING_PADDING_TOP_SCROLLED = "0.75em 3em 0.25em";
-const READING_PADDING_BOTTOM_PAGINATED = "1em clamp(0.75em, 2.5vw, 1.25em) 0.25em";
-const READING_PADDING_BOTTOM_SCROLLED = "0.75em clamp(0.75em, 2.5vw, 1.25em) 0.25em";
 
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
@@ -77,6 +75,8 @@ export class EpubReaderView extends FileView {
   private themesRegistered = false;
   private onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>;
   private onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>;
+  private onReadingSidePaddingChange?: (padding: number) => Promise<void>;
+  private onFontSizeChange?: (fontSize: number) => Promise<void>;
   private onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
@@ -136,6 +136,8 @@ export class EpubReaderView extends FileView {
   private toolbarEl: HTMLElement | null = null;
   private themeSwatchesEl: HTMLElement | null = null;
   private highlightOpacityRangeEl: HTMLInputElement | null = null;
+  private sidePaddingDownBtn: HTMLButtonElement | null = null;
+  private sidePaddingUpBtn: HTMLButtonElement | null = null;
   private sidebarEl: HTMLElement | null = null;
   private notesTabEl: HTMLElement | null = null;
   private tocTabEl: HTMLElement | null = null;
@@ -144,7 +146,7 @@ export class EpubReaderView extends FileView {
   private readerEl: HTMLElement | null = null;
   private progressEl: HTMLElement | null = null;
   private tocToggleBtn: HTMLElement | null = null;
-  private tocVisible: boolean = true;
+  private tocVisible: boolean = false;
   private tocHighlightedChapter = "";
   private sidebarMode: "toc" | "notes" = "toc";
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -161,6 +163,8 @@ export class EpubReaderView extends FileView {
     settings: EpubPluginSettings,
     onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>,
     onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>,
+    onReadingSidePaddingChange?: (padding: number) => Promise<void>,
+    onFontSizeChange?: (fontSize: number) => Promise<void>,
     onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>
   ) {
     super(leaf);
@@ -171,6 +175,8 @@ export class EpubReaderView extends FileView {
     this.settings = settings;
     this.onReadingThemeChange = onReadingThemeChange;
     this.onEpubHighlightOpacityChange = onEpubHighlightOpacityChange;
+    this.onReadingSidePaddingChange = onReadingSidePaddingChange;
+    this.onFontSizeChange = onFontSizeChange;
     this.onAutoPasteExcerptChange = onAutoPasteExcerptChange;
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
@@ -338,8 +344,9 @@ export class EpubReaderView extends FileView {
     // Body: Sidebar (TOC / Notes) + Reader
     const bodyEl = container.createDiv({ cls: "epub-body" });
 
-    // Sidebar with tab switcher
+    // Sidebar with tab switcher（默认收起）
     this.sidebarEl = bodyEl.createDiv({ cls: "epub-sidebar" });
+    this.sidebarEl.toggleClass("is-collapsed", !this.tocVisible);
     const tabs = this.sidebarEl.createDiv({ cls: "epub-sidebar-tabs" });
     const tocTab = tabs.createEl("button", { cls: "epub-sidebar-tab is-active", text: t("reader.sidebar.toc") });
     this.tocTabEl = tocTab;
@@ -459,6 +466,8 @@ export class EpubReaderView extends FileView {
     fontSizeUp.title = t("reader.toolbar.fontLarger");
     fontSizeUp.addEventListener("click", () => this.changeFontSize(2));
 
+    this.buildSidePaddingToolbar(toolbar);
+
     this.buildThemeToolbar(toolbar);
     this.buildAutoPasteToolbar(toolbar);
     if (this.annotationsEnabled()) {
@@ -512,18 +521,17 @@ export class EpubReaderView extends FileView {
     const r = this.readerEl.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) {
       this.rendition.resize(r.width, r.height);
+      // epub.js resize 会重写 body 内联 padding，需重新注入主题覆盖
+      this.applyThemeToAllContents();
     }
   }
 
   private getReadingBodyPadding(): string {
+    const side = `${clampReadingSidePadding(this.settings.readingSidePadding)}px`;
     if (this.isToolbarBottom()) {
-      return this.flow === "scrolled"
-        ? READING_PADDING_BOTTOM_SCROLLED
-        : READING_PADDING_BOTTOM_PAGINATED;
+      return this.flow === "scrolled" ? `0.75em ${side} 0.25em` : `1em ${side} 0.25em`;
     }
-    return this.flow === "scrolled"
-      ? READING_PADDING_TOP_SCROLLED
-      : READING_PADDING_TOP_PAGINATED;
+    return this.flow === "scrolled" ? `0.75em ${side} 0.25em` : `2em ${side}`;
   }
 
   private toggleToc() {
@@ -546,9 +554,60 @@ export class EpubReaderView extends FileView {
   }
 
   private changeFontSize(delta: number) {
-    this.fontSize = Math.max(10, Math.min(32, this.fontSize + delta));
+    const next = Math.max(10, Math.min(32, this.settings.fontSize + delta));
+    if (next === this.settings.fontSize) return;
+    this.settings.fontSize = next;
+    this.fontSize = next;
     if (this.rendition) {
       this.rendition.themes.fontSize(`${this.fontSize}px`);
+    }
+    if (this.onFontSizeChange) {
+      void this.onFontSizeChange(next);
+    }
+  }
+
+  private buildSidePaddingToolbar(toolbar: HTMLElement) {
+    const group = toolbar.createDiv({ cls: "epub-side-padding" });
+    this.sidePaddingDownBtn = group.createEl("button", {
+      cls: "epub-toolbar-btn epub-side-padding-btn",
+      text: "◧-",
+    });
+    this.sidePaddingDownBtn.title = t("reader.toolbar.sidePaddingSmaller");
+    this.sidePaddingDownBtn.addEventListener("click", () =>
+      this.changeReadingSidePadding(-READING_SIDE_PADDING_STEP)
+    );
+
+    this.sidePaddingUpBtn = group.createEl("button", {
+      cls: "epub-toolbar-btn epub-side-padding-btn",
+      text: "◧+",
+    });
+    this.sidePaddingUpBtn.title = t("reader.toolbar.sidePaddingLarger");
+    this.sidePaddingUpBtn.addEventListener("click", () =>
+      this.changeReadingSidePadding(READING_SIDE_PADDING_STEP)
+    );
+
+    this.syncSidePaddingToolbar();
+  }
+
+  private changeReadingSidePadding(delta: number) {
+    const next = clampReadingSidePadding(this.settings.readingSidePadding + delta);
+    if (next === clampReadingSidePadding(this.settings.readingSidePadding)) return;
+    this.settings.readingSidePadding = next;
+    this.applyThemeToAllContents();
+    this.syncSidePaddingToolbar();
+    if (this.onReadingSidePaddingChange) {
+      void this.onReadingSidePaddingChange(next);
+    }
+  }
+
+  private syncSidePaddingToolbar() {
+    const px = clampReadingSidePadding(this.settings.readingSidePadding);
+    const current = t("reader.toolbar.sidePaddingPx", { px });
+    if (this.sidePaddingDownBtn) {
+      this.sidePaddingDownBtn.title = `${t("reader.toolbar.sidePaddingSmaller")} (${current})`;
+    }
+    if (this.sidePaddingUpBtn) {
+      this.sidePaddingUpBtn.title = `${t("reader.toolbar.sidePaddingLarger")} (${current})`;
     }
   }
 
@@ -1132,6 +1191,21 @@ export class EpubReaderView extends FileView {
     };
   }
 
+  /** 覆盖 EPUB 内嵌 max-width / margin:auto，使正文尽量占满阅读区 */
+  private appendFullWidthContentRules(blocks: string[], root: string): void {
+    const wideBlocks =
+      "p,div,section,article,main,blockquote,figure,header,footer,nav,aside,table,center";
+    blocks.push(
+      `${root}{max-width:none !important;margin:0 !important;width:100% !important;box-sizing:border-box !important}`,
+      `${root} > *{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
+      `${wideBlocks.split(",").map((tag) => `${root} ${tag}`).join(",")}{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
+      `${root} [class]{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
+      `${root} [style*="max-width"]{max-width:none !important}`,
+      `${root} table{max-width:100% !important;width:100% !important}`,
+      `${root} img,${root} svg,${root} video{max-width:100% !important;width:auto !important;height:auto !important}`
+    );
+  }
+
   /** 高优先级选择器，覆盖 EPUB 内嵌 stylesheet 中的 color/background 规则 */
   private buildInjectedThemeCss(
     background: string,
@@ -1142,22 +1216,20 @@ export class EpubReaderView extends FileView {
   ): string {
     const root = `html[${READING_THEME_ATTR}] body`;
     const bodyPadding = this.getReadingBodyPadding();
+    const sidePx = `${clampReadingSidePadding(this.settings.readingSidePadding)}px`;
     const blocks: string[] = [
-      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:${bodyPadding};box-sizing:border-box}`,
+      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
       `${root} *{color:${textColor} !important;-webkit-user-select:text !important;user-select:text !important}`,
       `${root} a,${root} a *{color:${linkColor} !important}`,
       `${root} ::selection{background:${selectionBg};color:${textColor}}`,
       `${root} ::-moz-selection{background:${selectionBg};color:${textColor}}`,
     ];
-    if (this.isToolbarBottom()) {
-      blocks.push(
-        `${root}{max-width:none !important;margin:0 !important;width:100% !important}`,
-        `${root} > *{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:auto !important}`,
-        `${root} p,${root} div,${root} section,${root} article{max-width:none !important;margin-left:0 !important;margin-right:0 !important}`
-      );
+    if (this.isToolbarBottom() || this.flow === "scrolled") {
+      this.appendFullWidthContentRules(blocks, root);
     }
     if (this.flow === "scrolled") {
       blocks.push(
+        `html[${READING_THEME_ATTR}]{max-width:none !important;margin:0 !important;width:100% !important}`,
         `html[${READING_THEME_ATTR}],html[${READING_THEME_ATTR}] body{min-height:0 !important;height:auto !important}`,
         `${root}{margin-bottom:0 !important}`
       );
@@ -1176,6 +1248,15 @@ export class EpubReaderView extends FileView {
       const { background, textColor, linkColor, selectionBg } = this.resolveThemeColors();
 
       doc.documentElement.setAttribute(READING_THEME_ATTR, this.readingTheme);
+
+      // epub.js 会写内联 padding（分页模式还带 !important），清掉后由主题 CSS 接管
+      if (doc.body) {
+        doc.body.style.removeProperty("padding");
+        doc.body.style.removeProperty("padding-left");
+        doc.body.style.removeProperty("padding-right");
+        doc.body.style.removeProperty("padding-top");
+        doc.body.style.removeProperty("padding-bottom");
+      }
 
       let styleEl = doc.getElementById(READING_THEME_STYLE_ID) as HTMLStyleElement | null;
       if (!styleEl) {
@@ -2744,14 +2825,19 @@ export class EpubReaderView extends FileView {
   updateSettings(settings: EpubPluginSettings) {
     const prevAnnotationsOn = this.annotationsEnabled();
     const prevToolbarPlacement = this.settings.toolbarPlacement;
+    const prevSidePadding = this.settings.readingSidePadding;
     this.settings = settings;
     const annotationsChanged = prevAnnotationsOn !== this.annotationsEnabled();
     const toolbarPlacementChanged = prevToolbarPlacement !== settings.toolbarPlacement;
+    const sidePaddingChanged =
+      clampReadingSidePadding(prevSidePadding) !==
+      clampReadingSidePadding(settings.readingSidePadding);
     if (annotationsChanged && this.toolbarEl) {
       this.buildToolbar(this.toolbarEl);
     } else {
       this.updateThemeToolbarActive();
       this.syncHighlightOpacityToolbar();
+      this.syncSidePaddingToolbar();
       this.syncAutoPasteToggle();
     }
     this.applyAnnotationsFeatureState();
@@ -2763,6 +2849,8 @@ export class EpubReaderView extends FileView {
         this.applyThemeToAllContents();
         this.resizeRendition();
       });
+    } else if (sidePaddingChanged) {
+      this.applyThemeToAllContents();
     }
     const nextTheme = normalizeReadingTheme(settings.readingTheme);
     const themeChanged = nextTheme !== this.readingTheme;

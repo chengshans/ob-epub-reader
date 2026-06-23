@@ -1,4 +1,4 @@
-import { App, ExtraButtonComponent, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, ExtraButtonComponent, Notice, PluginSettingTab, Setting, SliderComponent, TextComponent } from "obsidian";
 import type ObEpubPlugin from "./main";
 import { ExcerptCheckModal } from "./ExcerptCheckModal";
 import { t } from "./i18n/i18n";
@@ -9,6 +9,10 @@ import {
   getSourceLinkFormats,
   HIGHLIGHT_OPACITY_MAX,
   HIGHLIGHT_OPACITY_MIN,
+  READING_SIDE_PADDING_MAX,
+  READING_SIDE_PADDING_MIN,
+  READING_SIDE_PADDING_STEP,
+  clampReadingSidePadding,
   NoteType,
   PluginUiLocale,
   ReadingThemeId,
@@ -177,6 +181,59 @@ export class EpubSettingsTab extends PluginSettingTab {
     return setting;
   }
 
+  /** 滑条右侧数字输入，拖动与手输双向同步 */
+  private bindSliderWithNumberInput(
+    setting: Setting,
+    options: {
+      min: number;
+      max: number;
+      step: number;
+      value: number;
+      normalize: (value: number) => number;
+      onPersist: (value: number) => Promise<void>;
+    }
+  ): void {
+    let sliderRef: SliderComponent | null = null;
+    let numberRef: TextComponent | null = null;
+    let syncing = false;
+
+    const syncControls = (value: number) => {
+      syncing = true;
+      sliderRef?.setValue(value);
+      numberRef?.setValue(String(value));
+      syncing = false;
+    };
+
+    setting.addSlider((slider) => {
+      sliderRef = slider;
+      slider
+        .setLimits(options.min, options.max, options.step)
+        .setValue(options.value)
+        .onChange(async (value) => {
+          if (syncing) return;
+          numberRef?.setValue(String(value));
+          await options.onPersist(value);
+        });
+    });
+
+    setting.addText((text) => {
+      numberRef = text;
+      text.inputEl.type = "number";
+      text.inputEl.min = String(options.min);
+      text.inputEl.max = String(options.max);
+      text.inputEl.step = String(options.step);
+      text.inputEl.addClass("ob-epub-slider-number");
+      text.setValue(String(options.value)).onChange(async (raw) => {
+        if (syncing) return;
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) return;
+        const value = options.normalize(parsed);
+        syncControls(value);
+        await options.onPersist(value);
+      });
+    });
+  }
+
   private renderSourceLinkFormat(containerEl: HTMLElement, groupId: SettingsGroupId): void {
     const formatSetting = this.addMemberSetting(containerEl, groupId, (s) => {
       s.setName(t("settings.sourceLinkFormat.name"));
@@ -298,18 +355,33 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
-      s.setName(t("settings.fontSize.name"))
-        .setDesc(t("settings.fontSize.desc"))
-        .addSlider((slider) =>
-          slider
-            .setLimits(10, 32, 1)
-            .setValue(this.plugin.settings.fontSize)
-            .setDynamicTooltip()
-            .onChange(async (value) => {
-              this.plugin.settings.fontSize = value;
-              await this.plugin.saveSettings();
-            })
-        );
+      s.setName(t("settings.fontSize.name")).setDesc(t("settings.fontSize.desc"));
+      this.bindSliderWithNumberInput(s, {
+        min: 10,
+        max: 32,
+        step: 1,
+        value: this.plugin.settings.fontSize,
+        normalize: (v) => Math.min(32, Math.max(10, Math.round(v))),
+        onPersist: async (value) => {
+          this.plugin.settings.fontSize = value;
+          await this.plugin.saveSettings();
+        },
+      });
+    });
+
+    this.addMemberSetting(containerEl, "reader", (s) => {
+      s.setName(t("settings.sidePadding.name")).setDesc(t("settings.sidePadding.desc"));
+      this.bindSliderWithNumberInput(s, {
+        min: READING_SIDE_PADDING_MIN,
+        max: READING_SIDE_PADDING_MAX,
+        step: READING_SIDE_PADDING_STEP,
+        value: this.plugin.settings.readingSidePadding,
+        normalize: clampReadingSidePadding,
+        onPersist: async (value) => {
+          this.plugin.settings.readingSidePadding = value;
+          await this.plugin.saveSettings();
+        },
+      });
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {

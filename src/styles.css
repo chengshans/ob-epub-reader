@@ -74,19 +74,24 @@ a.ob-epub-goto-link {
   display: none;
 }
 
-/* 底部模式：工具栏 + 进度条钉在 Obsidian 状态栏最左侧 */
+/* 底部模式：工具栏 + 进度条钉在 Obsidian 状态栏最左侧（高度与原生状态栏一致） */
 .status-bar .status-bar-item.ob-epub-status-wrap {
   order: -1000;
   margin-right: auto;
+  padding-block: 0;
+  line-height: 1;
+  align-self: center;
 }
 
 .ob-epub-status-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
   max-width: min(100%, calc(100vw - 200px));
+  height: var(--status-bar-height, 22px);
+  max-height: var(--status-bar-height, 22px);
 }
 
 .ob-epub-status-toolbar {
@@ -94,25 +99,29 @@ a.ob-epub-goto-link {
   align-items: center;
   min-width: 0;
   flex: 0 1 auto;
+  height: 100%;
 }
 
 .ob-epub-status-progress {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  height: 100%;
 }
 
 .epub-toolbar.is-in-statusbar {
   display: inline-flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   padding: 0;
   margin: 0;
   background: transparent;
   border: none;
   min-width: 0;
   flex: 0 1 auto;
+  height: 100%;
+  max-height: var(--status-bar-height, 22px);
 }
 
 .epub-toolbar.is-in-statusbar .epub-toolbar-spacer {
@@ -124,52 +133,102 @@ a.ob-epub-goto-link {
 }
 
 .epub-toolbar.is-in-statusbar .epub-toolbar-btn {
-  padding: 1px 5px;
+  box-sizing: border-box;
+  height: 18px;
+  min-height: 0;
+  padding: 0 4px;
   font-size: 11px;
-  line-height: 1.2;
+  line-height: 16px;
+  border-radius: 3px;
 }
 
 .epub-toolbar.is-in-statusbar .epub-theme-swatches {
-  padding: 1px 4px;
-  gap: 3px;
+  padding: 0 3px;
+  gap: 2px;
+  border-radius: 4px;
+  box-shadow: none;
+  height: 18px;
+  box-sizing: border-box;
 }
 
 .epub-toolbar.is-in-statusbar .epub-theme-swatch {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
+}
+
+.epub-toolbar.is-in-statusbar .epub-theme-swatch::before {
+  inset: -4px;
 }
 
 .epub-toolbar.is-in-statusbar .epub-highlight-opacity {
   gap: 3px;
+  padding: 0 4px;
+  border-radius: 4px;
+  box-shadow: none;
+  height: 18px;
+  box-sizing: border-box;
 }
 
 .epub-toolbar.is-in-statusbar .epub-highlight-opacity-label {
   font-size: 10px;
+  line-height: 1;
 }
 
 .epub-toolbar.is-in-statusbar .epub-highlight-opacity-range {
   width: 48px;
+  height: 3px;
+}
+
+.epub-toolbar.is-in-statusbar .epub-side-padding {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.epub-toolbar.is-in-statusbar .epub-side-padding-btn {
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.epub-toolbar.is-in-statusbar .epub-auto-paste {
+  padding: 0 1px;
+  border-radius: 4px;
+  box-shadow: none;
+  height: 18px;
+  box-sizing: border-box;
+}
+
+.epub-toolbar.is-in-statusbar .epub-auto-paste-toggle {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .epub-progress-bar-wrap.is-in-statusbar {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 0;
   margin: 0;
   background: transparent;
   border: none;
-  height: auto;
+  height: 100%;
+  max-height: var(--status-bar-height, 22px);
   min-width: 72px;
 }
 
 .epub-progress-bar-wrap.is-in-statusbar .epub-progress-inner {
   width: 56px;
-  height: 4px;
+  height: 3px;
 }
 
 .epub-progress-bar-wrap.is-in-statusbar .epub-progress-text {
   font-size: 10px;
+  line-height: 1;
   min-width: 28px;
 }
 
@@ -199,6 +258,16 @@ a.ob-epub-goto-link {
 
 .epub-toolbar-btn:hover {
   background: var(--interactive-hover);
+}
+
+.epub-side-padding {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.epub-side-padding-btn {
+  letter-spacing: -0.02em;
 }
 
 .epub-toolbar-title {
@@ -1239,13 +1308,33 @@ a.ob-epub-goto-link {
 .ob-epub-settings .setting-item-control input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 100%;
-  min-width: 140px;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 100px;
   height: 6px;
   border-radius: 3px;
   background: var(--background-modifier-border);
   border: 1.5px solid var(--ob-epub-control-border);
   cursor: pointer;
+}
+
+.ob-epub-settings .setting-item-control input.ob-epub-slider-number {
+  flex: 0 0 auto;
+  width: 4.2em;
+  min-width: 4.2em;
+  margin-left: 8px;
+  padding: 4px 6px;
+  text-align: center;
+  background: var(--background-primary);
+  border: 1.5px solid var(--ob-epub-control-border);
+  border-radius: var(--radius-s, 6px);
+  color: var(--text-normal);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.ob-epub-settings .setting-item-control input.ob-epub-slider-number:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 123, 104, 238), 0.18);
 }
 
 .ob-epub-settings .setting-item-control input[type="range"]::-webkit-slider-thumb {

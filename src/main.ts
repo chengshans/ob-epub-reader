@@ -6,7 +6,7 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
@@ -101,6 +101,17 @@ export default class ObEpubPlugin extends Plugin {
         async (opacity) => {
           this.settings.epubHighlightOpacity = clampHighlightOpacity(opacity);
           await this.saveSettings();
+        },
+        async (padding) => {
+          this.settings.readingSidePadding = clampReadingSidePadding(padding);
+          await this.saveSettings({ skipViewUpdate: true });
+        },
+        async (fontSize) => {
+          this.settings.fontSize = Math.min(32, Math.max(10, Math.round(fontSize)));
+          await this.saveSettings({ skipViewUpdate: true });
+          if (this.app.setting.activeTab === this.settingsTab) {
+            this.settingsTab.display();
+          }
         },
         async (enabled) => {
           this.settings.autoPasteExcerpt = enabled;
@@ -523,6 +534,7 @@ export default class ObEpubPlugin extends Plugin {
     );
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
+    this.settings.readingSidePadding = clampReadingSidePadding(this.settings.readingSidePadding);
     this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
     const legacyImmersive = (data?.settings as { immersiveReadingDefault?: boolean } | undefined)
       ?.immersiveReadingDefault;
@@ -546,6 +558,7 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
+    this.settings.readingSidePadding = clampReadingSidePadding(this.settings.readingSidePadding);
     this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
     existing.settings = this.settings;
     await this.saveData(existing);

@@ -49,6 +49,9 @@
       "toggleToc": "切換目錄",
       "fontSmaller": "減小字體",
       "fontLarger": "增大字體",
+      "sidePaddingSmaller": "減少兩側空白",
+      "sidePaddingLarger": "增加兩側空白",
+      "sidePaddingPx": "兩側空白：{{px}} px",
       "flowPaginated": "分頁",
       "flowScrolled": "滾動",
       "toggleFlow": "切換閱讀模式",
@@ -187,6 +190,10 @@
     "fontSize": {
       "name": "默認字體大小",
       "desc": "閱讀器內容區字體大小（px）"
+    },
+    "sidePadding": {
+      "name": "兩側空白",
+      "desc": "閱讀正文左右留白（px），工具列 ◧-/◧+ 可快速調節"
     },
     "readingTheme": {
       "name": "默認閱讀主題",

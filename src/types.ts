@@ -273,6 +273,7 @@ export interface EpubPluginSettings {
   defaultExcerptHighlightColor: HighlightColor;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
+  readingSidePadding: number;
   readingTheme: ReadingThemeId;
   noteIconSize: number;
   noteIconOffsetX: number;
@@ -294,6 +295,7 @@ export function getDefaultSettings(): EpubPluginSettings {
     defaultExcerptHighlightColor: "yellow",
     defaultFlow: "scrolled",
     fontSize: 16,
+    readingSidePadding: 12,
     readingTheme: "obsidian",
     noteIconSize: 20,
     noteIconOffsetX: 2,
@@ -441,6 +443,23 @@ export const NOTE_ICON_OFFSET_Y_MAX = 10;
 
 export const HIGHLIGHT_OPACITY_MIN = 0.15;
 export const HIGHLIGHT_OPACITY_MAX = 0.85;
+
+export const READING_SIDE_PADDING_MIN = 1;
+export const READING_SIDE_PADDING_MAX = 120;
+export const READING_SIDE_PADDING_STEP = 4;
+export const READING_SIDE_PADDING_DEFAULT = 12;
+
+export function clampReadingSidePadding(value: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return READING_SIDE_PADDING_DEFAULT;
+  const clamped = Math.min(
+    READING_SIDE_PADDING_MAX,
+    Math.max(READING_SIDE_PADDING_MIN, Math.round(n))
+  );
+  const stepped =
+    Math.round(clamped / READING_SIDE_PADDING_STEP) * READING_SIDE_PADDING_STEP;
+  return Math.min(READING_SIDE_PADDING_MAX, Math.max(READING_SIDE_PADDING_MIN, stepped));
+}
 
 export function clampHighlightOpacity(value: number): number {
   const n = Number(value);

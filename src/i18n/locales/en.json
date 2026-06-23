@@ -49,6 +49,9 @@
       "toggleToc": "Toggle table of contents",
       "fontSmaller": "Decrease font size",
       "fontLarger": "Increase font size",
+      "sidePaddingSmaller": "Decrease side margins",
+      "sidePaddingLarger": "Increase side margins",
+      "sidePaddingPx": "Side margins: {{px}} px",
       "flowPaginated": "Paginated",
       "flowScrolled": "Scroll",
       "toggleFlow": "Toggle reading mode",
@@ -187,6 +190,10 @@
     "fontSize": {
       "name": "Default font size",
       "desc": "Reader content font size (px)"
+    },
+    "sidePadding": {
+      "name": "Side margins",
+      "desc": "Horizontal padding of reading content (px); use ◧-/◧+ in the reader toolbar to adjust quickly"
     },
     "readingTheme": {
       "name": "Default reading theme",

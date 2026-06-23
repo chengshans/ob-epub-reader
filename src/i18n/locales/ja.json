@@ -49,6 +49,9 @@
       "toggleToc": "目次の表示切替",
       "fontSmaller": "フォントを小さく",
       "fontLarger": "フォントを大きく",
+      "sidePaddingSmaller": "左右余白を減らす",
+      "sidePaddingLarger": "左右余白を増やす",
+      "sidePaddingPx": "左右余白：{{px}} px",
       "flowPaginated": "ページ送り",
       "flowScrolled": "スクロール",
       "toggleFlow": "閲覧モードの切替",
@@ -187,6 +190,10 @@
     "fontSize": {
       "name": "デフォルトフォントサイズ",
       "desc": "リーダー本文のフォントサイズ（px）"
+    },
+    "sidePadding": {
+      "name": "左右余白",
+      "desc": "本文の左右パディング（px）。ツールバーの ◧-/◧+ で調整できます"
     },
     "readingTheme": {
       "name": "デフォルト閲覧テーマ",
