@@ -57,6 +57,10 @@ const NOTE_ICON_CLASS = "epub-note-icon";
 const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-icon";
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
+const READING_PADDING_TOP_PAGINATED = "2em 3em";
+const READING_PADDING_TOP_SCROLLED = "0.75em 3em 0.25em";
+const READING_PADDING_BOTTOM_PAGINATED = "1em clamp(0.75em, 2.5vw, 1.25em) 0.25em";
+const READING_PADDING_BOTTOM_SCROLLED = "0.75em clamp(0.75em, 2.5vw, 1.25em) 0.25em";
 
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
@@ -79,6 +83,8 @@ export class EpubReaderView extends FileView {
   private selectedText: string = "";
   private selectedCfi: string = "";
   private resizeObserver: ResizeObserver | null = null;
+  private workspaceLayoutHandlersRegistered = false;
+  private resizeRenditionPending = false;
   private accentColor: string = "#7b68ee";
 
   private openBridge: EpubOpenBridge;
@@ -96,6 +102,7 @@ export class EpubReaderView extends FileView {
   private loadingFilePath: string | null = null;
   private blockProgressSave = false;
   private isBookInitializing = false;
+  private locationsReady = false;
   private resumeTargetCfi = "";
   private isRefreshingHighlights = false;
   private isNavigating = false;
@@ -225,6 +232,13 @@ export class EpubReaderView extends FileView {
       console.error("ob-epub: onClose cleanup failed", err);
       this.destroyBook();
     }
+    if (this.toolbarEl && this.openBridge.isStatusBarChromeAttached()) {
+      this.openBridge.detachStatusBarChrome(
+        this.toolbarEl,
+        this.progressEl,
+        this.contentEl
+      );
+    }
   }
 
   // FileView lifecycle: called by Obsidian when a file is opened in this view
@@ -258,6 +272,7 @@ export class EpubReaderView extends FileView {
         this.progressStore.getProgress(file.path);
       if (savedProgress) this.updateProgressBar(savedProgress.percent);
       this.currentChapter = savedProgress?.chapter?.trim() ?? "";
+      this.syncStatusBarChrome();
 
       const startCfi = normalizeCfi(jumpCfi || savedProgress?.cfi || "");
       this.resumeTargetCfi = startCfi;
@@ -339,23 +354,69 @@ export class EpubReaderView extends FileView {
     // Reader area
     this.readerEl = bodyEl.createDiv({ cls: "epub-reader-area" });
 
-    // Bottom progress bar
+    // Bottom progress bar（底部模式时 DOM 迁到 Obsidian 状态栏）
     this.progressEl = container.createDiv({ cls: "epub-progress-bar-wrap" });
     const progressInner = this.progressEl.createDiv({ cls: "epub-progress-inner" });
     progressInner.createDiv({ cls: "epub-progress-fill", attr: { id: "epub-progress-fill" } });
     this.progressEl.createEl("span", { cls: "epub-progress-text", attr: { id: "epub-progress-text" }, text: "0%" });
 
-    // ResizeObserver: 通知 epub.js 重绘
+    // ResizeObserver + 工作区 layout-change：Obsidian 侧栏显隐时同步 epub.js 尺寸
     this.resizeObserver = new ResizeObserver(() => {
-      if (this.rendition && this.readerEl) {
-        const r = this.readerEl.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
-          this.rendition.resize(r.width, r.height);
-        }
-      }
+      this.scheduleResizeRendition();
     });
+    this.resizeObserver.observe(this.contentEl);
     this.resizeObserver.observe(this.readerEl!);
+    this.registerWorkspaceLayoutHandlers();
     this.applyAnnotationsFeatureState();
+    this.syncFlowLayoutClass();
+    this.contentEl.toggleClass("is-toolbar-bottom", this.isToolbarBottom());
+    this.syncStatusBarChrome();
+  }
+
+  private isToolbarBottom(): boolean {
+    return this.settings.toolbarPlacement === "bottom";
+  }
+
+  private syncFlowLayoutClass(): void {
+    this.contentEl.toggleClass("epub-flow-scrolled", this.flow === "scrolled");
+  }
+
+  /** 底部模式：工具栏与进度条移入 Obsidian 底栏 */
+  private shouldAttachStatusBarChrome(): boolean {
+    if (!this.isToolbarBottom() || !this.containerEl.isShown()) return false;
+
+    const activeEpub = this.app.workspace.getActiveViewOfType(EpubReaderView);
+    if (activeEpub === this) return true;
+
+    // 在设置页等场景：无活动 EPUB 时，为仍可见的 EPUB 挂上底栏
+    if (!activeEpub) {
+      const visibleLeaf = this.app.workspace
+        .getLeavesOfType(EPUB_READER_VIEW_TYPE)
+        .find((leaf) => (leaf.view as EpubReaderView).containerEl.isShown());
+      return visibleLeaf?.view === this;
+    }
+
+    return false;
+  }
+
+  syncStatusBarChrome(): void {
+    if (!this.toolbarEl) return;
+
+    if (this.shouldAttachStatusBarChrome()) {
+      if (!this.openBridge.isStatusBarChromeAttached()) {
+        this.openBridge.attachStatusBarChrome(
+          this.toolbarEl,
+          this.progressEl,
+          this.contentEl
+        );
+      }
+    } else if (this.openBridge.isStatusBarChromeAttached()) {
+      this.openBridge.detachStatusBarChrome(
+        this.toolbarEl,
+        this.progressEl,
+        this.contentEl
+      );
+    }
   }
 
   private annotationsEnabled(): boolean {
@@ -419,17 +480,53 @@ export class EpubReaderView extends FileView {
     nextBtn.addEventListener("click", () => this.rendition?.next());
   }
 
+  private registerWorkspaceLayoutHandlers(): void {
+    if (this.workspaceLayoutHandlersRegistered) return;
+    this.workspaceLayoutHandlersRegistered = true;
+
+    const onLayoutChange = () => {
+      this.scheduleResizeRendition();
+    };
+    this.registerEvent(this.app.workspace.on("layout-change", onLayoutChange));
+    this.registerEvent(this.app.workspace.on("resize", onLayoutChange));
+  }
+
+  /** 等布局稳定后再 resize（侧栏动画、分屏拖拽） */
+  private scheduleResizeRendition(): void {
+    if (this.resizeRenditionPending) return;
+    this.resizeRenditionPending = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.resizeRenditionPending = false;
+        this.resizeRendition();
+      });
+    });
+  }
+
+  private resizeRendition(): void {
+    if (!this.rendition || !this.readerEl) return;
+    const r = this.readerEl.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      this.rendition.resize(r.width, r.height);
+    }
+  }
+
+  private getReadingBodyPadding(): string {
+    if (this.isToolbarBottom()) {
+      return this.flow === "scrolled"
+        ? READING_PADDING_BOTTOM_SCROLLED
+        : READING_PADDING_BOTTOM_PAGINATED;
+    }
+    return this.flow === "scrolled"
+      ? READING_PADDING_TOP_SCROLLED
+      : READING_PADDING_TOP_PAGINATED;
+  }
+
   private toggleToc() {
     this.tocVisible = !this.tocVisible;
     // 用 CSS 类收起侧边栏，避免 toggleVisibility 在 flex 布局中仍占位
     this.sidebarEl?.toggleClass("is-collapsed", !this.tocVisible);
-    requestAnimationFrame(() => {
-      if (!this.rendition || !this.readerEl) return;
-      const r = this.readerEl.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) {
-        this.rendition.resize(r.width, r.height);
-      }
-    });
+    this.scheduleResizeRendition();
   }
 
   private setSidebarMode(mode: "toc" | "notes") {
@@ -453,6 +550,7 @@ export class EpubReaderView extends FileView {
 
   private toggleFlow() {
     this.flow = this.flow === "paginated" ? "scrolled" : "paginated";
+    this.syncFlowLayoutClass();
     const btn = this.toolbarEl?.querySelector("#epub-flow-btn") as HTMLElement | null;
     if (btn) btn.textContent = this.flow === "paginated" ? "📄 分页" : "📜 滚动";
 
@@ -489,6 +587,7 @@ export class EpubReaderView extends FileView {
     }
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
+    this.locationsReady = false;
     this.tocSpineEntries = [];
     this.tocHighlightedChapter = "";
     if (invalidateSession) this.resetNotesFilters();
@@ -587,7 +686,7 @@ export class EpubReaderView extends FileView {
 
       // Render
       this.rendition = this.book.renderTo(this.readerEl, {
-        flow: this.flow,
+        flow: this.flow === "scrolled" ? "scrolled-doc" : "paginated",
         width: w,
         height: h,
         allowScriptedContent: false,
@@ -632,9 +731,7 @@ export class EpubReaderView extends FileView {
       this.rendition.on("relocated", (location: any) => {
         this.currentCfi = normalizeCfi(location?.start?.cfi);
         this.syncChapterFromLocation(location);
-        const percentage = this.extractPercentFromLocation(location);
-        this.updateProgressBar(percentage);
-        this.scheduleProgressSave(percentage);
+        this.applyProgressFromLocation(location);
         if (!this.isNavigating) {
           this.scheduleHighlightSync();
         }
@@ -706,12 +803,9 @@ export class EpubReaderView extends FileView {
 
       // epub.js 的 percentage 依赖 locations 索引，需在后台生成
       void this.book.locations.generate(1600).then(async () => {
-        if (this.blockProgressSave || this.isBookInitializing) return;
-        const loc = await Promise.resolve(this.rendition?.currentLocation?.());
-        if (!loc) return;
-        const percentage = this.extractPercentFromLocation(loc);
-        this.updateProgressBar(percentage);
-        this.scheduleProgressSave(percentage);
+        if (this.isBookSessionStale(generation)) return;
+        this.locationsReady = true;
+        await this.applyProgressFromCurrentLocation();
       }).catch((err) => {
         console.warn("ob-epub: locations generation failed", err);
       });
@@ -999,6 +1093,7 @@ export class EpubReaderView extends FileView {
     selectionBg: string,
     fontFamily: string
   ): Record<string, Record<string, string>> {
+    const bodyPadding = this.getReadingBodyPadding();
     return {
       "html, body": {
         background: `${background} !important`,
@@ -1007,7 +1102,7 @@ export class EpubReaderView extends FileView {
       body: {
         "font-family": fontFamily,
         "line-height": "1.8",
-        padding: "2em 3em",
+        padding: bodyPadding,
       },
       // EPUB 内嵌样式常在子元素上写死 color，仅设置 body 无法覆盖
       "body *": {
@@ -1034,13 +1129,27 @@ export class EpubReaderView extends FileView {
     fontFamily: string
   ): string {
     const root = `html[${READING_THEME_ATTR}] body`;
+    const bodyPadding = this.getReadingBodyPadding();
     const blocks: string[] = [
-      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:2em 3em}`,
+      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:${bodyPadding};box-sizing:border-box}`,
       `${root} *{color:${textColor} !important;-webkit-user-select:text !important;user-select:text !important}`,
       `${root} a,${root} a *{color:${linkColor} !important}`,
       `${root} ::selection{background:${selectionBg};color:${textColor}}`,
       `${root} ::-moz-selection{background:${selectionBg};color:${textColor}}`,
     ];
+    if (this.isToolbarBottom()) {
+      blocks.push(
+        `${root}{max-width:none !important;margin:0 !important;width:100% !important}`,
+        `${root} > *{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:auto !important}`,
+        `${root} p,${root} div,${root} section,${root} article{max-width:none !important;margin-left:0 !important;margin-right:0 !important}`
+      );
+    }
+    if (this.flow === "scrolled") {
+      blocks.push(
+        `html[${READING_THEME_ATTR}],html[${READING_THEME_ATTR}] body{min-height:0 !important;height:auto !important}`,
+        `${root}{margin-bottom:0 !important}`
+      );
+    }
     return blocks.join("\n");
   }
 
@@ -1194,6 +1303,8 @@ export class EpubReaderView extends FileView {
     if (meta?.layout === "pre-paginated") {
       new Notice("此书为固定版式 EPUB，排版可能与专用阅读器有差异。");
     }
+
+    this.syncFlowLayoutClass();
   }
 
   private async loadTocData() {
@@ -1224,6 +1335,7 @@ export class EpubReaderView extends FileView {
       this.currentChapter = resolved;
       this.notesChapterCollapsed.delete(normalizeChapterName(resolved));
       this.updateTocActiveState();
+      this.syncStatusBarChrome();
     }
   }
 
@@ -1276,6 +1388,7 @@ export class EpubReaderView extends FileView {
         this.isBookInitializing = false;
         this.currentChapter = itemLabel;
         this.updateTocActiveState();
+        this.syncStatusBarChrome();
         this.rendition?.display(item.href);
       });
 
@@ -1309,6 +1422,27 @@ export class EpubReaderView extends FileView {
       return normalizePercent((sectionIndex + sectionPct) / spineLength);
     }
     return 0;
+  }
+
+  /** locations 未就绪时 epub.js 会返回 0，勿覆盖已恢复的有效进度。 */
+  private shouldApplyLocationProgress(percent: number): boolean {
+    if (percent > 0) return true;
+    if (this.isBookInitializing || this.blockProgressSave) return false;
+    if (this.currentPercent > 0 && !this.locationsReady) return false;
+    return true;
+  }
+
+  private applyProgressFromLocation(location: any): void {
+    const percentage = this.extractPercentFromLocation(location);
+    if (!this.shouldApplyLocationProgress(percentage)) return;
+    this.updateProgressBar(percentage);
+    this.scheduleProgressSave(percentage);
+  }
+
+  private async applyProgressFromCurrentLocation(): Promise<void> {
+    const loc = await Promise.resolve(this.rendition?.currentLocation?.());
+    if (!loc) return;
+    this.applyProgressFromLocation(loc);
   }
 
   private scheduleProgressSave(percent: number) {
@@ -1492,11 +1626,13 @@ export class EpubReaderView extends FileView {
 
   private updateProgressBar(percent: number) {
     this.currentPercent = normalizePercent(percent);
-    const fill = this.containerEl.querySelector("#epub-progress-fill") as HTMLElement | null;
-    const text = this.containerEl.querySelector("#epub-progress-text") as HTMLElement | null;
+    const root = this.progressEl ?? this.containerEl;
+    const fill = root.querySelector("#epub-progress-fill") as HTMLElement | null;
+    const text = root.querySelector("#epub-progress-text") as HTMLElement | null;
     const pct = Math.round(this.currentPercent * 100);
     if (fill) fill.setCssProps({ width: `${pct}%` });
     if (text) text.textContent = `${pct}%`;
+    this.syncStatusBarChrome();
   }
 
   private showContextMenu(contents: any) {
@@ -2580,8 +2716,10 @@ export class EpubReaderView extends FileView {
   // Called when settings change
   updateSettings(settings: EpubPluginSettings) {
     const prevAnnotationsOn = this.annotationsEnabled();
+    const prevToolbarPlacement = this.settings.toolbarPlacement;
     this.settings = settings;
     const annotationsChanged = prevAnnotationsOn !== this.annotationsEnabled();
+    const toolbarPlacementChanged = prevToolbarPlacement !== settings.toolbarPlacement;
     if (annotationsChanged && this.toolbarEl) {
       this.buildToolbar(this.toolbarEl);
     } else {
@@ -2591,6 +2729,14 @@ export class EpubReaderView extends FileView {
     }
     this.applyAnnotationsFeatureState();
     this.fontSize = settings.fontSize;
+    if (toolbarPlacementChanged) {
+      this.contentEl.toggleClass("is-toolbar-bottom", this.isToolbarBottom());
+      this.syncStatusBarChrome();
+      requestAnimationFrame(() => {
+        this.applyThemeToAllContents();
+        this.resizeRendition();
+      });
+    }
     const nextTheme = normalizeReadingTheme(settings.readingTheme);
     const themeChanged = nextTheme !== this.readingTheme;
     if (themeChanged) {

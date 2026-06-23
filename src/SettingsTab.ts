@@ -307,6 +307,22 @@ export class EpubSettingsTab extends PluginSettingTab {
     });
 
     this.addMemberSetting(containerEl, "reader", (s) => {
+      s.setName("工具栏位置")
+        .setDesc("顶部显示：工具栏与进度条在阅读区上下；底部显示：常驻 Obsidian 窗口底栏")
+        .addDropdown((drop) =>
+          drop
+            .addOption("top", "顶部显示")
+            .addOption("bottom", "底部显示")
+            .setValue(this.plugin.settings.toolbarPlacement ?? "bottom")
+            .onChange(async (value) => {
+              this.plugin.settings.toolbarPlacement =
+                value === "top" ? "top" : "bottom";
+              await this.plugin.saveSettings();
+            })
+        );
+    });
+
+    this.addMemberSetting(containerEl, "reader", (s) => {
       s.setName("复制摘录自动粘贴")
         .setDesc("开启后，复制摘录会插入最近编辑的 Markdown 笔记；阅读器工具栏「粘贴」可快速切换")
         .addToggle((toggle) =>

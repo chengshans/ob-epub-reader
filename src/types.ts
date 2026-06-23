@@ -240,6 +240,8 @@ export function isBookshelfEnabled(settings: EpubPluginSettings): boolean {
   return settings.featureGroups.bookshelf;
 }
 
+export type ToolbarPlacement = "top" | "bottom";
+
 export interface EpubPluginSettings {
   excerptFolder: string;
   /** 摘录 Markdown 文件名模板，支持 {title}、{filename} 占位符 */
@@ -267,6 +269,8 @@ export interface EpubPluginSettings {
   featureGroups: FeatureGroupSettings;
   /** 复制摘录时自动插入打开的 Markdown 笔记 */
   autoPasteExcerpt: boolean;
+  /** 工具栏与进度条位置：阅读区顶部 / Obsidian 底栏 */
+  toolbarPlacement: ToolbarPlacement;
 }
 
 export const DEFAULT_SETTINGS: EpubPluginSettings = {
@@ -285,7 +289,17 @@ export const DEFAULT_SETTINGS: EpubPluginSettings = {
   noteTypes: DEFAULT_NOTE_TYPES.map((t) => ({ ...t })),
   featureGroups: { ...DEFAULT_FEATURE_GROUPS },
   autoPasteExcerpt: true,
+  toolbarPlacement: "bottom",
 };
+
+export function normalizeToolbarPlacement(
+  raw: unknown,
+  legacyImmersiveDefault?: boolean
+): ToolbarPlacement {
+  if (raw === "top" || raw === "bottom") return raw;
+  if (legacyImmersiveDefault === false) return "top";
+  return DEFAULT_SETTINGS.toolbarPlacement;
+}
 
 export interface BookProgress {
   cfi: string;
@@ -413,4 +427,15 @@ export interface Annotation {
 /** Bridge from EpubReaderView back to the plugin for deep-link jumps. */
 export interface EpubOpenBridge {
   consumePendingCfi(filePath: string): string;
+  attachStatusBarChrome(
+    toolbar: HTMLElement,
+    progress: HTMLElement | null,
+    container: HTMLElement
+  ): void;
+  detachStatusBarChrome(
+    toolbar: HTMLElement,
+    progress: HTMLElement | null,
+    container: HTMLElement
+  ): void;
+  isStatusBarChromeAttached(): boolean;
 }

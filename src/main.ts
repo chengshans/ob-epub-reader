@@ -5,7 +5,7 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { DEFAULT_SETTINGS, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
@@ -23,6 +23,14 @@ export default class ObEpubPlugin extends Plugin {
   private lastGotoAt = 0;
   private unpatchEpubWikiLinks: (() => void) | null = null;
   private bookshelfRibbonEl: HTMLElement | null = null;
+  private statusBarEl: HTMLElement | null = null;
+  private statusBarToolbarSlot: HTMLElement | null = null;
+  private statusBarProgressSlot: HTMLElement | null = null;
+  private statusBarChromeOwner: {
+    toolbar: HTMLElement;
+    progress: HTMLElement | null;
+    container: HTMLElement;
+  } | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -92,6 +100,22 @@ export default class ObEpubPlugin extends Plugin {
         }
       );
     });
+
+    this.initEpubStatusBar();
+
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        const activeView = this.app.workspace.getActiveViewOfType(EpubReaderView);
+        for (const leaf of this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE)) {
+          const view = leaf.view as EpubReaderView;
+          if (view !== activeView) view.syncStatusBarChrome();
+        }
+        activeView?.syncStatusBarChrome();
+        if (!activeView) {
+          this.forceDetachStatusBarChrome();
+        }
+      })
+    );
 
     addIcon(BOOKSHELF_ICON_ID, BOOKSHELF_ICON_SVG);
 
@@ -307,6 +331,103 @@ export default class ObEpubPlugin extends Plugin {
     return "";
   }
 
+  private initEpubStatusBar(): void {
+    const el = this.addStatusBarItem();
+    el.addClass("ob-epub-status-wrap");
+    this.statusBarToolbarSlot = el.createDiv({ cls: "ob-epub-status-toolbar" });
+    this.statusBarProgressSlot = el.createDiv({ cls: "ob-epub-status-progress" });
+    this.statusBarEl = el;
+    this.pinStatusBarItemToLeft();
+    el.hide();
+  }
+
+  /** addStatusBarItem 默认追加在右侧，手动移到状态栏最左 */
+  private pinStatusBarItemToLeft(): void {
+    const el = this.statusBarEl;
+    if (!el) return;
+
+    const statusBar =
+      el.closest(".status-bar") ?? document.querySelector(".status-bar");
+    if (!statusBar) return;
+
+    const leftRegion = statusBar.querySelector(
+      ".status-bar-left, .left-region"
+    );
+    if (leftRegion instanceof HTMLElement && leftRegion !== el.parentElement) {
+      leftRegion.appendChild(el);
+      return;
+    }
+
+    if (statusBar.firstElementChild !== el) {
+      statusBar.prepend(el);
+    }
+  }
+
+  isStatusBarChromeAttached(): boolean {
+    return this.statusBarChromeOwner !== null;
+  }
+
+  attachStatusBarChrome(
+    toolbar: HTMLElement,
+    progress: HTMLElement | null,
+    container: HTMLElement
+  ): void {
+    if (
+      this.statusBarChromeOwner &&
+      this.statusBarChromeOwner.toolbar !== toolbar
+    ) {
+      this.detachStatusBarChrome(
+        this.statusBarChromeOwner.toolbar,
+        this.statusBarChromeOwner.progress,
+        this.statusBarChromeOwner.container
+      );
+    }
+    if (!this.statusBarToolbarSlot || !this.statusBarEl) return;
+
+    toolbar.addClass("is-in-statusbar");
+    this.statusBarToolbarSlot.appendChild(toolbar);
+
+    if (progress && this.statusBarProgressSlot) {
+      progress.addClass("is-in-statusbar");
+      this.statusBarProgressSlot.appendChild(progress);
+    }
+
+    this.statusBarChromeOwner = { toolbar, progress, container };
+    this.pinStatusBarItemToLeft();
+    this.statusBarEl.show();
+  }
+
+  detachStatusBarChrome(
+    toolbar: HTMLElement,
+    progress: HTMLElement | null,
+    container: HTMLElement
+  ): void {
+    if (!this.statusBarChromeOwner || this.statusBarChromeOwner.toolbar !== toolbar) {
+      return;
+    }
+
+    toolbar.removeClass("is-in-statusbar");
+    if (container.firstChild) {
+      container.insertBefore(toolbar, container.firstChild);
+    } else {
+      container.appendChild(toolbar);
+    }
+
+    if (progress) {
+      progress.removeClass("is-in-statusbar");
+      container.appendChild(progress);
+    }
+
+    this.statusBarChromeOwner = null;
+    this.statusBarEl?.hide();
+  }
+
+  forceDetachStatusBarChrome(): void {
+    if (!this.statusBarChromeOwner) return;
+    const { toolbar, progress, container } = this.statusBarChromeOwner;
+    this.detachStatusBarChrome(toolbar, progress, container);
+  }
+
   async openEpubFile(file: TFile) {
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.openFile(file);
@@ -368,6 +489,13 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
     this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
+    const legacyImmersive = (data?.settings as { immersiveReadingDefault?: boolean } | undefined)
+      ?.immersiveReadingDefault;
+    this.settings.toolbarPlacement = normalizeToolbarPlacement(
+      (data?.settings as { toolbarPlacement?: unknown } | undefined)?.toolbarPlacement ??
+        this.settings.toolbarPlacement,
+      legacyImmersive
+    );
     this.applyExcerptCalloutOpacity(this.settings.excerptCalloutOpacity);
   }
 
