@@ -2,7 +2,7 @@
 
 [中文](README.md) | **English**
 
-Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault excerpts, deep links back to the source, and reading themes.
+Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault excerpts, deep links back to the source, reading themes, split-view co-reading, and multilingual UI.
 
 ## Installation
 
@@ -22,34 +22,38 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 ## Features
 
 - **Built-in reader** — Open any `.epub` file in your vault from the file explorer
-- **TOC and notes sidebar** — Chapter outline and annotations for the current book (search and filter by color or note type)
-- **EPUB bookshelf** — Browse all EPUBs in the vault with progress and cumulative reading time
+- **TOC and notes sidebar** — Chapter outline (auto-highlights current chapter while reading) and annotations for the current book (search and filter by color or note type)
+- **EPUB bookshelf** — Browse all EPUBs in the vault with progress and cumulative reading time (can be disabled in settings)
 - **Reading progress** — Auto-saved position; excerpt frontmatter stores percent, chapter, and reading time
-- **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought
-- **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only; when a Markdown note is open, excerpts auto-insert at the last cursor
+- **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought; highlight/recolor auto-copies excerpts
+- **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only (optional color); split-view co-reading can auto-insert into the recently edited Markdown note
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
-- **Excerpt export** — Annotations sync to Markdown excerpt files with four configurable excerpt link formats
+- **Excerpt export** — Annotations sync to Markdown excerpt files with four configurable excerpt link formats; excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
-- **Reading modes** — Paginated or scroll; adjustable font size
-- **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in toolbar; set default in settings)
+- **Reading settings panel** — Toolbar ⚙ popover: font size slider, side margins, six reading themes, highlight opacity, auto-paste toggle
+- **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px)
+- **Toolbar placement** — Top (inside reader) or bottom (pinned to Obsidian status bar), with progress bar
+- **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in reading settings; set default in settings)
 - **Keyboard and mouse** — Arrow keys, Page Up/Down, and mouse wheel for page turns
+- **Multilingual UI** — English, Simplified Chinese, Traditional Chinese, Japanese; follow Obsidian or pick a locale
+- **Feature toggles** — Disable annotations & excerpts or bookshelf independently for read-only / copy-only mode
 
 ## Usage
 
 ### Open a book
 
 - Click any `.epub` file in the file explorer
-- Command palette: **打开 EPUB 书架** — Browse all EPUBs in the vault and their progress
-- Command palette: **在 EPUB 阅读器中打开** — Open the currently selected EPUB file
+- Command palette: **Open EPUB bookshelf** — Browse all EPUBs in the vault and their progress
+- Command palette: **Open in EPUB reader** — Open the currently selected EPUB file
 
 ### Highlights and margin notes
 
 1. Select text in the reader to open the context menu
-2. Pick a highlight color, or choose **标注** to add a thought (one of five note types)
-3. Excerpts are written to `{excerpt folder}/《Book Title》摘录.md`
+2. Pick a highlight color, or choose **Annotate** to add a thought (one of five note types)
+3. Excerpts are written to a Markdown file under `{excerpt folder}/` using your filename template (default `{title} excerpts.md`)
 4. Click the note icon beside highlighted text, or use the sidebar list, to view, edit, or delete annotations
 
-**Split-view co-reading**: With EPUB and Markdown side by side, **Copy** or a color dot writes the excerpt to the clipboard and inserts it at the last cursor in the recently edited note (reading mode: clipboard only).
+**Split-view co-reading**: With EPUB and Markdown side by side, **Copy** or a color dot writes the excerpt to the clipboard. When **Auto-paste excerpts** is on (🌟 in the reading settings panel), the excerpt also inserts at the last cursor in the recently edited note (reading mode: clipboard only).
 
 Example excerpt block (default **Callout + title link** format):
 
@@ -65,7 +69,7 @@ Optional thought text
 
 ### Excerpt link formats
 
-Under **Settings → Excerpt title link format**, choose one of four presets. Changes apply only to new annotations; for existing excerpts, use **Convert existing excerpt links → Convert now** to batch-rewrite.
+Under **Settings → Excerpt link format**, choose one of four presets. Changes apply only to new annotations; for existing excerpts, use **Convert existing excerpt links → Convert now** to batch-rewrite.
 
 | Preview | ID | Setting name | Write example | Color |
 | :--: | ---- | ------------ | ------------- | ----- |
@@ -89,9 +93,21 @@ Wiki links in excerpts (`[[book.epub#cfi=...|...]]`), **Source** links, or `ob-e
 
 > Legacy `obsidian://ob-epub-goto?file=...&cfi=...` URLs, old block-ref links, and legacy CFI-comment layouts are migrated to the currently selected excerpt format on first plugin load or via manual conversion.
 
+### Reading settings
+
+Click **⚙** on the toolbar to open the reading settings panel:
+
+- **Font size** — Slider or A-/A+ (10–32 px, persisted)
+- **Side margins** — Slider or ◧-/◧+ (12–120 px; works in paginated and scroll modes)
+- **Reading theme** — Six theme swatches for instant switching
+- **Highlight opacity** — Adjust highlight layer strength in the reader (shown when annotations are enabled)
+- **Auto-paste** — 🌟/★ toggles whether split-view co-reading inserts into Markdown notes
+
+The toolbar also offers **paginated/scroll** mode and **◀/▶** page turns. **Toolbar placement** (top or bottom, with progress bar) is configured in settings.
+
 ### Reading themes
 
-The reader toolbar offers six theme swatches for instant switching. **Settings → Default reading theme** sets the initial theme for newly opened books.
+The **⚙ Reading settings** panel offers six theme swatches for instant switching. **Settings → Default reading theme** sets the initial theme for newly opened books.
 
 | Preview | Theme | Background | Description |
 | :--: | ----- | ---------- | ----------- |
@@ -118,25 +134,56 @@ Icon size and position can be adjusted under **Settings → Note icons** (defaul
 
 ## Settings
 
-Configure under **Settings → EPUB Marginalia**:
+Configure under **Settings → EPUB Marginalia** (grouped, collapsible sections):
+
+### General
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| Excerpt folder | Directory for excerpt Markdown files (progress stored in each book’s frontmatter) | `epub-books/anno` |
-| Excerpt title link format | Four presets; see above | Callout + title link |
-| Convert existing excerpt links | Batch-rewrite all `《Title》摘录.md` files in the excerpt folder to the current format | — |
+| Display language | Plugin UI (English / Simplified Chinese / Traditional Chinese / Japanese / Follow Obsidian); does not change existing excerpt files | Follow Obsidian |
+
+### Reader
+
+| Option | Description | Default |
+|--------|-------------|---------|
 | Default reading mode | Paginated / scroll | Scroll |
 | Default font size | Reader font size (px) | 16 |
+| Side margins | Horizontal padding of reading content (px) | 12 |
 | Default reading theme | Follow Obsidian / White / Yellow / Green / Sepia / Dark | Follow Obsidian |
+| Toolbar placement | Top (in reader) / Bottom (Obsidian status bar) | Bottom |
+| Auto-paste excerpts | Insert copied excerpts into the most recently edited Markdown note | On |
+
+### Annotations & excerpts
+
+This group can be disabled entirely. When off, selection copies only (optional color); no highlights or excerpt writes.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Excerpt folder | Directory for excerpt Markdown; supports `{filefolder}` (EPUB directory), e.g. `{filefolder}/anno` | `epub-books/anno` |
+| Excerpt filename | Supports `{title}` (book title) and `{filename}` (EPUB filename), e.g. `{title} excerpts.md` | `{title} excerpts.md` |
+| Excerpt link format | Four presets; see above | Callout + title link |
+| Default highlight color | Fallback when parsing/converting formats that do not store color | Yellow |
+| Excerpt callout opacity | Background strength of ob-epub callouts in excerpt files | 20% |
+| Convert existing excerpt links | Batch-rewrite all excerpt files to the current format | — |
+| Check excerpt metadata | Verify frontmatter `epub-source` points to a valid EPUB | — |
+| EPUB highlight opacity | Opacity of highlight layers in the reader | See settings |
 | Note types | Labels and icons for five note categories (fixed ids; reset to defaults available) | See settings tab |
 | Note icon size | Diameter of note icons beside highlights (px) | 20 |
 | Note icon position | Horizontal / vertical offset from highlight (px) | 2 / 0 |
+
+### Bookshelf & shortcuts
+
+This group can be disabled (does not affect **Open in EPUB reader**).
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| EPUB bookshelf | Sidebar bookshelf, ribbon icon, and **Open EPUB bookshelf** command | On |
 
 ## Data storage
 
 | File | Location | Contents |
 |------|----------|----------|
-| `《Book Title》摘录.md` | `{excerpt folder}/` | Highlights and margin notes; frontmatter includes reading progress |
+| Excerpt Markdown | `{excerpt folder}/` (filename configurable; default `{title} excerpts.md`) | Highlights and margin notes; frontmatter includes `epub-source` and reading progress |
 | `data.json` | `.obsidian/plugins/ob-epub-reader/` | Plugin settings (not annotations or progress) |
 
 Progress fields in excerpt frontmatter: `progress-percent`, `progress-cfi`, `progress-chapter`, `last-read`, `reading-time-seconds` (cumulative reading time in seconds).
@@ -145,7 +192,7 @@ Older versions stored annotations and progress in `data.json` or `reading-progre
 
 ## Requirements
 
-- Obsidian 1.7.2+
+- Obsidian 1.8.0+
 - Desktop only
 
 ## Development
