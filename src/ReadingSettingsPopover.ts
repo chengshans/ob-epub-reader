@@ -328,15 +328,19 @@ export class ReadingSettingsPopover {
   }
 
   private buildAutoPasteRow(panel: HTMLElement): void {
-    const row = panel.createDiv({ cls: "epub-reading-settings-row" });
-    row.createSpan({ cls: "epub-reading-settings-label", text: t("reader.toolbar.autoPaste") });
+    const row = panel.createDiv({ cls: "epub-reading-settings-row epub-reading-settings-row-auto-paste" });
+    const label = row.createSpan({
+      cls: "epub-reading-settings-label",
+      text: t("settings.autoPaste.name"),
+    });
+    label.title = t("settings.autoPaste.desc");
 
     const group = row.createDiv({ cls: "epub-auto-paste" });
     const toggleBtn = group.createEl("button", {
       cls: "epub-toolbar-btn epub-auto-paste-toggle",
       attr: { type: "button" },
     });
-    toggleBtn.title = t("reader.toolbar.autoPaste");
+    toggleBtn.title = t("settings.autoPaste.desc");
     this.autoPasteToggleEl = toggleBtn;
     toggleBtn.addEventListener("click", (e) => {
       e.stopPropagation();

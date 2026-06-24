@@ -61,7 +61,7 @@
       "highlight": "Highlight",
       "highlightOpacity": "Highlight opacity",
       "highlightOpacityPercent": "Highlight opacity {{percent}}%",
-      "autoPaste": "Auto-insert excerpts into open Markdown notes when copying",
+      "autoPaste": "Auto-paste excerpts",
       "autoPasteOn": "Auto-paste on",
       "autoPasteOff": "Auto-paste off",
       "autoPasteOnDesc": "Auto-paste on: excerpts insert into Markdown",

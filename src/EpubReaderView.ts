@@ -60,10 +60,16 @@ const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-ic
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
 
-/** epub.js manager 最小访问面，用于分页模式同步 gap */
+/** epub.js manager 最小访问面，用于分页模式同步 gap / 滚动模式重算 iframe 高度 */
 type EpubLayoutManager = {
   settings?: { gap?: number };
   updateLayout?: () => void;
+  views?: { forEach: (fn: (view: EpubView) => void) => void };
+};
+
+type EpubView = {
+  displayed?: boolean;
+  expand?: (force?: boolean) => void;
 };
 
 export class EpubReaderView extends FileView {
@@ -550,6 +556,23 @@ export class EpubReaderView extends FileView {
     }
   }
 
+  /** 滚动模式：主题 CSS 注入后按实际正文高度重算 iframe，避免底部大块空白 */
+  private syncScrolledContentHeight(): void {
+    if (this.flow !== "scrolled" || !this.rendition) return;
+    const manager = this.getEpubLayoutManager();
+    manager?.views?.forEach((view) => {
+      if (view.displayed === false) return;
+      view.expand?.(true);
+    });
+  }
+
+  private scheduleScrolledContentHeightSync(): void {
+    if (this.flow !== "scrolled") return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.syncScrolledContentHeight());
+    });
+  }
+
   /** 分页/双栏：epub.js 用 gap/2 作为左右留白，与设置项对齐 */
   private getReadingLayoutGap(): number {
     return clampReadingSidePadding(this.settings.readingSidePadding) * 2;
@@ -857,6 +880,7 @@ export class EpubReaderView extends FileView {
       // Draw highlights only after epub.js finishes rendering the page iframe.
       this.rendition.on("rendered", () => {
         if (this.isNavigating) return;
+        this.scheduleScrolledContentHeightSync();
         if (this.highlightRedrawTimer) clearTimeout(this.highlightRedrawTimer);
         this.highlightRedrawTimer = setTimeout(() => {
           this.highlightRedrawTimer = null;
@@ -1228,6 +1252,7 @@ export class EpubReaderView extends FileView {
       for (const content of contents) {
         this.injectReadingThemeIntoDocument(content?.document);
       }
+      this.scheduleScrolledContentHeightSync();
     } catch (err) {
       console.warn("ob-epub: apply theme to contents failed", err);
     }

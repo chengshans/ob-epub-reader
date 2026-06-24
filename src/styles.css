@@ -250,8 +250,20 @@ a.ob-epub-goto-link {
 }
 
 .epub-reading-settings-row-theme,
-.epub-reading-settings-row-highlight {
+.epub-reading-settings-row-highlight,
+.epub-reading-settings-row-auto-paste {
   align-items: center;
+}
+
+.epub-reading-settings-row-auto-paste .epub-reading-settings-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.epub-reading-settings-row-auto-paste .epub-auto-paste {
+  flex: 0 0 auto;
 }
 
 .epub-reading-settings-label {
