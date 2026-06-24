@@ -47,6 +47,7 @@
     },
     "toolbar": {
       "toggleToc": "Toggle table of contents",
+      "openReadingSettings": "Reading settings",
       "fontSmaller": "Decrease font size",
       "fontLarger": "Increase font size",
       "sidePaddingSmaller": "Decrease side margins",
@@ -65,6 +66,14 @@
       "autoPasteOff": "Auto-paste off",
       "autoPasteOnDesc": "Auto-paste on: excerpts insert into Markdown",
       "autoPasteOffDesc": "Auto-paste off: excerpts copy to clipboard only"
+    },
+    "readingSettings": {
+      "title": "Reading settings",
+      "fontSize": "Font size",
+      "fontSizePx": "Font size {{px}} px",
+      "sidePadding": "Side margins",
+      "sidePaddingPx": "Side margins {{px}} px",
+      "readingTheme": "Reading theme"
     },
     "loading": "Loading EPUB…",
     "loadFailed": "Load failed: {{error}}",

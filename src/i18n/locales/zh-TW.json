@@ -47,6 +47,7 @@
     },
     "toolbar": {
       "toggleToc": "切換目錄",
+      "openReadingSettings": "閱讀設定",
       "fontSmaller": "減小字體",
       "fontLarger": "增大字體",
       "sidePaddingSmaller": "減少兩側空白",
@@ -65,6 +66,14 @@
       "autoPasteOff": "自動粘貼已關閉",
       "autoPasteOnDesc": "自動貼上已開啟：複製摘錄會插入 Markdown",
       "autoPasteOffDesc": "自動貼上已關閉：複製摘錄僅寫入剪貼簿"
+    },
+    "readingSettings": {
+      "title": "閱讀設定",
+      "fontSize": "字體大小",
+      "fontSizePx": "字體大小 {{px}} px",
+      "sidePadding": "兩側空白",
+      "sidePaddingPx": "兩側空白 {{px}} px",
+      "readingTheme": "閱讀主題"
     },
     "loading": "正在加載 EPUB…",
     "loadFailed": "加載失敗: {{error}}",

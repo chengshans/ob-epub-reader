@@ -47,6 +47,7 @@
     },
     "toolbar": {
       "toggleToc": "切换目录",
+      "openReadingSettings": "阅读设置",
       "fontSmaller": "减小字体",
       "fontLarger": "增大字体",
       "sidePaddingSmaller": "减少两侧空白",
@@ -65,6 +66,14 @@
       "autoPasteOff": "自动粘贴已关闭",
       "autoPasteOnDesc": "自动粘贴已开启：复制摘录会插入 Markdown",
       "autoPasteOffDesc": "自动粘贴已关闭：复制摘录仅写入剪贴板"
+    },
+    "readingSettings": {
+      "title": "阅读设置",
+      "fontSize": "字体大小",
+      "fontSizePx": "字体大小 {{px}} px",
+      "sidePadding": "两侧空白",
+      "sidePaddingPx": "两侧空白 {{px}} px",
+      "readingTheme": "阅读主题"
     },
     "loading": "正在加载 EPUB…",
     "loadFailed": "加载失败: {{error}}",

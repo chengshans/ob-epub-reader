@@ -47,6 +47,7 @@
     },
     "toolbar": {
       "toggleToc": "目次の表示切替",
+      "openReadingSettings": "閲覧設定",
       "fontSmaller": "フォントを小さく",
       "fontLarger": "フォントを大きく",
       "sidePaddingSmaller": "左右余白を減らす",
@@ -65,6 +66,14 @@
       "autoPasteOff": "自動貼り付け OFF",
       "autoPasteOnDesc": "自動貼り付け ON: 抜粋を Markdown に挿入",
       "autoPasteOffDesc": "自動貼り付け OFF: 抜粋はクリップボードのみ"
+    },
+    "readingSettings": {
+      "title": "閲覧設定",
+      "fontSize": "フォントサイズ",
+      "fontSizePx": "フォントサイズ {{px}} px",
+      "sidePadding": "左右余白",
+      "sidePaddingPx": "左右余白 {{px}} px",
+      "readingTheme": "閲覧テーマ"
     },
     "loading": "EPUB を読み込み中…",
     "loadFailed": "読み込み失敗: {{error}}",
