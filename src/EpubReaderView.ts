@@ -584,6 +584,9 @@ export class EpubReaderView extends FileView {
   private refreshReadingSidePadding(): void {
     this.syncPaginatedLayoutGap();
     this.applyThemeToAllContents();
+    if (this.flow === "paginated") {
+      this.scheduleResizeRendition();
+    }
   }
 
   private getReadingBodyPadding(): string {
@@ -1130,11 +1133,16 @@ export class EpubReaderView extends FileView {
   }
 
   /** 覆盖 EPUB 内嵌 max-width / margin:auto，使正文尽量占满阅读区 */
-  private appendFullWidthContentRules(blocks: string[], root: string): void {
+  private appendFullWidthContentRules(
+    blocks: string[],
+    root: string,
+    opts?: { preserveBodyWidth?: boolean }
+  ): void {
     const wideBlocks =
       "p,div,section,article,main,blockquote,figure,header,footer,nav,aside,table,center";
+    const bodyWidthRule = opts?.preserveBodyWidth ? "" : "width:100% !important;";
     blocks.push(
-      `${root}{max-width:none !important;margin:0 !important;width:100% !important;box-sizing:border-box !important}`,
+      `${root}{max-width:none !important;margin:0 !important;${bodyWidthRule}box-sizing:border-box !important}`,
       `${root} > *{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
       `${wideBlocks.split(",").map((tag) => `${root} ${tag}`).join(",")}{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
       `${root} [class]{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
@@ -1162,7 +1170,9 @@ export class EpubReaderView extends FileView {
       `${root} ::selection{background:${selectionBg};color:${textColor}}`,
       `${root} ::-moz-selection{background:${selectionBg};color:${textColor}}`,
     ];
-    this.appendFullWidthContentRules(blocks, root);
+    this.appendFullWidthContentRules(blocks, root, {
+      preserveBodyWidth: this.flow === "paginated",
+    });
     if (this.flow === "scrolled") {
       blocks.push(
         `html[${READING_THEME_ATTR}]{max-width:none !important;margin:0 !important;width:100% !important}`,
