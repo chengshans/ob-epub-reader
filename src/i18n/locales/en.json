@@ -290,7 +290,7 @@
       },
       "plain-text": {
         "label": "Plain text",
-        "desc": "Excerpt body only, no links or formatting, easy to copy elsewhere; location kept inside the plugin",
+        "desc": "Excerpt body only, no links or formatting, easy to copy elsewhere",
         "pros": "Export-friendly, cleanest body",
         "cons": "No back-to-source, no color"
       }

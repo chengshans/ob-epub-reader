@@ -28,7 +28,7 @@
 - **文本高亮与标注** — 选中文字后可画线（黄/红/绿/蓝/紫）或添加想法；画线/改色自动复制摘录
 - **复制与画线** — 点击画线颜色自动复制；关闭标注模式下仅复制（可选颜色）；分屏共读时可自动插入最近编辑的 Markdown 笔记
 - **五种想法类型** — 做笔记、灵感、准备实践、反复看、疑问；可在设置中自定义名称与图标
-- **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，支持五种可配置的摘录链接格式；摘录文件夹与文件名支持 `{filefolder}`、`{title}`、`{filename}` 占位符
+- **摘录导出** — 标注自动写入 Vault 中的 Markdown 摘录文件，支持五种可配置的摘录链接格式（含**纯文本**，仅保留选中文字，便于复制到外部）；摘录文件夹与文件名支持 `{filefolder}`、`{title}`、`{filename}` 占位符
 - **深度链接** — 使用 Wiki 链接 `#cfi=...` 从摘录跳回 EPUB 原文；旧版 `obsidian://ob-epub-goto` 与块引用格式可自动兼容并迁移
 - **阅读设置面板** — 工具栏 ⚙ 弹出：字号滑条、两侧空白、六种阅读主题、高亮透明度、自动粘贴开关
 - **阅读模式** — 分页 / 滚动，可调字体大小与两侧空白（12–120 px）
@@ -77,9 +77,17 @@
 | ![正文 + 文末「原文」](assets/readme-excerpt-formats/inline-suffix.png) | `inline-suffix` | 正文 + 文末「原文」 | `正文。[[book.epub#cfi=...\|原文]]` | 不保存，读回 `yellow` |
 | ![着色正文 + 文末「原文」](assets/readme-excerpt-formats/inline-colored.png) | `inline-colored` | 着色正文 + 文末「原文」 | `<span style="color: #8b5cf6;">正文</span> [[...\|原文]]` | span hex → 最近高亮色 |
 | ![链接即正文](assets/readme-excerpt-formats/wiki-text-alias.png) | `wiki-text-alias` | 链接即正文 | `[[book.epub#cfi=...\|摘录全文]]` | 不保存，读回 `yellow` |
-| — | `plain-text` | 纯文本 | `正文`（仅选中文字） | 不保存，读回 `yellow`；无法点击回到原文 |
+| — | `plain-text` | 纯文本 | 仅选中文字，无链接与注释 | 不写入文件；读回 `yellow`；无法回到原文 |
 
-想法区块（五种格式共用）：
+纯文本格式示例（摘录文件与剪贴板内容一致）：
+
+```markdown
+在投资领域里……周期最可靠。基本面、心理因素、价格与收益的涨跌，提供了犯错或者从别人的错误中获利的机会。这些都是已知的事实。
+```
+
+摘录文件、剪贴板与复制结果均与上例一致：**只有选中正文**，无链接、无注释、无定位信息。
+
+想法区块（五种格式共用，纯文本格式下可选）：
 
 ```markdown
 <!-- ob-epub-note-type: inspiration -->
@@ -90,9 +98,9 @@
 
 ### 回到原文
 
-摘录中的 Wiki 链接（`[[书名.epub#cfi=...|...]]`）、**原文** 链接、或 `ob-epub` callout 标题链接，均可跳转到 EPUB 阅读器的对应位置（分屏模式下同样有效）。
+摘录中的 Wiki 链接（`[[书名.epub#cfi=...|...]]`）、**原文** 链接、或 `ob-epub` callout 标题链接，均可跳转到 EPUB 阅读器的对应位置（分屏模式下同样有效）。**纯文本**格式不含任何链接，不支持回到原文。
 
-> 旧版 `obsidian://ob-epub-goto?file=...&cfi=...`、旧块引用与旧注释格式会在插件首次加载或手动转换时迁移为当前选中的摘录格式。
+> 旧版 `obsidian://ob-epub-goto?file=...&cfi=...`、旧块引用、旧 CFI 注释行会在插件首次加载或手动转换时迁移为当前选中的摘录格式。
 
 ### 阅读设置
 
@@ -185,7 +193,7 @@
 | 文件 | 位置 | 内容 |
 |------|------|------|
 | 摘录 Markdown | `{摘录文件夹}/`（文件名可配置，默认 `《书名》摘录.md`） | 高亮、标注；frontmatter 含 `epub-source` 与阅读进度 |
-| `data.json` | `.obsidian/plugins/ob-epub-reader/` | 插件设置（不含标注与进度） |
+| `data.json` | `.obsidian/plugins/ob-epub-reader/` | 插件设置 |
 
 摘录 frontmatter 进度字段：`progress-percent`、`progress-cfi`、`progress-chapter`、`last-read`、`reading-time-seconds`（累计阅读秒数）。
 

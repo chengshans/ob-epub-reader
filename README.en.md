@@ -28,7 +28,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought; highlight/recolor auto-copies excerpts
 - **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only (optional color); split-view co-reading can auto-insert into the recently edited Markdown note
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
-- **Excerpt export** — Annotations sync to Markdown excerpt files with five configurable excerpt link formats; excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
+- **Excerpt export** — Annotations sync to Markdown excerpt files with five configurable excerpt link formats (including **plain text** — selected passage only, ideal for copying elsewhere); excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading settings panel** — Toolbar ⚙ popover: font size slider, side margins, six reading themes, highlight opacity, auto-paste toggle
 - **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px)
@@ -77,9 +77,17 @@ Under **Settings → Excerpt link format**, choose one of five presets. Changes 
 | ![Passage + trailing source link](assets/readme-excerpt-formats/inline-suffix.png) | `inline-suffix` | Passage + trailing source link | `Passage. [[book.epub#cfi=...\|Source]]` | not stored; reads back as `yellow` |
 | ![Colored passage + trailing source link](assets/readme-excerpt-formats/inline-colored.png) | `inline-colored` | Colored passage + trailing source link | `<span style="color: #8b5cf6;">Passage</span> [[...\|Source]]` | span hex → nearest highlight color |
 | ![Link as passage text](assets/readme-excerpt-formats/wiki-text-alias.png) | `wiki-text-alias` | Link as passage text | `[[book.epub#cfi=...\|Full excerpt text]]` | not stored; reads back as `yellow` |
-| — | `plain-text` | Plain text | `passage` (selected text only) | not stored; reads back as `yellow`; no back-to-source |
+| — | `plain-text` | Plain text | Selected passage only; no links or comments | not written to file; reads back as `yellow`; no back-to-source |
 
-Thought block (shared by all five formats):
+Plain text example (same content in excerpt files and clipboard):
+
+```markdown
+In investing, cycles are the most reliable force. Fundamentals, psychology, and the rise and fall of prices and returns create chances to err—or to profit from others' mistakes. These are known facts.
+```
+
+Excerpt files, clipboard, and copy output match the example above: **selected passage only** — no links, comments, or location metadata.
+
+Thought block (shared by all five formats; optional with plain text):
 
 ```markdown
 <!-- ob-epub-note-type: inspiration -->
@@ -90,7 +98,7 @@ Multi-line excerpts: formats 2/3 (`inline-suffix`, `inline-colored`) and format 
 
 ### Back to source
 
-Wiki links in excerpts (`[[book.epub#cfi=...|...]]`), **Source** links, or `ob-epub` callout title links all jump to the matching passage in the EPUB reader (works in split view).
+Wiki links in excerpts (`[[book.epub#cfi=...|...]]`), **Source** links, or `ob-epub` callout title links all jump to the matching passage in the EPUB reader (works in split view). **Plain text** has no links and does not support back-to-source.
 
 > Legacy `obsidian://ob-epub-goto?file=...&cfi=...` URLs, old block-ref links, and legacy CFI-comment layouts are migrated to the currently selected excerpt format on first plugin load or via manual conversion.
 
