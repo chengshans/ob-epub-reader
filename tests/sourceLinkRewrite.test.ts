@@ -107,6 +107,21 @@ describe("rewriteGotoLinksToCurrentFormat", () => {
     expect(result).not.toContain("[!ob-epub");
   });
 
+  it("converts callout-title to plain-text", () => {
+    const store = createStore("plain-text");
+    const chunk = [
+      `> [!ob-epub|yellow] [[${EPUB_SOURCE}#cfi=/6/14!/4/2/1:0&end=/6/14!/4/2/1:42|${CHAPTER} · 2026-05-23 18:15:42]]`,
+      "> 摘录正文第一行",
+      "> 摘录正文第二行",
+    ].join("\n");
+    const result = store.rewriteGotoLinksToCurrentFormat(chunk, EPUB_SOURCE);
+
+    expect(result).not.toMatch(/\[\[[^\]]+\.epub#cfi=/);
+    expect(result).not.toContain("[!ob-epub");
+    expect(result).toContain("摘录正文第一行\n摘录正文第二行");
+    expect(countCfiComments(result)).toBe(0);
+  });
+
   it("removes wiki link with calibre CFI brackets when converting to callout-title", () => {
     const store = createStore("callout-title");
     const wikiLink =

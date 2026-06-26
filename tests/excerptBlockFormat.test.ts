@@ -82,6 +82,29 @@ describe("excerptBlockFormat", () => {
     expect(parsed?.cfiRange).toBe(SAMPLE_CFI);
   });
 
+  it("builds plain-text as selected text only", () => {
+    const { built, parsed } = roundTrip("plain-text");
+    expect(built).toBe(TEXT);
+    expect(built).not.toContain("<!--");
+    expect(built).not.toContain("[[");
+    expect(parsed?.text).toBe(TEXT);
+    expect(parsed?.color).toBe(DEFAULT_EXCERPT_HIGHLIGHT_COLOR);
+  });
+
+  it("strips legacy CFI comment when parsing plain-text", () => {
+    const chunk = `${TEXT}\n\n<!-- ob-epub-cfi: ${SAMPLE_CFI} -->`;
+    const parsed = parseExcerptChunk(chunk, EPUB_SOURCE, noteTypes());
+    expect(parsed?.text).toBe(TEXT);
+    expect(parsed?.cfiRange).toBe(SAMPLE_CFI);
+  });
+
+  it("preserves multiline text in plain-text format", () => {
+    const ann = sampleAnn({ text: "第一行\n第二行" });
+    const { built, parsed } = roundTrip("plain-text", ann);
+    expect(built).toContain("第一行\n第二行");
+    expect(parsed?.text).toBe("第一行\n第二行");
+  });
+
   it("merges multiline text into single-line wiki alias", () => {
     const ann = sampleAnn({ text: "第一行\n第二行" });
     const built = buildExcerptBlock(ann, EPUB_SOURCE, "wiki-text-alias", formatDate);
@@ -104,6 +127,7 @@ describe("excerptBlockFormat", () => {
       "inline-suffix",
       "inline-colored",
       "wiki-text-alias",
+      "plain-text",
     ] as const) {
       const { parsed } = roundTrip(format, ann);
       expect(parsed?.note).toBe("我的想法");
@@ -118,6 +142,7 @@ describe("excerptBlockFormat", () => {
       "inline-suffix",
       "inline-colored",
       "wiki-text-alias",
+      "plain-text",
     ] as const) {
       const built = buildExcerptBlock(ann, EPUB_SOURCE, format, formatDate);
       expect(isChunkInCurrentFormat(built, ann, EPUB_SOURCE, format, formatDate)).toBe(true);

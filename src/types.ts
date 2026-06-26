@@ -159,18 +159,20 @@ export function noteTypeLabel(id: NoteType | undefined, types: NoteTypeDef[]): s
   return types.find((entry) => entry.id === (id ?? "note"))?.label ?? getDefaultNoteTypes()[0].label;
 }
 
-/** 摘录导出 / 跳转链接的写入格式（四种固定预设） */
+/** 摘录导出 / 跳转链接的写入格式（五种固定预设） */
 export type SourceLinkFormat =
   | "callout-title"
   | "inline-suffix"
   | "inline-colored"
-  | "wiki-text-alias";
+  | "wiki-text-alias"
+  | "plain-text";
 
 const SOURCE_LINK_FORMAT_IDS_LIST: SourceLinkFormat[] = [
   "callout-title",
   "inline-suffix",
   "inline-colored",
   "wiki-text-alias",
+  "plain-text",
 ];
 
 export function getSourceLinkFormats(): {

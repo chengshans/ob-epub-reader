@@ -115,7 +115,7 @@ zhTW.notice.copyFailed = "複製失敗";
 zhTW.reader.contextMenu.copyTitle = "按目前摘錄格式複製到剪貼簿";
 zhTW.settings.sourceLinkFormat.desc = "選取複製與新標註使用所選格式；";
 zhTW.settings.defaultExcerptColor.desc =
-  "不儲存顏色的摘錄格式（正文 + 文末「原文」、連結即正文）在解析或格式轉換時使用的畫線顏色";
+  "不儲存顏色的摘錄格式（正文 + 文末「原文」、連結即正文、純文字）在解析或格式轉換時使用的畫線顏色";
 zhTW.settings.formats["inline-suffix"].desc =
   "正文後接 [[書名.epub#cfi=...|原文]]；不儲存畫線顏色，解析與轉換時使用預設畫線顏色";
 zhTW.settings.formats["wiki-text-alias"].desc =

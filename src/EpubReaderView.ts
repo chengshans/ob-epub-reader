@@ -2175,12 +2175,15 @@ export class EpubReaderView extends FileView {
   ): Promise<{ copied: boolean; insert?: ExcerptInsertResult }> {
     if (!this.file) return { copied: false };
 
-    const markdown = buildExcerptBlock(
-      ann,
-      this.file.path,
-      this.settings.sourceLinkFormat,
-      () => ""
-    );
+    const markdown =
+      this.settings.sourceLinkFormat === "plain-text"
+        ? ann.text
+        : buildExcerptBlock(
+            ann,
+            this.file.path,
+            this.settings.sourceLinkFormat,
+            () => ""
+          );
 
     try {
       await navigator.clipboard.writeText(markdown);

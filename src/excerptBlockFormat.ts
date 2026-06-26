@@ -175,6 +175,12 @@ function buildWikiTextAliasBlock(ann: Annotation, epubPath: string): string {
   return parts.join("\n");
 }
 
+function buildPlainTextBlock(ann: Annotation): string {
+  const parts: string[] = [ann.text];
+  appendNoteSection(parts, ann);
+  return parts.join("\n");
+}
+
 export function buildExcerptBlock(
   ann: Annotation,
   epubPath: string,
@@ -190,6 +196,8 @@ export function buildExcerptBlock(
       return buildInlineColoredBlock(ann, epubPath);
     case "wiki-text-alias":
       return buildWikiTextAliasBlock(ann, epubPath);
+    case "plain-text":
+      return buildPlainTextBlock(ann);
     default:
       return buildCalloutBlock(ann, epubPath, formatDate);
   }
@@ -425,6 +433,71 @@ function parseInlineSuffixChunk(
   };
 }
 
+function isPlainTextChunkBody(body: string): boolean {
+  if (/^>\s*\[!ob-epub\|/m.test(body)) return false;
+  if (inlineSuffixLinkRe().test(body)) return false;
+  if (coloredInlineRe().test(body)) return false;
+  if (/\[\[[^\n]+\.epub#cfi=/.test(body)) return false;
+  return true;
+}
+
+function parsePlainTextChunk(
+  trimmed: string,
+  noteTypes: NoteTypeDef[],
+  defaultColor: HighlightColor
+): Annotation | null {
+  const body = stripLayoutFromBlock(trimmed);
+  if (!isPlainTextChunkBody(body)) return null;
+
+  const lines = trimmed.split("\n");
+  let noteStartIdx = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    const lineTrim = lines[i].trim();
+    if (CFI_COMMENT_RE.test(lineTrim) || /^<!--\s*ob-epub-cfi:/.test(lineTrim)) continue;
+    if (NOTE_TYPE_COMMENT_RE.test(lineTrim)) {
+      noteStartIdx = i;
+      break;
+    }
+  }
+
+  const textLines: string[] = [];
+  for (let i = 0; i < noteStartIdx; i++) {
+    const lineTrim = lines[i].trim();
+    if (CFI_COMMENT_RE.test(lineTrim) || /^<!--\s*ob-epub-cfi:/.test(lineTrim)) continue;
+    textLines.push(lines[i]);
+  }
+  while (textLines.length > 0 && textLines[textLines.length - 1].trim() === "") {
+    textLines.pop();
+  }
+  const text = textLines.join("\n");
+
+  const { note, noteType } = parseExcerptNote(lines, noteStartIdx, noteTypes);
+  if (!text && !note) return null;
+
+  let cfiRange = "";
+  let id = "";
+  const cfiLine = lines.find((line) => /^<!--\s*ob-epub-cfi:/.test(line.trim()));
+  if (cfiLine) {
+    const commentMatch = cfiLine.match(/<!--\s*ob-epub-cfi:\s*([\s\S]*?)\s*-->/);
+    if (commentMatch) {
+      cfiRange =
+        extractEpubCfiLiteral(commentMatch[1]) ?? commentMatch[1].trim();
+      if (cfiRange) id = resolveAnnotationId(null, cfiRange);
+    }
+  }
+
+  return {
+    id,
+    cfiRange,
+    text,
+    color: defaultColor,
+    note,
+    noteType,
+    chapter: "",
+    created: new Date(0).toISOString(),
+  };
+}
+
 export function parseExcerptChunk(
   chunk: string,
   _epubFilePath: string,
@@ -447,6 +520,9 @@ export function parseExcerptChunk(
 
   const inline = parseInlineSuffixChunk(trimmed, noteTypes, defaultColor);
   if (inline) return inline;
+
+  const plain = parsePlainTextChunk(trimmed, noteTypes, defaultColor);
+  if (plain) return plain;
 
   return null;
 }

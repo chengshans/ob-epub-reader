@@ -38,6 +38,12 @@ import {
   slimWikiGotoLinksInContent,
 } from "./epubSubpath";
 import {
+  annotationsToPlainTextMeta,
+  mergePlainTextCfi,
+  type PlainTextAnnMeta,
+  type PlainTextCfiPersistence,
+} from "./plainTextCfiStore";
+import {
   Annotation,
   BookProgress,
   EpubPluginSettings,
@@ -47,6 +53,10 @@ import {
   parseReadingTime,
   resolveNoteTypes,
 } from "./types";
+
+export interface AnnotationVaultStoreDeps {
+  plainTextCfi?: PlainTextCfiPersistence;
+}
 
 // ── Block format written to 《书名》摘录.md ───────────────────────────────
 //
@@ -74,14 +84,16 @@ interface OldAnnotation {
 export class AnnotationVaultStore {
   private app: App;
   private settings: EpubPluginSettings;
+  private plainTextCfi?: PlainTextCfiPersistence;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private watchPausedUntil = 0;
   /** Serialize excerpt read-modify-write per EPUB to avoid lost annotations. */
   private excerptWriteChains = new Map<string, Promise<void>>();
 
-  constructor(app: App, settings: EpubPluginSettings) {
+  constructor(app: App, settings: EpubPluginSettings, deps?: AnnotationVaultStoreDeps) {
     this.app = app;
     this.settings = settings;
+    this.plainTextCfi = deps?.plainTextCfi;
   }
 
   /** Queue excerpt mutations for the same EPUB file (parallel add/update would otherwise race). */
@@ -113,6 +125,36 @@ export class AnnotationVaultStore {
 
   private isWatchPaused(): boolean {
     return Date.now() < this.watchPausedUntil;
+  }
+
+  private async ensurePlainTextCfiLoaded(epubFilePath: string): Promise<void> {
+    if (!this.plainTextCfi || this.plainTextCfiCache.has(epubFilePath)) return;
+    const meta = await this.plainTextCfi.load(epubFilePath);
+    this.plainTextCfiCache.set(epubFilePath, meta);
+  }
+
+  private plainTextCfiCache = new Map<string, PlainTextAnnMeta[]>();
+
+  private async persistPlainTextCfi(
+    epubFilePath: string,
+    annotations: Annotation[]
+  ): Promise<void> {
+    if (this.settings.sourceLinkFormat !== "plain-text" || !this.plainTextCfi) return;
+    const meta = annotationsToPlainTextMeta(
+      annotations.filter((ann) => Boolean(ann.cfiRange))
+    );
+    this.plainTextCfiCache.set(epubFilePath, meta);
+    await this.plainTextCfi.save(epubFilePath, meta);
+  }
+
+  private enrichPlainTextAnnotations(
+    epubFilePath: string,
+    annotations: Annotation[]
+  ): void {
+    if (this.settings.sourceLinkFormat !== "plain-text") return;
+    const meta = this.plainTextCfiCache.get(epubFilePath);
+    if (!meta?.length) return;
+    mergePlainTextCfi(annotations, meta);
   }
 
   /** Extract CFI from a markdown annotation chunk. */
@@ -754,6 +796,7 @@ export class AnnotationVaultStore {
       annotations.push(ann);
     }
 
+    this.enrichPlainTextAnnotations(epubFilePath, annotations);
     return annotations;
   }
 
@@ -782,6 +825,7 @@ export class AnnotationVaultStore {
     );
     this.pauseWatch();
     await this.writeContent(epubFilePath, newContent);
+    await this.persistPlainTextCfi(epubFilePath, annotations);
   }
 
   // ── Public CRUD ───────────────────────────────────────────────────────────
@@ -789,6 +833,7 @@ export class AnnotationVaultStore {
   async add(epubFilePath: string, ann: Annotation): Promise<void> {
     if (!this.annotationsEnabled()) return;
     return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      await this.ensurePlainTextCfiLoaded(epubFilePath);
       await this.ensureFile(epubFilePath);
       const current = await this.readContent(epubFilePath);
       const annotations = this.parseContent(current, epubFilePath);
@@ -800,6 +845,7 @@ export class AnnotationVaultStore {
   async update(epubFilePath: string, id: string, patch: Partial<Annotation>): Promise<void> {
     if (!this.annotationsEnabled()) return;
     return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      await this.ensurePlainTextCfiLoaded(epubFilePath);
       const content = await this.readContent(epubFilePath);
       if (!content) return;
 
@@ -815,6 +861,7 @@ export class AnnotationVaultStore {
   async remove(epubFilePath: string, id: string): Promise<void> {
     if (!this.annotationsEnabled()) return;
     return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      await this.ensurePlainTextCfiLoaded(epubFilePath);
       const content = await this.readContent(epubFilePath);
       if (!content) return;
 
@@ -845,6 +892,7 @@ export class AnnotationVaultStore {
   }
 
   async getByFile(epubFilePath: string): Promise<Annotation[]> {
+    await this.ensurePlainTextCfiLoaded(epubFilePath);
     const content = await this.readContent(epubFilePath);
     return this.parseContent(content, epubFilePath);
   }

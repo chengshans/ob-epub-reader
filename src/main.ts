@@ -11,6 +11,7 @@ import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
+import type { PlainTextAnnMeta } from "./plainTextCfiStore";
 
 applyEpubjsCfiPatch();
 
@@ -43,7 +44,23 @@ export default class ObEpubPlugin extends Plugin {
     await initializeI18n(uiLocale);
     await this.loadSettings();
 
-    this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
+    this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings, {
+      plainTextCfi: {
+        load: async (epubPath) => {
+          const data = (await this.loadData()) ?? {};
+          const map = data.plainTextCfis as Record<string, PlainTextAnnMeta[]> | undefined;
+          return map?.[epubPath] ?? [];
+        },
+        save: async (epubPath, meta) => {
+          const data = (await this.loadData()) ?? {};
+          const map =
+            (data.plainTextCfis as Record<string, PlainTextAnnMeta[]> | undefined) ?? {};
+          map[epubPath] = meta;
+          data.plainTextCfis = map;
+          await this.saveData(data);
+        },
+      },
+    });
     this.progressStore = new ProgressStore(this.app, this.settings, this.annotationVaultStore, {
       loadPluginProgress: async () => {
         const data = (await this.loadData()) ?? {};

@@ -188,7 +188,7 @@
     },
     "defaultExcerptColor": {
       "name": "Default highlight color",
-      "desc": "Color used when parsing or converting formats that do not store color (inline suffix, wiki-text-alias)"
+      "desc": "Color used when parsing or converting formats that do not store color (inline suffix, wiki-text-alias, plain text)"
     },
     "defaultFlow": {
       "name": "Default reading mode",
@@ -287,6 +287,12 @@
         "desc": "[[book.epub#cfi=...|full excerpt text]] single line; no stored color",
         "pros": "Simplest single line",
         "cons": "Multi-line merged, no color"
+      },
+      "plain-text": {
+        "label": "Plain text",
+        "desc": "Excerpt body only, no links or formatting, easy to copy elsewhere; location kept inside the plugin",
+        "pros": "Export-friendly, cleanest body",
+        "cons": "No back-to-source, no color"
       }
     }
   },

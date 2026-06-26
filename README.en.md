@@ -28,7 +28,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought; highlight/recolor auto-copies excerpts
 - **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only (optional color); split-view co-reading can auto-insert into the recently edited Markdown note
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
-- **Excerpt export** — Annotations sync to Markdown excerpt files with four configurable excerpt link formats; excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
+- **Excerpt export** — Annotations sync to Markdown excerpt files with five configurable excerpt link formats; excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading settings panel** — Toolbar ⚙ popover: font size slider, side margins, six reading themes, highlight opacity, auto-paste toggle
 - **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px)
@@ -69,7 +69,7 @@ Optional thought text
 
 ### Excerpt link formats
 
-Under **Settings → Excerpt link format**, choose one of four presets. Changes apply only to new annotations; for existing excerpts, use **Convert existing excerpt links → Convert now** to batch-rewrite.
+Under **Settings → Excerpt link format**, choose one of five presets. Changes apply only to new annotations; for existing excerpts, use **Convert existing excerpt links → Convert now** to batch-rewrite.
 
 | Preview | ID | Setting name | Write example | Color |
 | :--: | ---- | ------------ | ------------- | ----- |
@@ -77,15 +77,16 @@ Under **Settings → Excerpt link format**, choose one of four presets. Changes 
 | ![Passage + trailing source link](assets/readme-excerpt-formats/inline-suffix.png) | `inline-suffix` | Passage + trailing source link | `Passage. [[book.epub#cfi=...\|Source]]` | not stored; reads back as `yellow` |
 | ![Colored passage + trailing source link](assets/readme-excerpt-formats/inline-colored.png) | `inline-colored` | Colored passage + trailing source link | `<span style="color: #8b5cf6;">Passage</span> [[...\|Source]]` | span hex → nearest highlight color |
 | ![Link as passage text](assets/readme-excerpt-formats/wiki-text-alias.png) | `wiki-text-alias` | Link as passage text | `[[book.epub#cfi=...\|Full excerpt text]]` | not stored; reads back as `yellow` |
+| — | `plain-text` | Plain text | `passage` (selected text only) | not stored; reads back as `yellow`; no back-to-source |
 
-Thought block (shared by all four formats):
+Thought block (shared by all five formats):
 
 ```markdown
 <!-- ob-epub-note-type: inspiration -->
 Thought content
 ```
 
-Multi-line excerpts: formats 2/3 (`inline-suffix`, `inline-colored`) keep line breaks; format 4 (`wiki-text-alias`) collapses line breaks to a single line (space-joined) when writing; escape `\|` and `\]` in aliases.
+Multi-line excerpts: formats 2/3 (`inline-suffix`, `inline-colored`) and format 5 (`plain-text`) keep line breaks; format 4 (`wiki-text-alias`) collapses line breaks to a single line (space-joined) when writing; escape `\|` and `\]` in aliases.
 
 ### Back to source
 
@@ -161,7 +162,7 @@ This group can be disabled entirely. When off, selection copies only (optional c
 |--------|-------------|---------|
 | Excerpt folder | Directory for excerpt Markdown; supports `{filefolder}` (EPUB directory), e.g. `{filefolder}/anno` | `epub-books/anno` |
 | Excerpt filename | Supports `{title}` (book title) and `{filename}` (EPUB filename), e.g. `{title} excerpts.md` | `{title} excerpts.md` |
-| Excerpt link format | Four presets; see above | Callout + title link |
+| Excerpt link format | Five presets; see above | Callout + title link |
 | Default highlight color | Fallback when parsing/converting formats that do not store color | Yellow |
 | Excerpt callout opacity | Background strength of ob-epub callouts in excerpt files | 20% |
 | Convert existing excerpt links | Batch-rewrite all excerpt files to the current format | — |
