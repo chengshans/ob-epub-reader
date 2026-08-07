@@ -35,7 +35,10 @@ import { ConfirmModal } from "./ConfirmModal";
 import { ReadingSettingsPopover } from "./ReadingSettingsPopover";
 import {
   buildTocSpineIndex,
+  findTocEntryForNavItem,
+  joinTocPath,
   resolveChapterLabel,
+  shouldMigrateAnnotationChapter,
   spineIndexFromLocation,
   TocSpineEntry,
 } from "./ChapterResolver";
@@ -1410,8 +1413,8 @@ export class EpubReaderView extends FileView {
     let activeEl: HTMLElement | null = null;
 
     for (const li of items) {
-      const label = li.dataset.tocLabel ?? "";
-      const isCurrent = normalizeChapterName(label) === current;
+      const tocKey = li.dataset.tocKey ?? li.dataset.tocLabel ?? "";
+      const isCurrent = normalizeChapterName(tocKey) === current;
       li.toggleClass("is-current", isCurrent);
       if (isCurrent) activeEl = li;
     }
@@ -1435,18 +1438,34 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private renderTocItems(items: NavItem[], container: HTMLElement, depth: number) {
+  private renderTocItems(
+    items: NavItem[],
+    container: HTMLElement,
+    depth: number,
+    parentLabels: string[] = []
+  ) {
     for (const item of items) {
       const itemLabel = item.label.trim();
+      const pathParts = itemLabel ? [...parentLabels, itemLabel] : [...parentLabels];
+      const path = joinTocPath(pathParts);
+      const entry = findTocEntryForNavItem(
+        this.tocSpineEntries,
+        item.href,
+        itemLabel,
+        path
+      );
+      const tocKey = entry?.key ?? itemLabel;
+
       const li = container.createEl("li", { cls: "epub-toc-item" });
       li.setAttr("data-toc-label", itemLabel);
+      li.setAttr("data-toc-key", tocKey);
       li.setCssProps({ paddingLeft: `${depth * 12}px` });
 
       const label = li.createEl("span", { cls: "epub-toc-label", text: itemLabel });
       label.addEventListener("click", () => {
         this.blockProgressSave = false;
         this.isBookInitializing = false;
-        this.currentChapter = itemLabel;
+        this.currentChapter = tocKey;
         this.updateTocActiveState();
         this.syncStatusBarChrome();
         this.rendition?.display(item.href);
@@ -1463,7 +1482,7 @@ export class EpubReaderView extends FileView {
           toggle.textContent = expanded ? "▶" : "▼";
         });
 
-        this.renderTocItems(item.subitems, subList, depth + 1);
+        this.renderTocItems(item.subitems, subList, depth + 1, pathParts);
       }
     }
   }
@@ -2151,7 +2170,8 @@ export class EpubReaderView extends FileView {
     }
     this.isRefreshingHighlights = true;
     try {
-      const list = await this.annotationVaultStore.getByFile(this.file.path);
+      let list = await this.annotationVaultStore.getByFile(this.file.path);
+      list = await this.resyncAmbiguousAnnotationChapters(list);
       this.cachedHighlights = list;
 
       for (const ann of list) {
@@ -2168,6 +2188,36 @@ export class EpubReaderView extends FileView {
     } finally {
       this.isRefreshingHighlights = false;
     }
+  }
+
+  /**
+   * Rewrite stored chapter fields to full TOC path keys using each
+   * annotation's CFI → spine index (legacy leaf titles → path).
+   */
+  private async resyncAmbiguousAnnotationChapters(
+    list: Annotation[]
+  ): Promise<Annotation[]> {
+    if (!this.file || !this.book || this.tocSpineEntries.length === 0) return list;
+
+    const next = [...list];
+    let changed = false;
+
+    for (let i = 0; i < next.length; i++) {
+      const ann = next[i];
+      const spineIndex = spineIndexFromLocation(null, ann.cfiRange, this.book);
+      if (spineIndex == null) continue;
+
+      const newKey = resolveChapterLabel(this.tocSpineEntries, spineIndex);
+      if (!shouldMigrateAnnotationChapter(ann.chapter, newKey)) {
+        continue;
+      }
+
+      await this.annotationVaultStore.update(this.file.path, ann.id, { chapter: newKey });
+      next[i] = { ...ann, chapter: newKey };
+      changed = true;
+    }
+
+    return changed ? next : list;
   }
 
   private async copyAnnotationAsExcerpt(
@@ -2480,7 +2530,7 @@ export class EpubReaderView extends FileView {
   private getVisibleNoteChapters(list: Annotation[]): string[] {
     const filtered = this.filterNotesList(list);
     const groups = groupAnnotationsByChapter(filtered);
-    const tocLabels = this.tocSpineEntries.map((e) => e.label);
+    const tocLabels = this.tocSpineEntries.map((e) => e.key);
     return sortChapterNames([...groups.keys()], groups, tocLabels);
   }
 
@@ -2718,7 +2768,7 @@ export class EpubReaderView extends FileView {
 
     const ul = this.notesListEl.createEl("ul", { cls: "epub-notes-list" });
     const groups = groupAnnotationsByChapter(filtered);
-    const tocLabels = this.tocSpineEntries.map((e) => e.label);
+    const tocLabels = this.tocSpineEntries.map((e) => e.key);
     const chapters = sortChapterNames([...groups.keys()], groups, tocLabels);
     const query = this.notesSearchQuery;
     const currentChapter = normalizeChapterName(this.currentChapter);
