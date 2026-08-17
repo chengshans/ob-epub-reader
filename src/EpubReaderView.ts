@@ -37,6 +37,7 @@ import {
   buildTocSpineIndex,
   findTocEntryForNavItem,
   joinTocPath,
+  resolveChapterKeyForMigration,
   resolveChapterLabel,
   shouldMigrateAnnotationChapter,
   spineIndexFromLocation,
@@ -732,6 +733,9 @@ export class EpubReaderView extends FileView {
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
     this.locationsReady = false;
+    if (this.file?.path) {
+      this.annotationVaultStore.clearChapterOrder(this.file.path);
+    }
     this.tocSpineEntries = [];
     this.tocHighlightedChapter = "";
     if (invalidateSession) this.resetNotesFilters();
@@ -815,6 +819,15 @@ export class EpubReaderView extends FileView {
 
       await this.loadTocData();
       if (this.isBookSessionStale(generation)) return;
+
+      if (this.file) {
+        this.annotationVaultStore.setChapterOrder(
+          this.file.path,
+          this.tocSpineEntries.map((e) => e.key)
+        );
+        await this.annotationVaultStore.rewriteExcerptGrouping(this.file.path);
+        if (this.isBookSessionStale(generation)) return;
+      }
 
       if (!opts?.preserveFlow) {
         this.applyPublicationReadingHints();
@@ -1454,7 +1467,7 @@ export class EpubReaderView extends FileView {
         itemLabel,
         path
       );
-      const tocKey = entry?.key ?? itemLabel;
+      const tocKey = entry?.key ?? path;
 
       const li = container.createEl("li", { cls: "epub-toc-item" });
       li.setAttr("data-toc-label", itemLabel);
@@ -2191,8 +2204,8 @@ export class EpubReaderView extends FileView {
   }
 
   /**
-   * Rewrite stored chapter fields to full TOC path keys using each
-   * annotation's CFI → spine index (legacy leaf titles → path).
+   * Upgrade legacy leaf chapter titles to full TOC path keys, and repair
+   * path keys whose parent was wrong — only among TOC entries with the same leaf.
    */
   private async resyncAmbiguousAnnotationChapters(
     list: Annotation[]
@@ -2207,7 +2220,11 @@ export class EpubReaderView extends FileView {
       const spineIndex = spineIndexFromLocation(null, ann.cfiRange, this.book);
       if (spineIndex == null) continue;
 
-      const newKey = resolveChapterLabel(this.tocSpineEntries, spineIndex);
+      const newKey = resolveChapterKeyForMigration(
+        this.tocSpineEntries,
+        spineIndex,
+        ann.chapter
+      );
       if (!shouldMigrateAnnotationChapter(ann.chapter, newKey)) {
         continue;
       }
@@ -2248,6 +2265,17 @@ export class EpubReaderView extends FileView {
     }
   }
 
+  /** Resolve chapter key from selection CFI (TOC path); falls back to progress chapter. */
+  private resolveChapterForCfi(cfi: string): string {
+    if (cfi && this.book && this.tocSpineEntries.length > 0) {
+      const spineIndex = spineIndexFromLocation(null, cfi, this.book);
+      if (spineIndex != null) {
+        return resolveChapterLabel(this.tocSpineEntries, spineIndex);
+      }
+    }
+    return this.currentChapter || unknownChapterLabel();
+  }
+
   private async copySelectionAsExcerpt(color: HighlightColor = "yellow") {
     if (!this.selectedCfi || !this.selectedText) return;
 
@@ -2256,7 +2284,7 @@ export class EpubReaderView extends FileView {
       cfiRange: this.selectedCfi,
       text: this.selectedText,
       color,
-      chapter: this.currentChapter || unknownChapterLabel(),
+      chapter: this.resolveChapterForCfi(this.selectedCfi),
       created: new Date().toISOString(),
     };
 
@@ -2283,7 +2311,7 @@ export class EpubReaderView extends FileView {
         cfiRange: this.selectedCfi,
         text: this.selectedText,
         color,
-        chapter: this.currentChapter || unknownChapterLabel(),
+        chapter: this.resolveChapterForCfi(this.selectedCfi),
         created: new Date().toISOString(),
       };
       await this.annotationVaultStore.add(this.file.path, ann);
@@ -2312,7 +2340,7 @@ export class EpubReaderView extends FileView {
     const filePath = this.file.path;
     const cfiRange = this.selectedCfi;
     const text = this.selectedText;
-    const chapter = this.currentChapter || unknownChapterLabel();
+    const chapter = this.resolveChapterForCfi(cfiRange);
 
     new NoteInputModal(
       this.app,

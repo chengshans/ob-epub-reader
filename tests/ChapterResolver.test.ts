@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   computeTocEntryKeys,
   joinTocPath,
+  resolveChapterKeyForMigration,
   resolveChapterLabel,
   shouldMigrateAnnotationChapter,
+  tocPathLeaf,
   TOC_PATH_SEP,
 } from "../src/ChapterResolver";
 
@@ -58,6 +60,55 @@ describe("resolveChapterLabel", () => {
   });
 });
 
+describe("resolveChapterKeyForMigration", () => {
+  const entries = computeTocEntryKeys([
+    { label: "2/", path: `Chapter1${TOC_PATH_SEP}2/`, href: "c1.xhtml", spineIndex: 2 },
+    { label: "2/", path: `Chapter3${TOC_PATH_SEP}2/`, href: "c3.xhtml", spineIndex: 15 },
+    { label: "4/", path: `Chapter4${TOC_PATH_SEP}4/`, href: "c4.xhtml", spineIndex: 20 },
+    { label: "1/", path: `Chapter6${TOC_PATH_SEP}1/`, href: "c6.xhtml", spineIndex: 40 },
+    { label: "2/", path: `Chapter6${TOC_PATH_SEP}2/`, href: "c6b.xhtml", spineIndex: 41 },
+    { label: "2/", path: `Chapter16${TOC_PATH_SEP}2/`, href: "c16.xhtml", spineIndex: 80 },
+  ]);
+
+  it("upgrades legacy leaf among same-label candidates only", () => {
+    expect(resolveChapterKeyForMigration(entries, 2, "2/")).toBe(`Chapter1${TOC_PATH_SEP}2/`);
+    expect(resolveChapterKeyForMigration(entries, 80, "2/")).toBe(`Chapter16${TOC_PATH_SEP}2/`);
+  });
+
+  it("keeps exact TOC key when CFI spine still matches (no same-leaf parent jump)", () => {
+    expect(
+      resolveChapterKeyForMigration(entries, 15, `Chapter3${TOC_PATH_SEP}2/`)
+    ).toBe(`Chapter3${TOC_PATH_SEP}2/`);
+    // Coarse resolve would pick Chapter6 › 2/ for spine 41; exact key at its own spine stays
+    expect(
+      resolveChapterKeyForMigration(entries, 41, `Chapter6${TOC_PATH_SEP}2/`)
+    ).toBe(`Chapter6${TOC_PATH_SEP}2/`);
+  });
+
+  it("does not move Chapter3 › 2/ to Chapter6 when spines still match", () => {
+    // Regression: drawing elsewhere used to re-resolve same leaf and merge Ch3 into Ch6
+    expect(
+      resolveChapterKeyForMigration(entries, 15, `Chapter3${TOC_PATH_SEP}2/`)
+    ).toBe(`Chapter3${TOC_PATH_SEP}2/`);
+  });
+
+  it("re-resolves exact TOC key when CFI spine moved to another file", () => {
+    expect(
+      resolveChapterKeyForMigration(entries, 15, `Chapter6${TOC_PATH_SEP}1/`)
+    ).toBe(`Chapter3${TOC_PATH_SEP}2/`);
+    expect(
+      resolveChapterKeyForMigration(entries, 2, `Chapter16${TOC_PATH_SEP}2/`)
+    ).toBe(`Chapter1${TOC_PATH_SEP}2/`);
+  });
+
+  it("does not jump legacy leaf to a different leaf via global spine resolve", () => {
+    expect(resolveChapterKeyForMigration(entries, 20, "2/")).toBe(`Chapter3${TOC_PATH_SEP}2/`);
+    expect(
+      resolveChapterKeyForMigration(entries, 20, `Chapter4${TOC_PATH_SEP}4/`)
+    ).toBe(`Chapter4${TOC_PATH_SEP}4/`);
+  });
+});
+
 describe("shouldMigrateAnnotationChapter", () => {
   it("does not migrate when chapter already matches key", () => {
     expect(shouldMigrateAnnotationChapter(`上篇${TOC_PATH_SEP}3/`, `上篇${TOC_PATH_SEP}3/`)).toBe(
@@ -65,15 +116,24 @@ describe("shouldMigrateAnnotationChapter", () => {
     );
   });
 
-  it("migrates legacy leaf to path key", () => {
+  it("migrates when keys differ", () => {
     expect(shouldMigrateAnnotationChapter("3/", `上篇${TOC_PATH_SEP}3/`)).toBe(true);
-  });
-
-  it("migrates unique leaf to nested path key", () => {
-    expect(shouldMigrateAnnotationChapter("第一章", `上篇${TOC_PATH_SEP}第一章`)).toBe(true);
+    expect(
+      shouldMigrateAnnotationChapter(
+        `Chapter6${TOC_PATH_SEP}1/`,
+        `Chapter3${TOC_PATH_SEP}2/`
+      )
+    ).toBe(true);
   });
 
   it("does not migrate when newKey is empty", () => {
     expect(shouldMigrateAnnotationChapter("序", "")).toBe(false);
+  });
+});
+
+describe("tocPathLeaf", () => {
+  it("returns last path segment", () => {
+    expect(tocPathLeaf(`Chapter1${TOC_PATH_SEP}2/`)).toBe("2/");
+    expect(tocPathLeaf("序")).toBe("序");
   });
 });

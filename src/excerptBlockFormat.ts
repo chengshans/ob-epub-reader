@@ -40,6 +40,8 @@ import {
 const CALLOUT_PREFIX = "ob-epub";
 const NOTE_TYPE_COMMENT_RE = /^<!--\s*ob-epub-note-type:\s*([a-z]+)\s*-->$/;
 const CFI_COMMENT_RE = /^<!--\s*ob-epub-cfi:\s*epubcfi\([\s\S]*?\)\s*-->$/;
+/** Persisted chapter for non-callout formats (avoids ##-context inheritance bugs). */
+const ANN_CHAPTER_COMMENT_RE = /^<!--\s*ob-epub-ann-chapter:\s*([\s\S]*?)\s*-->$/;
 
 export const DEFAULT_EXCERPT_HIGHLIGHT_COLOR: HighlightColor = "yellow";
 
@@ -123,6 +125,24 @@ function extractCfiFromExcerptChunk(text: string): string | null {
   return null;
 }
 
+function buildAnnChapterComment(chapter: string): string | null {
+  const trimmed = chapter.trim();
+  if (!trimmed) return null;
+  // HTML comments must not contain `--`
+  const safe = trimmed.replace(/--+/g, "—");
+  return `<!-- ob-epub-ann-chapter: ${safe} -->`;
+}
+
+function extractAnnChapterComment(text: string): string {
+  const match = text.match(/<!--\s*ob-epub-ann-chapter:\s*([\s\S]*?)\s*-->/);
+  return match?.[1]?.trim() ?? "";
+}
+
+function appendAnnChapterComment(parts: string[], ann: Annotation): void {
+  const comment = buildAnnChapterComment(ann.chapter);
+  if (comment) parts.push(comment);
+}
+
 function appendNoteSection(parts: string[], ann: Annotation): void {
   if (!ann.note) return;
   parts.push("", `<!-- ob-epub-note-type: ${ann.noteType ?? "note"} -->`, ann.note);
@@ -150,10 +170,14 @@ function buildInlineSuffixBlock(ann: Annotation, epubPath: string): string {
   const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, currentLinkAlias());
   const lines = ann.text.split("\n");
   if (lines.length === 0) {
-    return link;
+    const parts = [link];
+    appendAnnChapterComment(parts, ann);
+    appendNoteSection(parts, ann);
+    return parts.join("\n");
   }
   lines[lines.length - 1] = `${lines[lines.length - 1]}${link}`;
   const parts: string[] = [lines.join("\n")];
+  appendAnnChapterComment(parts, ann);
   appendNoteSection(parts, ann);
   return parts.join("\n");
 }
@@ -163,6 +187,7 @@ function buildInlineColoredBlock(ann: Annotation, epubPath: string): string {
   const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, currentLinkAlias());
   const span = `<span style="color: ${hex};">${ann.text}</span> ${link}`;
   const parts: string[] = [span];
+  appendAnnChapterComment(parts, ann);
   appendNoteSection(parts, ann);
   return parts.join("\n");
 }
@@ -171,6 +196,7 @@ function buildWikiTextAliasBlock(ann: Annotation, epubPath: string): string {
   const alias = ann.text.split("\n").join(" ").trim();
   const link = buildEpubWikiLink(epubPath, { cfiRange: ann.cfiRange }, alias);
   const parts: string[] = [link];
+  appendAnnChapterComment(parts, ann);
   appendNoteSection(parts, ann);
   return parts.join("\n");
 }
@@ -216,12 +242,14 @@ function parseExcerptNote(lines: string[], startIndex: number, noteTypes: NoteTy
     const line = lines[i];
     if (isSourceLinkLine(line)) continue;
     if (line.trim() === "") continue;
-    const typeMatch = line.trim().match(NOTE_TYPE_COMMENT_RE);
+    const lineTrim = line.trim();
+    const typeMatch = lineTrim.match(NOTE_TYPE_COMMENT_RE);
     if (typeMatch) {
       parsedNoteType = normalizeNoteType(typeMatch[1], noteTypes);
       continue;
     }
-    if (CFI_COMMENT_RE.test(line.trim())) continue;
+    if (CFI_COMMENT_RE.test(lineTrim)) continue;
+    if (ANN_CHAPTER_COMMENT_RE.test(lineTrim)) continue;
     noteLines.push(line);
   }
 
@@ -348,7 +376,7 @@ function parseWikiTextAliasChunk(
     color: defaultColor,
     note,
     noteType,
-    chapter: "",
+    chapter: extractAnnChapterComment(trimmed),
     created: new Date(0).toISOString(),
   };
 }
@@ -385,7 +413,7 @@ function parseInlineColoredChunk(
     color,
     note,
     noteType,
-    chapter: "",
+    chapter: extractAnnChapterComment(trimmed),
     created: new Date(0).toISOString(),
   };
 }
@@ -428,7 +456,7 @@ function parseInlineSuffixChunk(
     color: defaultColor,
     note,
     noteType,
-    chapter: "",
+    chapter: extractAnnChapterComment(trimmed),
     created: new Date(0).toISOString(),
   };
 }
@@ -454,6 +482,7 @@ function parsePlainTextChunk(
   for (let i = 0; i < lines.length; i++) {
     const lineTrim = lines[i].trim();
     if (CFI_COMMENT_RE.test(lineTrim) || /^<!--\s*ob-epub-cfi:/.test(lineTrim)) continue;
+    if (ANN_CHAPTER_COMMENT_RE.test(lineTrim)) continue;
     if (NOTE_TYPE_COMMENT_RE.test(lineTrim)) {
       noteStartIdx = i;
       break;
@@ -464,6 +493,7 @@ function parsePlainTextChunk(
   for (let i = 0; i < noteStartIdx; i++) {
     const lineTrim = lines[i].trim();
     if (CFI_COMMENT_RE.test(lineTrim) || /^<!--\s*ob-epub-cfi:/.test(lineTrim)) continue;
+    if (ANN_CHAPTER_COMMENT_RE.test(lineTrim)) continue;
     textLines.push(lines[i]);
   }
   while (textLines.length > 0 && textLines[textLines.length - 1].trim() === "") {
@@ -493,7 +523,7 @@ function parsePlainTextChunk(
     color: defaultColor,
     note,
     noteType,
-    chapter: "",
+    chapter: extractAnnChapterComment(trimmed),
     created: new Date(0).toISOString(),
   };
 }

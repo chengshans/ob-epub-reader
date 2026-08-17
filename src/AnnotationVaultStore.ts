@@ -78,10 +78,26 @@ export class AnnotationVaultStore {
   private watchPausedUntil = 0;
   /** Serialize excerpt read-modify-write per EPUB to avoid lost annotations. */
   private excerptWriteChains = new Map<string, Promise<void>>();
+  /** Book TOC order (chapter keys) for excerpt grouping; set while reader is open. */
+  private chapterOrderByEpub = new Map<string, string[]>();
 
   constructor(app: App, settings: EpubPluginSettings) {
     this.app = app;
     this.settings = settings;
+  }
+
+  /** Prefer TOC reading order when recomposing excerpt chapter groups. */
+  setChapterOrder(epubFilePath: string, chapterKeys: string[]): void {
+    if (chapterKeys.length === 0) {
+      this.chapterOrderByEpub.delete(epubFilePath);
+      return;
+    }
+    this.chapterOrderByEpub.set(epubFilePath, [...chapterKeys]);
+  }
+
+  clearChapterOrder(epubFilePath?: string): void {
+    if (epubFilePath) this.chapterOrderByEpub.delete(epubFilePath);
+    else this.chapterOrderByEpub.clear();
   }
 
   /** Queue excerpt mutations for the same EPUB file (parallel add/update would otherwise race). */
@@ -764,8 +780,11 @@ export class AnnotationVaultStore {
     annotations: Annotation[]
   ): string {
     const { preamble, suffix } = splitExcerptRegions(content);
-    const groupedBody = buildGroupedAnnotationBody(annotations, (ann) =>
-      this.buildBlock(ann, epubFilePath)
+    const tocOrder = this.chapterOrderByEpub.get(epubFilePath);
+    const groupedBody = buildGroupedAnnotationBody(
+      annotations,
+      (ann) => this.buildBlock(ann, epubFilePath),
+      tocOrder
     );
     return composeExcerptContent(preamble, groupedBody, suffix);
   }
@@ -857,6 +876,28 @@ export class AnnotationVaultStore {
   async getById(epubFilePath: string, id: string): Promise<Annotation | null> {
     const list = await this.getByFile(epubFilePath);
     return list.find((a) => a.id === id) ?? null;
+  }
+
+  /**
+   * Recompose excerpt with current TOC chapter order (no-op if content unchanged).
+   * Used once after opening a book so chapter groups follow reading order.
+   */
+  async rewriteExcerptGrouping(epubFilePath: string): Promise<void> {
+    if (!this.annotationsEnabled()) return;
+    return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      const current = await this.readContent(epubFilePath);
+      if (!current) return;
+      const annotations = this.parseContent(current, epubFilePath);
+      if (annotations.length === 0) return;
+      const newContent = this.recomposeExcerptFromContent(
+        current,
+        epubFilePath,
+        annotations
+      );
+      if (newContent === current) return;
+      this.pauseWatch();
+      await this.writeContent(epubFilePath, newContent);
+    });
   }
 
   // ── File watcher ──────────────────────────────────────────────────────────

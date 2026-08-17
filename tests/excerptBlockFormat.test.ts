@@ -75,6 +75,14 @@ describe("excerptBlockFormat", () => {
     }
   });
 
+  it("persists chapter comment for inline-colored so ## context cannot steal it", () => {
+    const built = buildExcerptBlock(sampleAnn(), EPUB_SOURCE, "inline-colored", formatDate);
+    expect(built).toContain(`<!-- ob-epub-ann-chapter: ${CHAPTER} -->`);
+    const underWrongHeading = `## Chapter6 保单 › 1/\n\n${built}`;
+    const parsed = parseExcerptChunk(underWrongHeading, EPUB_SOURCE, noteTypes());
+    expect(parsed?.chapter).toBe(CHAPTER);
+  });
+
   it("round-trips wiki-text-alias format with yellow color", () => {
     const { parsed } = roundTrip("wiki-text-alias");
     expect(parsed?.text).toBe(TEXT);

@@ -88,6 +88,22 @@ describe("sortChapterNames", () => {
     const sorted = sortChapterNames([...groups.keys()], groups);
     expect(sorted).toEqual(["第一章", "第三章"]);
   });
+
+  it("uses numeric CFI spine order so Chapter16 sorts after Chapter3", () => {
+    const SEP = " › ";
+    const ch1 = `Chapter1 山野${SEP}2/`;
+    const ch3 = `Chapter3 做梦${SEP}2/`;
+    const ch4 = `Chapter4 少女${SEP}2/`;
+    const ch16 = `Chapter16 我爱你${SEP}2/`;
+    const groups = groupAnnotationsByChapter([
+      makeAnn({ id: "a16", chapter: ch16, cfiRange: "epubcfi(/6/16!/4/2,/1:0,/1:10)" }),
+      makeAnn({ id: "a1", chapter: ch1, cfiRange: "epubcfi(/6/2!/4/2,/1:0,/1:10)" }),
+      makeAnn({ id: "a4", chapter: ch4, cfiRange: "epubcfi(/6/6!/4/2,/1:0,/1:10)" }),
+      makeAnn({ id: "a3", chapter: ch3, cfiRange: "epubcfi(/6/4!/4/2,/1:0,/1:10)" }),
+    ]);
+    const sorted = sortChapterNames([...groups.keys()], groups);
+    expect(sorted).toEqual([ch1, ch3, ch4, ch16]);
+  });
 });
 
 describe("buildChapterTocMarkdown", () => {

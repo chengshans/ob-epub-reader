@@ -39,13 +39,52 @@ export function computeTocEntryKeys(inputs: TocSpineEntryInput[]): TocSpineEntry
 }
 
 /**
- * Whether a stored annotation chapter should be rewritten to the TOC path key
- * resolved from its CFI (legacy leaf or outdated path → current key).
+ * Whether a stored annotation chapter should be rewritten to `newKey`.
+ * `resolveChapterKeyForMigration` already constrains the target; here we only
+ * skip no-ops / empty keys.
  */
 export function shouldMigrateAnnotationChapter(oldChapter: string, newKey: string): boolean {
   const old = oldChapter.trim();
   if (!newKey || old === newKey) return false;
   return true;
+}
+
+/** Last segment of a TOC path key (or the whole string if flat). */
+export function tocPathLeaf(chapter: string): string {
+  const parts = chapter.split(TOC_PATH_SEP).map((p) => p.trim()).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : chapter.trim();
+}
+
+/**
+ * Resolve chapter key for annotation migration.
+ *
+ * - Exact TOC key + CFI still in that spine file → keep (do not jump among
+ *   same-named leaves like `2/` under Chapter3 vs Chapter6).
+ * - Exact TOC key + CFI in a different spine file → re-resolve from CFI.
+ * - Legacy leaf / unknown → upgrade among same-leaf TOC entries only.
+ */
+export function resolveChapterKeyForMigration(
+  entries: TocSpineEntry[],
+  spineIndex: number,
+  oldChapter: string
+): string {
+  const old = oldChapter.trim();
+  if (!old) return resolveChapterLabel(entries, spineIndex);
+
+  const exact = entries.find((e) => e.key === old);
+  if (exact) {
+    if (exact.spineIndex === spineIndex) return old;
+    return resolveChapterLabel(entries, spineIndex);
+  }
+
+  const leaf = tocPathLeaf(old);
+  const candidates = entries.filter(
+    (e) => e.label === leaf || tocPathLeaf(e.key) === leaf
+  );
+  if (candidates.length === 0) {
+    return old.includes(TOC_PATH_SEP) ? old : resolveChapterLabel(entries, spineIndex);
+  }
+  return resolveChapterLabel(candidates, spineIndex) || candidates[0].key;
 }
 
 /** 深度优先遍历 TOC，解析每项对应的 spine index，并填入消歧 key */
