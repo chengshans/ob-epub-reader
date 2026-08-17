@@ -839,8 +839,17 @@ a.ob-epub-goto-link {
   gap: 8px;
 }
 
-.epub-notes-chapter-items.is-collapsed {
+.epub-notes-chapter-body.is-collapsed {
   display: none;
+}
+
+.epub-notes-tree-children {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .epub-note-item {

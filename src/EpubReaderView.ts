@@ -44,9 +44,13 @@ import {
   TocSpineEntry,
 } from "./ChapterResolver";
 import {
-  groupAnnotationsByChapter,
+  buildNotesChapterTree,
+  flattenNotesTreeKeys,
+  tocPathAncestorKeys,
+  type NotesTreeNode,
+} from "./notesChapterTree";
+import {
   normalizeChapterName,
-  sortChapterNames,
 } from "./excerptChapterLayout";
 import {
   isBlockedStylesheetHref,
@@ -1410,6 +1414,9 @@ export class EpubReaderView extends FileView {
     if (resolved) {
       this.currentChapter = resolved;
       this.notesChapterCollapsed.delete(normalizeChapterName(resolved));
+      for (const ancestor of tocPathAncestorKeys(resolved)) {
+        this.notesChapterCollapsed.delete(normalizeChapterName(ancestor));
+      }
       this.updateTocActiveState();
       this.syncStatusBarChrome();
     }
@@ -2555,11 +2562,13 @@ export class EpubReaderView extends FileView {
     this.renderNotesList(allList, filtered);
   }
 
-  private getVisibleNoteChapters(list: Annotation[]): string[] {
+  private getVisibleNotesTree(list: Annotation[]): NotesTreeNode[] {
     const filtered = this.filterNotesList(list);
-    const groups = groupAnnotationsByChapter(filtered);
-    const tocLabels = this.tocSpineEntries.map((e) => e.key);
-    return sortChapterNames([...groups.keys()], groups, tocLabels);
+    return buildNotesChapterTree(this.tocItems, this.tocSpineEntries, filtered);
+  }
+
+  private getVisibleNoteChapters(list: Annotation[]): string[] {
+    return flattenNotesTreeKeys(this.getVisibleNotesTree(list));
   }
 
   private areAllNoteChaptersCollapsed(list: Annotation[]): boolean {
@@ -2795,47 +2804,56 @@ export class EpubReaderView extends FileView {
     }
 
     const ul = this.notesListEl.createEl("ul", { cls: "epub-notes-list" });
-    const groups = groupAnnotationsByChapter(filtered);
-    const tocLabels = this.tocSpineEntries.map((e) => e.key);
-    const chapters = sortChapterNames([...groups.keys()], groups, tocLabels);
+    const tree = buildNotesChapterTree(this.tocItems, this.tocSpineEntries, filtered);
+    this.renderNotesTreeNodes(ul, tree, 0);
+  }
+
+  private renderNotesTreeNodes(container: HTMLElement, nodes: NotesTreeNode[], depth: number) {
     const query = this.notesSearchQuery;
     const currentChapter = normalizeChapterName(this.currentChapter);
 
-    for (const chapter of chapters) {
-      const chapterAnns = [...(groups.get(chapter) ?? [])].sort((a, b) =>
-        b.created.localeCompare(a.created)
-      );
-      if (chapterAnns.length === 0) continue;
-
-      const collapsed = this.notesChapterCollapsed.has(chapter);
-      const chapterLi = ul.createEl("li", { cls: "epub-notes-chapter" });
-      if (chapter === currentChapter) chapterLi.addClass("is-current");
+    for (const node of nodes) {
+      const collapsed = this.notesChapterCollapsed.has(node.key);
+      const chapterLi = container.createEl("li", { cls: "epub-notes-chapter" });
+      chapterLi.setAttr("data-depth", String(depth));
+      if (normalizeChapterName(node.key) === currentChapter) {
+        chapterLi.addClass("is-current");
+      }
 
       const chapterHead = chapterLi.createDiv({ cls: "epub-notes-chapter-head" });
+      chapterHead.setCssProps({ paddingLeft: `${Math.max(0, depth) * 10}px` });
       chapterHead.createSpan({
         cls: "epub-notes-chapter-toggle",
         text: collapsed ? "▶" : "▼",
       });
-      chapterHead.createSpan({ cls: "epub-notes-chapter-label", text: chapter });
+      chapterHead.createSpan({ cls: "epub-notes-chapter-label", text: node.label });
       chapterHead.createSpan({
         cls: "epub-notes-chapter-count",
-        text: String(chapterAnns.length),
+        text: String(node.totalCount),
       });
 
-      const itemsUl = chapterLi.createEl("ul", { cls: "epub-notes-chapter-items" });
-      if (collapsed) itemsUl.addClass("is-collapsed");
+      const body = chapterLi.createDiv({ cls: "epub-notes-chapter-body" });
+      if (collapsed) body.addClass("is-collapsed");
 
       chapterHead.addEventListener("click", () => {
-        if (this.notesChapterCollapsed.has(chapter)) {
-          this.notesChapterCollapsed.delete(chapter);
+        if (this.notesChapterCollapsed.has(node.key)) {
+          this.notesChapterCollapsed.delete(node.key);
         } else {
-          this.notesChapterCollapsed.add(chapter);
+          this.notesChapterCollapsed.add(node.key);
         }
         this.refreshNotesListView(this.cachedHighlights);
       });
 
-      for (const ann of chapterAnns) {
-        this.renderNoteItem(itemsUl, ann, query);
+      if (node.annotations.length > 0) {
+        const itemsUl = body.createEl("ul", { cls: "epub-notes-chapter-items" });
+        for (const ann of node.annotations) {
+          this.renderNoteItem(itemsUl, ann, query);
+        }
+      }
+
+      if (node.children.length > 0) {
+        const childUl = body.createEl("ul", { cls: "epub-notes-tree-children" });
+        this.renderNotesTreeNodes(childUl, node.children, depth + 1);
       }
     }
   }
