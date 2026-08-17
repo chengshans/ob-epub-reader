@@ -1,3 +1,5 @@
+
+
 # EPUB Marginalia
 
 **中文** | [English](README.en.md)
@@ -212,6 +214,7 @@ npm run build    # 输出到 dist/
 npm run release  # 构建并打包 zip
 npm run dev      # 监听模式
 npm test         # 运行单元测试
+npm run lint     # ESLint 检查
 ```
 
 直接部署到 Vault 插件目录：
