@@ -1,3 +1,4 @@
+import { joinTocPath, TOC_PATH_SEP } from "./ChapterResolver";
 import { compareCfi } from "./cfi/compare";
 import { wikiLinkAliasSuffixPattern } from "./i18n/excerptAliases";
 import { isI18nInitialized, t } from "./i18n/i18n";
@@ -12,10 +13,74 @@ export const CHAPTER_BODY_END = "<!-- ob-epub-chapter-body-end -->";
 
 export const OB_EPUB_BLOCK_RE = /^>\s*\[!ob-epub\|/m;
 
-/** Remove leading `## 章节` headings from an annotation segment. */
+/** Max markdown heading depth used for nested chapter keys (`##` … `######`). */
+const MAX_HEADING_PARTS = 5;
+
+const BODY_HEADING_RE = /^(#{2,6})\s+(.+)$/gm;
+
+/** Split a chapter path key into heading segments (`Chapter5 › 1/` → `["Chapter5","1/"]`). */
+export function chapterKeyToHeadingParts(key: string): string[] {
+  const parts = key
+    .split(TOC_PATH_SEP)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length <= MAX_HEADING_PARTS) return parts;
+  return [...parts.slice(0, MAX_HEADING_PARTS - 1), joinTocPath(parts.slice(MAX_HEADING_PARTS - 1))];
+}
+
+/**
+ * Apply one body heading to the chapter path stack.
+ * Legacy flat titles that contain `TOC_PATH_SEP` replace the whole stack.
+ */
+export function applyChapterHeadingToStack(stack: string[], hashes: number, title: string): void {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+
+  if (trimmed.includes(TOC_PATH_SEP)) {
+    stack.length = 0;
+    stack.push(...chapterKeyToHeadingParts(trimmed));
+    return;
+  }
+
+  const level = Math.min(Math.max(hashes, 2), 6);
+  const depth = level - 2;
+  stack.length = depth;
+  stack.push(trimmed);
+}
+
+/** Scan `#{2,6}` headings in text and update the path stack in order. */
+export function applyHeadingsFromText(text: string, stack: string[]): void {
+  BODY_HEADING_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = BODY_HEADING_RE.exec(text)) !== null) {
+    const title = match[2].trim();
+    if (!title || isChapterTocLabel(title)) continue;
+    applyChapterHeadingToStack(stack, match[1].length, title);
+  }
+}
+
+/** Emit heading lines for the path segments that change vs the previous chapter. */
+export function headingLinesForChapterTransition(prevParts: string[], nextParts: string[]): string[] {
+  let common = 0;
+  while (
+    common < prevParts.length &&
+    common < nextParts.length &&
+    prevParts[common] === nextParts[common]
+  ) {
+    common++;
+  }
+  const lines: string[] = [];
+  for (let i = common; i < nextParts.length; i++) {
+    const level = Math.min(i + 2, 6);
+    lines.push(`${"#".repeat(level)} ${nextParts[i]}`);
+  }
+  return lines;
+}
+
+/** Remove leading `##`…`######` chapter headings from an annotation segment. */
 export function stripChapterHeadingPrefix(text: string): string {
   let result = text.trim();
-  while (result.startsWith("##")) {
+  while (/^#{2,6}\s/.test(result)) {
     const next = result.indexOf("\n");
     if (next < 0) return "";
     result = result.slice(next + 1).trimStart();
@@ -44,12 +109,14 @@ function isChapterTocLabel(name: string): boolean {
   return (LEGACY_CHAPTER_TOC_LABELS as readonly string[]).includes(name);
 }
 
-/** Extract chapter name from a segment that may include a `## 章节` heading. */
+/**
+ * Extract chapter path from a segment that may include nested `##`/`###` headings
+ * (or a legacy flat `## Chapter › leaf` title).
+ */
 export function extractChapterFromSegment(segment: string): string {
-  const match = segment.trim().match(/^##\s+([^\n]+)/m);
-  const name = match?.[1]?.trim() ?? "";
-  if (!name || isChapterTocLabel(name)) return "";
-  return name;
+  const stack: string[] = [];
+  applyHeadingsFromText(segment, stack);
+  return joinTocPath(stack);
 }
 
 function excerptAnnotationRegion(content: string): string {
@@ -67,32 +134,28 @@ function excerptAnnotationRegion(content: string): string {
 
 export interface AnnotationBlockContext {
   block: string;
-  /** Chapter from the nearest preceding `## 章节` heading in grouped layout. */
+  /** Chapter from the heading stack preceding this block in grouped layout. */
   contextChapter: string;
 }
 
 /**
  * Split excerpt file content into annotation blocks with chapter context.
- * In grouped layout only the first block per chapter carries `## 标题`; later
- * blocks in the same chapter inherit contextChapter from that heading.
+ * Nested `##`/`###` headings maintain a path stack; blocks after `---` inherit it.
  */
 export function extractAnnotationBlocksWithContext(content: string): AnnotationBlockContext[] {
   const region = excerptAnnotationRegion(content);
   const result: AnnotationBlockContext[] = [];
-  let currentChapter = "";
+  const stack: string[] = [];
 
   for (const segment of region.split(/\n+---\n+/)) {
     const trimmed = segment.trim();
     if (!trimmed) continue;
 
-    const headingChapter = extractChapterFromSegment(trimmed);
-    if (headingChapter) {
-      currentChapter = headingChapter;
-    }
+    applyHeadingsFromText(trimmed, stack);
 
     if (!looksLikeAnnotationBlock(trimmed)) continue;
 
-    result.push({ block: trimmed, contextChapter: currentChapter });
+    result.push({ block: trimmed, contextChapter: joinTocPath(stack) });
   }
 
   return result;
@@ -185,13 +248,77 @@ export function sortChapterNames(
   });
 }
 
-export function buildChapterTocMarkdown(chapters: string[], counts: Map<string, number>): string {
-  const lines = [CHAPTER_TOC_START, isI18nInitialized() ? t("excerpt.chapterToc") : "## 章节目录", ""];
-  for (const chapter of chapters) {
-    const count = counts.get(chapter) ?? 0;
-    lines.push(`- [[#${chapter}|${chapter}]]（${count}）`);
+interface TocTreeNode {
+  label: string;
+  key: string;
+  /** Direct annotation count for this exact path key. */
+  leafCount: number;
+  children: TocTreeNode[];
+}
+
+function insertTocPath(roots: TocTreeNode[], parts: string[], leafCount: number): void {
+  let siblings = roots;
+  let pathSoFar: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const label = parts[i];
+    pathSoFar = [...pathSoFar, label];
+    const key = joinTocPath(pathSoFar);
+    let node = siblings.find((n) => n.label === label);
+    if (!node) {
+      node = { label, key, leafCount: 0, children: [] };
+      siblings.push(node);
+    }
+    if (i === parts.length - 1) {
+      node.leafCount += leafCount;
+    }
+    siblings = node.children;
   }
-  lines.push(CHAPTER_TOC_END, "");
+}
+
+function tocNodeTotal(node: TocTreeNode): number {
+  return node.leafCount + node.children.reduce((sum, c) => sum + tocNodeTotal(c), 0);
+}
+
+function collectTocLabelFreq(nodes: TocTreeNode[], freq: Map<string, number>): void {
+  for (const node of nodes) {
+    freq.set(node.label, (freq.get(node.label) ?? 0) + 1);
+    collectTocLabelFreq(node.children, freq);
+  }
+}
+
+function renderTocTreeLines(
+  nodes: TocTreeNode[],
+  indent: number,
+  labelFreq: Map<string, number>
+): string[] {
+  const lines: string[] = [];
+  const pad = "  ".repeat(indent);
+  for (const node of nodes) {
+    const count = tocNodeTotal(node);
+    const unique = (labelFreq.get(node.label) ?? 0) === 1;
+    const labelText = unique ? `[[#${node.label}|${node.label}]]` : node.label;
+    lines.push(`${pad}- ${labelText}（${count}）`);
+    lines.push(...renderTocTreeLines(node.children, indent + 1, labelFreq));
+  }
+  return lines;
+}
+
+export function buildChapterTocMarkdown(chapters: string[], counts: Map<string, number>): string {
+  const roots: TocTreeNode[] = [];
+  for (const chapter of chapters) {
+    insertTocPath(roots, chapterKeyToHeadingParts(chapter), counts.get(chapter) ?? 0);
+  }
+  const labelFreq = new Map<string, number>();
+  collectTocLabelFreq(roots, labelFreq);
+
+  const lines = [
+    CHAPTER_TOC_START,
+    isI18nInitialized() ? t("excerpt.chapterToc") : "## 章节目录",
+    "",
+    ...renderTocTreeLines(roots, 0, labelFreq),
+    CHAPTER_TOC_END,
+    "",
+  ];
   return lines.join("\n");
 }
 
@@ -211,13 +338,24 @@ export function buildGroupedAnnotationBody(
 
   const parts: string[] = [buildChapterTocMarkdown(chapters, counts), CHAPTER_BODY_START];
   let needSeparator = false;
+  let prevParts: string[] = [];
 
   for (const chapter of chapters) {
     const list = sortAnnotationsByCfi(groups.get(chapter) ?? []);
-    parts.push(`## ${chapter}`, "");
+    const nextParts = chapterKeyToHeadingParts(chapter);
+    let emittedHeadings = false;
+
     for (const ann of list) {
       if (needSeparator) {
         parts.push(EXCERPT_CHUNK_SEPARATOR);
+      }
+      if (!emittedHeadings) {
+        const headingLines = headingLinesForChapterTransition(prevParts, nextParts);
+        if (headingLines.length > 0) {
+          parts.push(headingLines.join("\n"), "");
+        }
+        prevParts = nextParts;
+        emittedHeadings = true;
       }
       parts.push(renderBlock(ann).trimEnd());
       needSeparator = true;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TOC_PATH_SEP } from "../src/ChapterResolver";
 import {
   buildChapterTocMarkdown,
   buildGroupedAnnotationBody,
@@ -9,6 +10,7 @@ import {
   composeExcerptContent,
   EXCERPT_CHUNK_SEPARATOR,
   extractAnnotationBlocksWithContext,
+  extractChapterFromSegment,
   extractExcerptPreamble,
   extractExcerptSuffix,
   groupAnnotationsByChapter,
@@ -51,6 +53,63 @@ describe("extractAnnotationBlocksWithContext", () => {
     expect(blocks[0].contextChapter).toBe("语言的萎缩");
     expect(blocks[1].contextChapter).toBe("语言的萎缩");
   });
+
+  it("resolves nested ## / ### headings into a path key", () => {
+    const content = [
+      CHAPTER_BODY_START,
+      "## Chapter5 城市多少盏灯",
+      "",
+      "### 1/",
+      "",
+      "> [!ob-epub|yellow] 第一节",
+      "",
+      "---",
+      "",
+      "### 2/",
+      "",
+      "第二节正文[[books/demo.epub#cfi=/6/20!/4/2/1:0&end=/6/20!/4/2/1:10|原文]]",
+      "",
+      CHAPTER_BODY_END,
+    ].join("\n");
+
+    const blocks = extractAnnotationBlocksWithContext(content);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].contextChapter).toBe(`Chapter5 城市多少盏灯${TOC_PATH_SEP}1/`);
+    expect(blocks[1].contextChapter).toBe(`Chapter5 城市多少盏灯${TOC_PATH_SEP}2/`);
+  });
+
+  it("parses legacy flat ## Chapter › leaf as a single path key", () => {
+    const flat = `Chapter5 城市多少盏灯${TOC_PATH_SEP}1/`;
+    const content = [
+      CHAPTER_BODY_START,
+      `## ${flat}`,
+      "",
+      "> [!ob-epub|yellow] 旧扁平",
+      "",
+      "---",
+      "",
+      "同章第二条[[books/demo.epub#cfi=/6/20!/4/2/1:0&end=/6/20!/4/2/1:10|原文]]",
+      "",
+      CHAPTER_BODY_END,
+    ].join("\n");
+
+    const blocks = extractAnnotationBlocksWithContext(content);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].contextChapter).toBe(flat);
+    expect(blocks[1].contextChapter).toBe(flat);
+  });
+});
+
+describe("extractChapterFromSegment", () => {
+  it("joins nested headings with TOC_PATH_SEP", () => {
+    const segment = ["## Chapter5 城市多少盏灯", "", "### 1/", "", "body"].join("\n");
+    expect(extractChapterFromSegment(segment)).toBe(`Chapter5 城市多少盏灯${TOC_PATH_SEP}1/`);
+  });
+
+  it("keeps legacy flat titles that already contain the separator", () => {
+    const flat = `Chapter5 城市多少盏灯${TOC_PATH_SEP}1/`;
+    expect(extractChapterFromSegment(`## ${flat}\n\nbody`)).toBe(flat);
+  });
 });
 
 describe("groupAnnotationsByChapter", () => {
@@ -90,11 +149,10 @@ describe("sortChapterNames", () => {
   });
 
   it("uses numeric CFI spine order so Chapter16 sorts after Chapter3", () => {
-    const SEP = " › ";
-    const ch1 = `Chapter1 山野${SEP}2/`;
-    const ch3 = `Chapter3 做梦${SEP}2/`;
-    const ch4 = `Chapter4 少女${SEP}2/`;
-    const ch16 = `Chapter16 我爱你${SEP}2/`;
+    const ch1 = `Chapter1 山野${TOC_PATH_SEP}2/`;
+    const ch3 = `Chapter3 做梦${TOC_PATH_SEP}2/`;
+    const ch4 = `Chapter4 少女${TOC_PATH_SEP}2/`;
+    const ch16 = `Chapter16 我爱你${TOC_PATH_SEP}2/`;
     const groups = groupAnnotationsByChapter([
       makeAnn({ id: "a16", chapter: ch16, cfiRange: "epubcfi(/6/16!/4/2,/1:0,/1:10)" }),
       makeAnn({ id: "a1", chapter: ch1, cfiRange: "epubcfi(/6/2!/4/2,/1:0,/1:10)" }),
@@ -120,6 +178,24 @@ describe("buildChapterTocMarkdown", () => {
     expect(md).toContain("- [[#语言的萎缩|语言的萎缩]]（2）");
     expect(md).toContain("- [[#时间与贫血|时间与贫血]]（1）");
   });
+
+  it("nests TOC and wikilinks only unique titles", () => {
+    const ch5 = "Chapter5 城市多少盏灯";
+    const ch6 = "Chapter6 别处";
+    const md = buildChapterTocMarkdown(
+      [`${ch5}${TOC_PATH_SEP}1/`, `${ch5}${TOC_PATH_SEP}2/`, `${ch6}${TOC_PATH_SEP}1/`],
+      new Map([
+        [`${ch5}${TOC_PATH_SEP}1/`, 1],
+        [`${ch5}${TOC_PATH_SEP}2/`, 1],
+        [`${ch6}${TOC_PATH_SEP}1/`, 1],
+      ])
+    );
+    expect(md).toContain(`- [[#${ch5}|${ch5}]]（2）`);
+    expect(md).toContain(`- [[#${ch6}|${ch6}]]（1）`);
+    expect(md).toContain("  - 1/（1）");
+    expect(md).toContain("  - [[#2/|2/]]（1）");
+    expect(md).not.toContain("[[#1/|1/]]");
+  });
 });
 
 describe("buildGroupedAnnotationBody", () => {
@@ -138,6 +214,25 @@ describe("buildGroupedAnnotationBody", () => {
     expect(body.indexOf("## 语言的萎缩")).toBeLessThan(body.indexOf("## 时间与贫血"));
     expect(body.indexOf("BLOCK:ann-1")).toBeLessThan(body.indexOf("BLOCK:ann-2"));
     expect(body).toContain(EXCERPT_CHUNK_SEPARATOR);
+  });
+
+  it("writes nested ## / ### and only emits changed heading levels", () => {
+    const ch5 = "Chapter5 城市多少盏灯";
+    const body = buildGroupedAnnotationBody(
+      [
+        makeAnn({ id: "ann-1", chapter: `${ch5}${TOC_PATH_SEP}1/`, cfiRange: CFI_A }),
+        makeAnn({ id: "ann-2", chapter: `${ch5}${TOC_PATH_SEP}2/`, cfiRange: CFI_B }),
+      ],
+      (ann) => `BLOCK:${ann.id}`
+    );
+    expect(body).toContain(`## ${ch5}`);
+    expect(body).toContain("### 1/");
+    expect(body).toContain("### 2/");
+    expect(body.match(new RegExp(`## ${ch5.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "g"))).toHaveLength(1);
+    expect(body.indexOf(`## ${ch5}`)).toBeLessThan(body.indexOf("### 1/"));
+    expect(body.indexOf("### 1/")).toBeLessThan(body.indexOf("BLOCK:ann-1"));
+    expect(body.indexOf("BLOCK:ann-1")).toBeLessThan(body.indexOf("### 2/"));
+    expect(body.indexOf("### 2/")).toBeLessThan(body.indexOf("BLOCK:ann-2"));
   });
 });
 
