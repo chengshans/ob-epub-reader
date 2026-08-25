@@ -205,6 +205,10 @@ export class ProgressStore {
     return normalized;
   }
 
+  /**
+   * 仅拦截「用接近 0% 的脏位置覆盖已有有效进度」（恢复失败时的典型场景）。
+   * 允许用户回看前面章节时正常更新当前位置 / lastRead（否则读完一本书后再标注前面章节会永远写不进去）。
+   */
   private shouldRejectProgressSave(
     existing: BookProgress | null,
     cfiStr: string,
@@ -212,20 +216,12 @@ export class ProgressStore {
   ): boolean {
     if (!existing) return false;
 
-    const existingKey = cfiSpineKey(existing.cfi);
-    const newKey = cfiSpineKey(cfiStr);
-
-    if (normalizedPercent + 0.02 < existing.percent) {
-      if (!isCfiAhead(existing.cfi, cfiStr) && (!newKey || !existingKey || newKey <= existingKey)) {
-        return true;
-      }
-    }
-
-    // 禁止用开头的 0% 覆盖已有有效进度（重启恢复失败时的典型场景）
     if (existing.percent > 0.01 && normalizedPercent < 0.01) {
-      if (!isCfiAhead(existing.cfi, cfiStr) && (!newKey || !existingKey || newKey <= existingKey)) {
-        return true;
-      }
+      if (isCfiAhead(existing.cfi, cfiStr)) return false;
+      const existingKey = cfiSpineKey(existing.cfi);
+      const newKey = cfiSpineKey(cfiStr);
+      if (newKey && existingKey && newKey > existingKey) return false;
+      return true;
     }
 
     return false;
@@ -343,7 +339,7 @@ export class ProgressStore {
       cfi: cfiStr,
       chapter: existing?.chapter || context?.chapter || "",
       percent: existing?.percent ?? normalizePercent(context?.percent ?? 0),
-      lastRead: existing?.lastRead || new Date().toISOString(),
+      lastRead: new Date().toISOString(),
       readingTimeSeconds: normalizedTotal,
     };
 

@@ -960,6 +960,10 @@ export class EpubReaderView extends FileView {
 
       // Track location changes
       this.rendition.on("relocated", (location: any) => {
+        // 初始化已结束后仍阻塞保存 → 视为异常残留，解除以免进度永久不写
+        if (!this.isBookInitializing && this.blockProgressSave) {
+          this.blockProgressSave = false;
+        }
         this.currentCfi = normalizeCfi(location?.start?.cfi);
         this.syncChapterFromLocation(location);
         this.applyProgressFromLocation(location);
@@ -997,18 +1001,17 @@ export class EpubReaderView extends FileView {
           await this.rendition.display(resumeCfi);
           const arrived = await this.waitForResumeCfi(resumeCfi, 5000);
           if (arrived) {
-            this.blockProgressSave = false;
-            this.isBookInitializing = false;
+            this.finishBookInit({ allowProgressSave: true });
           } else {
             await this.rendition.display(resumeCfi);
             const retry = await this.waitForResumeCfi(resumeCfi, 3000);
             if (retry) {
-              this.blockProgressSave = false;
-              this.isBookInitializing = false;
+              this.finishBookInit({ allowProgressSave: true });
             } else {
               console.warn("ob-epub: resume timed out, keeping saved progress", resumeCfi);
               if (savedProgress) this.updateProgressBar(savedProgress.percent);
-              this.isBookInitializing = false;
+              // 必须解除 block，否则后续翻页/停留都不会写进度与阅读时长
+              this.finishBookInit({ allowProgressSave: true });
             }
           }
         } catch (err) {
@@ -1019,11 +1022,10 @@ export class EpubReaderView extends FileView {
             console.error("ob-epub: fallback display failed", fallbackErr);
           }
           if (savedProgress) this.updateProgressBar(savedProgress.percent);
-          this.isBookInitializing = false;
+          this.finishBookInit({ allowProgressSave: true });
         }
       } else {
-        this.blockProgressSave = false;
-        this.isBookInitializing = false;
+        this.finishBookInit({ allowProgressSave: true });
         await this.rendition.display();
       }
 
@@ -1065,6 +1067,13 @@ export class EpubReaderView extends FileView {
       if (this.isBookSessionStale(generation)) {
         loadingEl.remove();
       }
+    }
+  }
+
+  private finishBookInit(opts: { allowProgressSave: boolean }): void {
+    this.isBookInitializing = false;
+    if (opts.allowProgressSave) {
+      this.blockProgressSave = false;
     }
   }
 
@@ -1736,6 +1745,24 @@ export class EpubReaderView extends FileView {
     }, 800);
   }
 
+  /** 画线/标注后立即按当前位置写进度（不依赖 relocated） */
+  private persistProgressFromCurrentPosition(): void {
+    if (this.blockProgressSave || this.isBookInitializing || !this.file) return;
+    if (!this.currentCfi && !this.selectedCfi) return;
+    const cfi = this.currentCfi || normalizeCfi(this.selectedCfi);
+    if (!cfi) return;
+    const chapter =
+      this.currentChapter ||
+      (this.selectedCfi ? this.resolveChapterForCfi(this.selectedCfi) : "") ||
+      "";
+    const percent = this.currentPercent > 0 ? this.currentPercent : 0;
+    void this.progressStore
+      .saveProgress(this.file.path, cfi, chapter, percent)
+      .catch((err) => {
+        console.error("ob-epub: progress save after annotation failed", err);
+      });
+  }
+
   private initReadingTimeFromProgress(file: TFile) {
     const progress = this.progressStore.getProgress(file.path);
     this.persistedReadingSeconds = progress?.readingTimeSeconds ?? 0;
@@ -1746,7 +1773,6 @@ export class EpubReaderView extends FileView {
   private canTrackReadingTime(): boolean {
     return (
       !this.isClosing &&
-      !this.blockProgressSave &&
       !this.isBookInitializing &&
       !!this.file &&
       document.visibilityState === "visible" &&
@@ -2584,6 +2610,7 @@ export class EpubReaderView extends FileView {
       annToCopy = ann;
       await this.refreshHighlightsAfterMutation();
     }
+    this.persistProgressFromCurrentPosition();
     if (annToCopy) {
       const copyResult = await this.copyAnnotationAsExcerpt(annToCopy);
       if (copyResult.insert?.inserted && copyResult.insert.fileDisplayName) {
