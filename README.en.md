@@ -30,13 +30,47 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
 - **Excerpt export** — Annotations sync to Markdown excerpt files with five configurable excerpt link formats (including **plain text** — selected passage only, ideal for copying elsewhere); excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
-- **Reading settings panel** — Toolbar ⚙ popover: font size slider, side margins, six reading themes, highlight opacity, auto-paste toggle
+- **Reading settings panel** — Toolbar ⚙ popover: font size slider, body font, side margins, six reading themes, highlight opacity, auto-paste toggle
+- **Body fonts** — Heiti / Songti / Kaiti / FangSong / Yuanti, Source Han, LXGW WenKai, and more; downloadable fonts are cached on demand with progress
 - **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px)
 - **Toolbar placement** — Top (inside reader) or bottom (pinned to Obsidian status bar), with progress bar
 - **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in reading settings; set default in settings)
 - **Keyboard and mouse** — Arrow keys, Page Up/Down, and mouse wheel for page turns
 - **Multilingual UI** — English, Simplified Chinese, Traditional Chinese, Japanese; follow Obsidian or pick a locale
 - **Feature toggles** — Disable annotations & excerpts or bookshelf independently for read-only / copy-only mode
+
+## Roadmap (TODO)
+
+### Done
+
+- [x] Built-in EPUB reader (paginated / scrolled, TOC, resume progress)
+- [x] Highlights and five note types, with excerpts written to Vault Markdown
+- [x] Multiple excerpt link formats (including plain text) plus batch convert / metadata check
+- [x] Split-view co-reading: copy excerpts, optional auto-paste into notes
+- [x] EPUB bookshelf and cumulative reading time
+- [x] Reading settings panel (font size, margins, themes, highlight opacity)
+- [x] Body font presets; Source Han / LXGW download-and-cache when missing (with progress)
+- [x] Selection and annotation highlights use blend modes so text stays readable
+- [x] Toolbar top / bottom layout with status-bar progress
+- [x] UI i18n (en / zh / zh-TW / ja)
+- [x] Feature group toggles (annotations & excerpts, bookshelf)
+- [x] Notes sidebar folds by TOC; optional “don’t ask again” on delete
+- [x] Reading progress in excerpt frontmatter (updates when revisiting earlier chapters)
+
+### Planned
+
+- [ ] **Line / paragraph / letter spacing** — Typography controls in reading settings
+- [ ] **Full-text search** — Search within the current book and jump to hits
+- [ ] **Bookmarks** — Position bookmarks independent of highlights
+- [ ] **Local fonts** — Pick from system fonts or import user font files
+- [ ] **More open-source font presets** — Expand downloadable fonts where licensing allows
+- [ ] **Reading stats** — Time and progress trends on the bookshelf or a dedicated view
+- [ ] **Fixed-layout EPUB** — Better support and messaging for fixed-layout books
+- [ ] **Richer excerpt export** — Export by book / date range and more external formats
+- [ ] **Conflict / backup hints** — Safer handling when excerpt files are edited externally
+- [ ] **Mobile exploration** — Evaluate Obsidian mobile feasibility (desktop-only today)
+
+> Priorities may shift with feedback; feel free to vote or suggest ideas in Issues.
 
 ## Usage
 
@@ -107,6 +141,7 @@ Wiki links in excerpts (`[[book.epub#cfi=...|...]]`), **Source** links, or `ob-e
 Click **⚙** on the toolbar to open the reading settings panel:
 
 - **Font size** — Slider or A-/A+ (10–32 px, persisted)
+- **Body font** — System Heiti / Songti / Kaiti and more, plus Source Han and LXGW WenKai (downloadable cache)
 - **Side margins** — Slider or ◧-/◧+ (12–120 px; works in paginated and scroll modes)
 - **Reading theme** — Six theme swatches for instant switching
 - **Highlight opacity** — Adjust highlight layer strength in the reader (shown when annotations are enabled)
@@ -157,6 +192,7 @@ Configure under **Settings → EPUB Marginalia** (grouped, collapsible sections)
 |--------|-------------|---------|
 | Default reading mode | Paginated / scroll | Scroll |
 | Default font size | Reader font size (px) | 16 |
+| Body font | Follow Obsidian / Heiti / Songti / Kaiti / FangSong / Yuanti / Source Han / LXGW, etc. | Follow Obsidian |
 | Side margins | Horizontal padding of reading content (px) | 12 |
 | Default reading theme | Follow Obsidian / White / Yellow / Green / Sepia / Dark | Follow Obsidian |
 | Toolbar placement | Top (in reader) / Bottom (Obsidian status bar) | Bottom |
