@@ -33,6 +33,8 @@ import { ExcerptInsertResult, ExcerptPasteTarget, noticeExcerptCopy } from "./Ex
 import { NoteInputModal } from "./NoteInputModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { ReadingSettingsPopover } from "./ReadingSettingsPopover";
+import { fitHighlightRect } from "./highlightRectInflate";
+import { colorToRgba, boostRgbaAlpha } from "./selectionColor";
 import {
   buildTocSpineIndex,
   findTocEntryForNavItem,
@@ -96,10 +98,14 @@ export class EpubReaderView extends FileView {
   private onReadingSidePaddingChange?: (padding: number) => Promise<void>;
   private onFontSizeChange?: (fontSize: number) => Promise<void>;
   private onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>;
+  private onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
   private contextMenuContentDoc: Document | null = null;
   private contextMenuDismissTimer: ReturnType<typeof setTimeout> | null = null;
+  private selectionOverlayHost: HTMLElement | null = null;
+  private selectionOverlayDoc: Document | null = null;
+  private selectionPaintRaf: number | null = null;
   private selectedText: string = "";
   private selectedCfi: string = "";
   private resizeObserver: ResizeObserver | null = null;
@@ -180,7 +186,8 @@ export class EpubReaderView extends FileView {
     onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>,
     onReadingSidePaddingChange?: (padding: number) => Promise<void>,
     onFontSizeChange?: (fontSize: number) => Promise<void>,
-    onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>
+    onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>,
+    onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>
   ) {
     super(leaf);
     this.openBridge = openBridge;
@@ -193,6 +200,7 @@ export class EpubReaderView extends FileView {
     this.onReadingSidePaddingChange = onReadingSidePaddingChange;
     this.onFontSizeChange = onFontSizeChange;
     this.onAutoPasteExcerptChange = onAutoPasteExcerptChange;
+    this.onSkipDeleteAnnotationConfirmChange = onSkipDeleteAnnotationConfirmChange;
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
     this.readingTheme = normalizeReadingTheme(settings.readingTheme);
@@ -1052,6 +1060,41 @@ export class EpubReaderView extends FileView {
     );
 
     doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
+    this.attachSelectionTracking(contents);
+  }
+
+  /** 拖选过程中实时画强调色覆盖层，避免松手后才变色 */
+  private attachSelectionTracking(contents: {
+    document?: Document;
+    window?: Window;
+  }) {
+    const doc = contents.document;
+    if (!doc?.documentElement) return;
+    if (doc.documentElement.getAttribute("data-ob-epub-sel-track") === "1") return;
+    doc.documentElement.setAttribute("data-ob-epub-sel-track", "1");
+
+    const schedule = () => {
+      if (this.selectionPaintRaf != null) return;
+      this.selectionPaintRaf = window.requestAnimationFrame(() => {
+        this.selectionPaintRaf = null;
+        this.syncLiveSelectionOverlay(contents);
+      });
+    };
+
+    doc.addEventListener("selectionchange", schedule);
+  }
+
+  private syncLiveSelectionOverlay(contents: {
+    document?: Document;
+    window?: Window;
+  }) {
+    const sel = contents.window?.getSelection?.();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      // 菜单打开时保留覆盖层，直到 dismiss
+      if (!this.contextMenu) this.clearSelectionOverlay();
+      return;
+    }
+    this.paintSelectionOverlay(contents);
   }
 
   private turnPage(dir: "next" | "prev") {
@@ -1130,7 +1173,7 @@ export class EpubReaderView extends FileView {
         linkColor: this.cssVar("--link-color", "#5b8def"),
         selectionBg: this.cssVar(
           "--text-selection",
-          isDark ? "rgba(123,104,238,0.4)" : "rgba(123,104,238,0.25)"
+          isDark ? "rgba(123,104,238,0.55)" : "rgba(123,104,238,0.4)"
         ),
         accent: this.cssVar("--interactive-accent", "#7b68ee"),
       };
@@ -1175,8 +1218,9 @@ export class EpubReaderView extends FileView {
         "-webkit-user-select": "text !important",
         "user-select": "text !important",
       },
-      "::selection": { background: `${selectionBg}`, color: `${textColor}` },
-      "::-moz-selection": { background: `${selectionBg}`, color: `${textColor}` },
+      // 原生选区透明，高亮由 selection overlay 统一绘制
+      "::selection": { background: "transparent", color: "inherit" },
+      "::-moz-selection": { background: "transparent", color: "inherit" },
     };
   }
 
@@ -1215,8 +1259,9 @@ export class EpubReaderView extends FileView {
       `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
       `${root} *{color:${textColor} !important;-webkit-user-select:text !important;user-select:text !important}`,
       `${root} a,${root} a *{color:${linkColor} !important}`,
-      `${root} ::selection{background:${selectionBg};color:${textColor}}`,
-      `${root} ::-moz-selection{background:${selectionBg};color:${textColor}}`,
+      // 原生选区透明：拖选与菜单态统一走 epub-selection-overlay，避免颜色跳变
+      `${root} ::selection{background:transparent !important;color:inherit !important}`,
+      `${root} ::-moz-selection{background:transparent !important;color:inherit !important}`,
     ];
     this.appendFullWidthContentRules(blocks, root, {
       preserveBodyWidth: this.flow === "paginated",
@@ -1787,8 +1832,95 @@ export class EpubReaderView extends FileView {
 
     document.body.appendChild(menu);
     this.contextMenu = menu;
+    this.paintSelectionOverlay(contents);
     this.positionMenu(menu, contents);
     this.bindContextMenuDismiss(true, contents?.document);
+  }
+
+  /** 选中高亮色：优先用强调色，保证对比度（Obsidian --text-selection 往往过淡） */
+  private resolveSelectionHighlightColor(): string {
+    const { accent, selectionBg } = this.resolveThemeColors();
+    const fromAccent = colorToRgba(accent || this.accentColor, 0.55);
+    if (fromAccent) return fromAccent;
+    const boosted = boostRgbaAlpha(selectionBg, 0.5);
+    return boosted ?? "rgba(70, 130, 230, 0.5)";
+  }
+
+  /** 在父文档画饱满强调色覆盖层（拖选过程与菜单态共用） */
+  private paintSelectionOverlay(contents: {
+    window?: Window;
+    document?: Document;
+  } | null) {
+    const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
+    const win = contents?.window;
+    const contentDoc = contents?.document;
+    const sel = win?.getSelection?.();
+    if (!iframe || !win || !contentDoc || !sel || sel.rangeCount === 0) {
+      if (!this.contextMenu) this.clearSelectionOverlay();
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      if (!this.contextMenu) this.clearSelectionOverlay();
+      return;
+    }
+
+    const iframeRect = iframe.getBoundingClientRect();
+    const fill = this.resolveSelectionHighlightColor();
+
+    let host = this.selectionOverlayHost;
+    if (!host || !host.isConnected) {
+      host = document.createElement("div");
+      host.className = "epub-selection-overlay";
+      host.setAttribute("aria-hidden", "true");
+      document.body.appendChild(host);
+      this.selectionOverlayHost = host;
+    } else {
+      while (host.firstChild) host.removeChild(host.firstChild);
+    }
+
+    const rects = Array.from(range.getClientRects());
+    for (const r of rects) {
+      if (r.width <= 0 || r.height <= 0) continue;
+      // 选中 rect 常为整行高，fit 到与标注相同的行高占比，避免行间重叠
+      const boxRect = fitHighlightRect(r, range);
+      const box = document.createElement("div");
+      box.className = "epub-selection-overlay-box";
+      box.setCssProps({
+        left: `${iframeRect.left + boxRect.left}px`,
+        top: `${iframeRect.top + boxRect.top}px`,
+        width: `${boxRect.width}px`,
+        height: `${boxRect.height}px`,
+        background: fill,
+      });
+      host.appendChild(box);
+    }
+
+    if (!host.childElementCount) {
+      if (!this.contextMenu) this.clearSelectionOverlay();
+      return;
+    }
+
+    contentDoc.documentElement.classList.add("epub-has-selection-overlay");
+    this.selectionOverlayDoc = contentDoc;
+  }
+
+  private clearSelectionOverlay() {
+    if (this.selectionPaintRaf != null) {
+      window.cancelAnimationFrame(this.selectionPaintRaf);
+      this.selectionPaintRaf = null;
+    }
+    if (this.selectionOverlayHost) {
+      this.selectionOverlayHost.remove();
+      this.selectionOverlayHost = null;
+    }
+    if (this.selectionOverlayDoc?.documentElement) {
+      this.selectionOverlayDoc.documentElement.classList.remove(
+        "epub-has-selection-overlay"
+      );
+    }
+    this.selectionOverlayDoc = null;
   }
 
   private positionMenu(menu: HTMLElement, contents: any) {
@@ -1856,6 +1988,7 @@ export class EpubReaderView extends FileView {
 
   private dismissContextMenu(clearSelection = false) {
     this.unbindContextMenuDismiss();
+    this.clearSelectionOverlay();
     if (this.contextMenu) {
       this.contextMenu.remove();
       this.contextMenu = null;
@@ -2480,13 +2613,24 @@ export class EpubReaderView extends FileView {
   }
 
   private confirmDeleteAnnotation(ann: Annotation) {
+    if (this.settings.skipDeleteAnnotationConfirm) {
+      void this.removeAnnotation(ann.id, ann.cfiRange);
+      return;
+    }
     const preview =
       ann.text.length > 60 ? ann.text.slice(0, 60) + "…" : ann.text;
     new ConfirmModal(
       this.app,
       t("reader.modal.deleteAnnotation"),
       t("reader.modal.deleteConfirm", { preview }),
-      () => void this.removeAnnotation(ann.id, ann.cfiRange)
+      (dontAskAgain) => {
+        if (dontAskAgain) {
+          this.settings.skipDeleteAnnotationConfirm = true;
+          void this.onSkipDeleteAnnotationConfirmChange?.(true);
+        }
+        void this.removeAnnotation(ann.id, ann.cfiRange);
+      },
+      { dontAskAgainLabel: t("modal.common.dontAskAgain") }
     ).open();
   }
 

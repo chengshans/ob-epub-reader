@@ -28,7 +28,7 @@ const READING_THEME_STYLES: Omit<ReadingThemeDef, "label">[] = [
     background: "#FFFFFF",
     text: "#333333",
     link: "#576B95",
-    selection: "rgba(87, 107, 149, 0.25)",
+    selection: "rgba(87, 107, 149, 0.45)",
     swatch: "#FFFFFF",
   },
   {
@@ -36,7 +36,7 @@ const READING_THEME_STYLES: Omit<ReadingThemeDef, "label">[] = [
     background: "#FAF9DE",
     text: "#333333",
     link: "#576B95",
-    selection: "rgba(232, 179, 57, 0.35)",
+    selection: "rgba(232, 179, 57, 0.5)",
     swatch: "#FAF9DE",
   },
   {
@@ -44,7 +44,7 @@ const READING_THEME_STYLES: Omit<ReadingThemeDef, "label">[] = [
     background: "#E3EDCD",
     text: "#333333",
     link: "#3A7D44",
-    selection: "rgba(58, 166, 117, 0.3)",
+    selection: "rgba(58, 166, 117, 0.48)",
     swatch: "#E3EDCD",
   },
   {
@@ -52,7 +52,7 @@ const READING_THEME_STYLES: Omit<ReadingThemeDef, "label">[] = [
     background: "#F4ECD8",
     text: "#5C4B37",
     link: "#8B6914",
-    selection: "rgba(139, 105, 20, 0.25)",
+    selection: "rgba(139, 105, 20, 0.45)",
     swatch: "#F4ECD8",
   },
   {
@@ -60,7 +60,7 @@ const READING_THEME_STYLES: Omit<ReadingThemeDef, "label">[] = [
     background: "#1C1C1E",
     text: "#A8A8A8",
     link: "#7EB6FF",
-    selection: "rgba(123, 104, 238, 0.4)",
+    selection: "rgba(123, 104, 238, 0.55)",
     swatch: "#1C1C1E",
   },
 ];
@@ -285,6 +285,8 @@ export interface EpubPluginSettings {
   noteTypes: NoteTypeDef[];
   featureGroups: FeatureGroupSettings;
   autoPasteExcerpt: boolean;
+  /** 删除标注时跳过确认弹窗（「不再显示」） */
+  skipDeleteAnnotationConfirm: boolean;
   toolbarPlacement: ToolbarPlacement;
   uiLocale: PluginUiLocale;
 }
@@ -307,6 +309,7 @@ export function getDefaultSettings(): EpubPluginSettings {
     noteTypes: getDefaultNoteTypes().map((entry) => ({ ...entry })),
     featureGroups: { ...DEFAULT_FEATURE_GROUPS },
     autoPasteExcerpt: true,
+    skipDeleteAnnotationConfirm: false,
     toolbarPlacement: "bottom",
     uiLocale: "auto",
   };

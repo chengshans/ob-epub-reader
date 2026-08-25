@@ -120,7 +120,8 @@
       "cancel": "キャンセル",
       "save": "保存",
       "delete": "削除",
-      "close": "閉じる"
+      "close": "閉じる",
+      "dontAskAgain": "今後表示しない"
     },
     "note": {
       "title": "考えを書く",
@@ -247,6 +248,10 @@
     "highlightOpacity": {
       "name": "EPUB ハイライト不透明度",
       "desc": "リーダー内ハイライト層の不透明度"
+    },
+    "confirmDeleteAnnotation": {
+      "name": "注釈削除前に確認する",
+      "desc": "オフにすると削除時の確認ダイアログを省略します。ダイアログの「今後表示しない」でも設定できます"
     },
     "noteTypes": {
       "heading": "考えのタイプ",

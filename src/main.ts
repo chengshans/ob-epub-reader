@@ -8,11 +8,13 @@ import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
 import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
+import { applyHighlightRectInflatePatch } from "./highlightRectInflate";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
 
 applyEpubjsCfiPatch();
+applyHighlightRectInflatePatch();
 
 export default class ObEpubPlugin extends Plugin {
   settings!: EpubPluginSettings;
@@ -115,6 +117,10 @@ export default class ObEpubPlugin extends Plugin {
         },
         async (enabled) => {
           this.settings.autoPasteExcerpt = enabled;
+          await this.saveSettings({ skipViewUpdate: true });
+        },
+        async (skip) => {
+          this.settings.skipDeleteAnnotationConfirm = skip;
           await this.saveSettings({ skipViewUpdate: true });
         }
       );

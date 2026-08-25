@@ -582,6 +582,19 @@ export class EpubSettingsTab extends PluginSettingTab {
         );
     });
 
+    this.addMemberSetting(containerEl, "annotations", (s) => {
+      s.setName(t("settings.confirmDeleteAnnotation.name"))
+        .setDesc(t("settings.confirmDeleteAnnotation.desc"))
+        .addToggle((toggle) =>
+          toggle
+            .setValue(!this.plugin.settings.skipDeleteAnnotationConfirm)
+            .onChange(async (value) => {
+              this.plugin.settings.skipDeleteAnnotationConfirm = !value;
+              await this.plugin.saveSettings();
+            })
+        );
+    });
+
     const noteTypesHeading = new Setting(containerEl)
       .setName(t("settings.noteTypes.heading"))
       .setHeading();

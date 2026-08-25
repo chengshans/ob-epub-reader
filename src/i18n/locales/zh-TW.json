@@ -120,7 +120,8 @@
       "cancel": "取消",
       "save": "保存",
       "delete": "刪除",
-      "close": "關閉"
+      "close": "關閉",
+      "dontAskAgain": "不再顯示"
     },
     "note": {
       "title": "寫下你的想法",
@@ -247,6 +248,10 @@
     "highlightOpacity": {
       "name": "EPUB 高亮透明度",
       "desc": "控制閱讀器內畫線/高亮層的透明度"
+    },
+    "confirmDeleteAnnotation": {
+      "name": "刪除標註前確認",
+      "desc": "關閉後刪除標註不再彈出確認框；也可在確認框中勾選「不再顯示」"
     },
     "noteTypes": {
       "heading": "想法類型",

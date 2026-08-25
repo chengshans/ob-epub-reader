@@ -120,7 +120,8 @@
       "cancel": "Cancel",
       "save": "Save",
       "delete": "Delete",
-      "close": "Close"
+      "close": "Close",
+      "dontAskAgain": "Don't ask again"
     },
     "note": {
       "title": "Write your thought",
@@ -247,6 +248,10 @@
     "highlightOpacity": {
       "name": "EPUB highlight opacity",
       "desc": "Opacity of highlight layers in the reader"
+    },
+    "confirmDeleteAnnotation": {
+      "name": "Confirm before deleting annotations",
+      "desc": "When off, deleting an annotation skips the confirmation dialog. You can also enable “Don't ask again” in the dialog."
     },
     "noteTypes": {
       "heading": "Thought types",

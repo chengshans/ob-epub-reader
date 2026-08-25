@@ -1,7 +1,7 @@
 /* ========== EPUB Marginalia Plugin Styles ========== */
 
 /* ---- ob-epub callout colors (keep in sync with HIGHLIGHT_COLORS in types.ts) ---- */
-/* EPUB 正文高亮：SVG fill + fill-opacity 0.38（见 EpubReaderView.drawLine） */
+/* EPUB 正文高亮：SVG fill + fill-opacity（见 EpubReaderView.drawLine）；矩形饱满度见 highlightRectInflate */
 /* 摘录 callout：Obsidian 不保证识别 --callout-background-alpha，须显式 background-color */
 .callout[data-callout="ob-epub"] {
   --callout-icon: pencil;
@@ -754,6 +754,14 @@ a.ob-epub-goto-link {
   padding-top: 0;
 }
 
+.epub-confirm-dont-ask {
+  margin-bottom: 4px;
+}
+
+.epub-confirm-dont-ask .setting-item-control {
+  justify-content: flex-end;
+}
+
 .epub-confirm-delete.mod-cta {
   background-color: var(--background-modifier-error);
   color: var(--text-on-accent);
@@ -1058,6 +1066,20 @@ a.ob-epub-goto-link {
 }
 
 /* ---- Context Menu ---- */
+.epub-selection-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9990;
+}
+
+.epub-selection-overlay-box {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+
 .epub-context-menu {
   position: fixed;
   z-index: 10000;
