@@ -237,7 +237,7 @@ Older versions stored annotations and progress in `data.json` or `reading-progre
 
 ## Requirements
 
-- Obsidian 1.8.0+
+- Obsidian 1.8.7+
 - Desktop only
 
 ## Development
