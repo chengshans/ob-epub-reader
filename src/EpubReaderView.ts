@@ -25,14 +25,18 @@ import {
   clampReadingSidePadding,
   noteIconGlyphSize,
   normalizeReadingTheme,
+  normalizeReadingFont,
+  resolveReadingFontFamily,
   resolveNoteTypes,
   isAnnotationsAndExcerptsEnabled,
+  ReadingFontId,
 } from "./types";
 import { buildExcerptBlock } from "./excerptBlockFormat";
 import { ExcerptInsertResult, ExcerptPasteTarget, noticeExcerptCopy } from "./ExcerptPasteTarget";
 import { NoteInputModal } from "./NoteInputModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { ReadingSettingsPopover } from "./ReadingSettingsPopover";
+import { ReadingFontManager } from "./ReadingFontManager";
 import { fitHighlightRect } from "./highlightRectInflate";
 import { colorToRgba, boostRgbaAlpha } from "./selectionColor";
 import {
@@ -97,8 +101,10 @@ export class EpubReaderView extends FileView {
   private onEpubHighlightOpacityChange?: (opacity: number) => Promise<void>;
   private onReadingSidePaddingChange?: (padding: number) => Promise<void>;
   private onFontSizeChange?: (fontSize: number) => Promise<void>;
+  private onReadingFontChange?: (font: ReadingFontId) => Promise<void>;
   private onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>;
   private onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>;
+  private readingFontManager: ReadingFontManager;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
   private contextMenuContentDoc: Document | null = null;
@@ -187,7 +193,9 @@ export class EpubReaderView extends FileView {
     onReadingSidePaddingChange?: (padding: number) => Promise<void>,
     onFontSizeChange?: (fontSize: number) => Promise<void>,
     onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>,
-    onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>
+    onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>,
+    onReadingFontChange?: (font: ReadingFontId) => Promise<void>,
+    readingFontManager?: ReadingFontManager
   ) {
     super(leaf);
     this.openBridge = openBridge;
@@ -201,6 +209,10 @@ export class EpubReaderView extends FileView {
     this.onFontSizeChange = onFontSizeChange;
     this.onAutoPasteExcerptChange = onAutoPasteExcerptChange;
     this.onSkipDeleteAnnotationConfirmChange = onSkipDeleteAnnotationConfirmChange;
+    this.onReadingFontChange = onReadingFontChange;
+    this.readingFontManager =
+      readingFontManager ??
+      new ReadingFontManager(openBridge as unknown as import("obsidian").Plugin);
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
     this.readingTheme = normalizeReadingTheme(settings.readingTheme);
@@ -212,6 +224,7 @@ export class EpubReaderView extends FileView {
       onFontSizeDelta: (delta) => this.changeFontSize(delta),
       onFontSizeInput: (size) => this.applyFontSize(size, false),
       onFontSizeCommit: (size) => this.applyFontSize(size, true),
+      onReadingFontSelect: (id) => void this.applyReadingFont(id, true),
       onSidePaddingDelta: (delta) => this.changeReadingSidePadding(delta),
       onSidePaddingInput: (padding) => this.applyReadingSidePadding(padding, false),
       onSidePaddingCommit: (padding) => this.applyReadingSidePadding(padding, true),
@@ -231,7 +244,18 @@ export class EpubReaderView extends FileView {
         void this.onAutoPasteExcerptChange?.(next);
         this.readingSettingsPopover.sync();
       },
+      getContentDocuments: () => this.collectContentDocuments(),
     });
+  }
+
+  /** 当前阅读区 iframe 文档（用于点正文关闭设置弹层） */
+  private collectContentDocuments(): Document[] {
+    const docs: Document[] = [];
+    this.readerEl?.querySelectorAll("iframe").forEach((node) => {
+      const doc = (node as HTMLIFrameElement).contentDocument;
+      if (doc) docs.push(doc);
+    });
+    return docs;
   }
 
   private get resolvedNoteTypes() {
@@ -674,6 +698,22 @@ export class EpubReaderView extends FileView {
     this.readingSettingsPopover.sync();
   }
 
+  private applyReadingFont(id: ReadingFontId, persist: boolean) {
+    const next = normalizeReadingFont(id);
+    const changed = next !== normalizeReadingFont(this.settings.readingFont);
+    if (changed) {
+      this.settings.readingFont = next;
+      if (persist) {
+        void this.onReadingFontChange?.(next);
+      }
+      this.readingSettingsPopover.sync();
+    }
+    void this.readingFontManager.ensureAvailable(next).then(() => {
+      this.applyThemeSafe();
+      this.readingSettingsPopover.sync();
+    });
+  }
+
   private toggleReadingSettingsPopover(anchorEl: HTMLElement): void {
     this.readingSettingsPopover.toggle(anchorEl);
   }
@@ -889,7 +929,14 @@ export class EpubReaderView extends FileView {
         try {
           this.attachContentNavigation(contents);
           await this.inlineBlockedStylesheets(contents);
-          this.injectReadingThemeIntoDocument(contents?.document);
+          await this.readingFontManager.ensureAvailable(
+            normalizeReadingFont(this.settings.readingFont),
+            { quiet: true }
+          );
+          const fontFaceCss = await this.readingFontManager.buildFontFaceCss(
+            normalizeReadingFont(this.settings.readingFont)
+          );
+          this.injectReadingThemeIntoDocument(contents?.document, fontFaceCss);
         } catch (err) {
           console.warn("ob-epub: content hook failed", err);
         }
@@ -1061,6 +1108,19 @@ export class EpubReaderView extends FileView {
 
     doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
     this.attachSelectionTracking(contents);
+
+    if (doc.documentElement.getAttribute("data-ob-epub-settings-dismiss") !== "1") {
+      doc.documentElement.setAttribute("data-ob-epub-settings-dismiss", "1");
+      doc.addEventListener(
+        "pointerdown",
+        () => {
+          if (this.readingSettingsPopover.isOpen()) {
+            this.dismissReadingSettingsPopover();
+          }
+        },
+        { capture: true }
+      );
+    }
   }
 
   /** 拖选过程中实时画强调色覆盖层，避免松手后才变色 */
@@ -1145,6 +1205,14 @@ export class EpubReaderView extends FileView {
     return v || fallback;
   }
 
+  private resolveReadingFontCss(): string {
+    const obsidianFallback = this.cssVar(
+      "--font-text",
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
+    );
+    return resolveReadingFontFamily(this.settings, obsidianFallback);
+  }
+
   private async setReadingTheme(id: ReadingThemeId) {
     this.readingTheme = id;
     this.readingSettingsPopover.sync();
@@ -1203,13 +1271,14 @@ export class EpubReaderView extends FileView {
         color: `${textColor} !important`,
       },
       body: {
-        "font-family": fontFamily,
+        "font-family": `${fontFamily} !important`,
         "line-height": "1.8",
         padding: bodyPadding,
       },
-      // EPUB 内嵌样式常在子元素上写死 color，仅设置 body 无法覆盖
+      // EPUB 内嵌样式常在子元素上写死 color/font，仅设置 body 无法覆盖
       "body *": {
         color: `${textColor} !important`,
+        "font-family": `${fontFamily} !important`,
       },
       "body a, body a *": {
         color: `${linkColor} !important`,
@@ -1250,19 +1319,22 @@ export class EpubReaderView extends FileView {
     textColor: string,
     linkColor: string,
     selectionBg: string,
-    fontFamily: string
+    fontFamily: string,
+    fontFaceCss = ""
   ): string {
     const root = `html[${READING_THEME_ATTR}] body`;
     const bodyPadding = this.getReadingBodyPadding();
     const sidePx = `${clampReadingSidePadding(this.settings.readingSidePadding)}px`;
-    const blocks: string[] = [
-      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily};line-height:1.8;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
-      `${root} *{color:${textColor} !important;-webkit-user-select:text !important;user-select:text !important}`,
+    const blocks: string[] = [];
+    if (fontFaceCss) blocks.push(fontFaceCss);
+    blocks.push(
+      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily} !important;line-height:1.8;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
+      `${root} *{color:${textColor} !important;font-family:${fontFamily} !important;-webkit-user-select:text !important;user-select:text !important}`,
       `${root} a,${root} a *{color:${linkColor} !important}`,
       // 原生选区透明：拖选与菜单态统一走 epub-selection-overlay，避免颜色跳变
       `${root} ::selection{background:transparent !important;color:inherit !important}`,
       `${root} ::-moz-selection{background:transparent !important;color:inherit !important}`,
-    ];
+    );
     this.appendFullWidthContentRules(blocks, root, {
       preserveBodyWidth: this.flow === "paginated",
     });
@@ -1276,14 +1348,14 @@ export class EpubReaderView extends FileView {
     return blocks.join("\n");
   }
 
-  private injectReadingThemeIntoDocument(doc: Document | null | undefined): void {
+  private injectReadingThemeIntoDocument(
+    doc: Document | null | undefined,
+    fontFaceCss = ""
+  ): void {
     if (!doc?.documentElement || !doc.head) return;
 
     try {
-      const fontFamily = this.cssVar(
-        "--font-text",
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
-      );
+      const fontFamily = this.resolveReadingFontCss();
       const { background, textColor, linkColor, selectionBg } = this.resolveThemeColors();
 
       doc.documentElement.setAttribute(READING_THEME_ATTR, this.readingTheme);
@@ -1305,7 +1377,8 @@ export class EpubReaderView extends FileView {
         textColor,
         linkColor,
         selectionBg,
-        fontFamily
+        fontFamily,
+        fontFaceCss
       );
       doc.head.appendChild(styleEl);
     } catch (err) {
@@ -1313,13 +1386,16 @@ export class EpubReaderView extends FileView {
     }
   }
 
-  private applyThemeToAllContents(): void {
+  private async applyThemeToAllContents(): Promise<void> {
     if (!this.rendition) return;
     try {
+      const fontFaceCss = await this.readingFontManager.buildFontFaceCss(
+        normalizeReadingFont(this.settings.readingFont)
+      );
       const contents = this.rendition.getContents() as Array<{ document?: Document }>;
       if (!Array.isArray(contents)) return;
       for (const content of contents) {
-        this.injectReadingThemeIntoDocument(content?.document);
+        this.injectReadingThemeIntoDocument(content?.document, fontFaceCss);
       }
       this.scheduleScrolledContentHeightSync();
     } catch (err) {
@@ -1379,10 +1455,7 @@ export class EpubReaderView extends FileView {
   private applyTheme() {
     if (!this.rendition) return;
 
-    const fontFamily = this.cssVar(
-      "--font-text",
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
-    );
+    const fontFamily = this.resolveReadingFontCss();
 
     this.registerAllThemes(fontFamily);
 
@@ -3041,6 +3114,7 @@ export class EpubReaderView extends FileView {
     const prevAnnotationsOn = this.annotationsEnabled();
     const prevToolbarPlacement = this.settings.toolbarPlacement;
     const prevSidePadding = this.settings.readingSidePadding;
+    const prevFont = this.settings.readingFont;
     this.settings = settings;
     const annotationsChanged = prevAnnotationsOn !== this.annotationsEnabled();
     const toolbarPlacementChanged = prevToolbarPlacement !== settings.toolbarPlacement;
@@ -3068,10 +3142,16 @@ export class EpubReaderView extends FileView {
     if (themeChanged) {
       this.readingTheme = nextTheme;
     }
+    const fontChanged =
+      normalizeReadingFont(settings.readingFont) !== normalizeReadingFont(prevFont);
     if (this.rendition) {
-      if (themeChanged) {
-        this.applyThemeSafe();
-        this.readingSettingsPopover.sync();
+      if (themeChanged || fontChanged) {
+        if (fontChanged) {
+          void this.applyReadingFont(normalizeReadingFont(settings.readingFont), false);
+        } else {
+          this.applyThemeSafe();
+          this.readingSettingsPopover.sync();
+        }
       } else {
         this.rendition.themes.fontSize(`${this.fontSize}px`);
       }

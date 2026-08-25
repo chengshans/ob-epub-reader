@@ -23,6 +23,11 @@
     "progressSaveFailed": "Failed to save reading progress ({{path}}); check excerpt folder is writable",
     "updated": "Updated",
     "copyFailed": "Copy failed",
+    "fontMissing": "Font “{{font}}” not found on this device; downloading…",
+    "fontDownloadProgress": "Downloading font “{{font}}” ({{current}}/{{total}})… {{percent}}%",
+    "fontDownloadProgressBusy": "Downloading font “{{font}}” ({{current}}/{{total}})…",
+    "fontDownloaded": "Font “{{font}}” is ready",
+    "fontDownloadFailed": "Failed to download font “{{font}}”; check network and retry",
     "highlighted": "Highlighted",
     "highlightedAndInserted": "Highlighted and inserted into «{{name}}»",
     "annotationSaved": "Annotation saved",
@@ -71,6 +76,7 @@
       "title": "Reading settings",
       "fontSize": "Font size",
       "fontSizePx": "Font size {{px}} px",
+      "fontFamily": "Body font",
       "sidePadding": "Side margins",
       "sidePaddingPx": "Side margins {{px}} px",
       "readingTheme": "Reading theme"
@@ -201,6 +207,10 @@
       "name": "Default font size",
       "desc": "Reader content font size (px)"
     },
+    "readingFont": {
+      "name": "Body font",
+      "desc": "Font for EPUB body text. Noto / LXGW WenKai are downloaded and cached in the plugin folder if not installed"
+    },
     "sidePadding": {
       "name": "Side margins",
       "desc": "Horizontal padding of reading content (px); use ◧-/◧+ in the reader toolbar to adjust quickly"
@@ -329,6 +339,18 @@
       "green": "Eye-care green",
       "sepia": "Sepia",
       "dark": "Dark"
+    },
+    "readingFonts": {
+      "obsidian": "Follow Obsidian",
+      "systemSans": "Heiti (sans)",
+      "systemSerif": "Songti (serif)",
+      "systemKai": "Kaiti",
+      "systemFangSong": "FangSong",
+      "systemYuan": "Yuanti (rounded)",
+      "notoSans": "Source Han Sans",
+      "notoSerif": "Source Han Serif",
+      "lxgwWenKai": "LXGW WenKai",
+      "lxgwWenKaiScreen": "LXGW WenKai Screen"
     },
     "noteTypes": {
       "note": "Take notes",

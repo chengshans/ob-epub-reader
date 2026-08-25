@@ -23,6 +23,11 @@
     "progressSaveFailed": "読書進捗の保存に失敗しました（{{path}}）。抜粋フォルダが書き込み可能か確認してください",
     "updated": "更新しました",
     "copyFailed": "コピーに失敗しました",
+    "fontMissing": "この端末にフォント「{{font}}」が見つかりません。ダウンロード中…",
+    "fontDownloadProgress": "フォント「{{font}}」をダウンロード中（{{current}}/{{total}}）… {{percent}}%",
+    "fontDownloadProgressBusy": "フォント「{{font}}」をダウンロード中（{{current}}/{{total}}）…",
+    "fontDownloaded": "フォント「{{font}}」の準備ができました",
+    "fontDownloadFailed": "フォント「{{font}}」のダウンロードに失敗しました。ネットワークを確認して再試行してください",
     "highlighted": "ハイライトしました",
     "highlightedAndInserted": "ハイライトし、「{{name}}」に挿入しました",
     "annotationSaved": "注釈を保存しました",
@@ -71,6 +76,7 @@
       "title": "閲覧設定",
       "fontSize": "フォントサイズ",
       "fontSizePx": "フォントサイズ {{px}} px",
+      "fontFamily": "本文フォント",
       "sidePadding": "左右余白",
       "sidePaddingPx": "左右余白 {{px}} px",
       "readingTheme": "閲覧テーマ"
@@ -201,6 +207,10 @@
       "name": "デフォルトフォントサイズ",
       "desc": "リーダー本文のフォントサイズ（px）"
     },
+    "readingFont": {
+      "name": "本文フォント",
+      "desc": "EPUB 本文のフォント。源ノ角ゴシック / 霞鹜文楷などは未インストール時に自動ダウンロードしてプラグインフォルダへキャッシュします"
+    },
     "sidePadding": {
       "name": "左右余白",
       "desc": "本文の左右パディング（px）。ツールバーの ◧-/◧+ で調整できます"
@@ -329,6 +339,18 @@
       "green": "目に優しい緑",
       "sepia": "セピア",
       "dark": "ダーク"
+    },
+    "readingFonts": {
+      "obsidian": "Obsidian に従う",
+      "systemSans": "ゴシック",
+      "systemSerif": "明朝",
+      "systemKai": "楷書",
+      "systemFangSong": "仿宋",
+      "systemYuan": "丸ゴシック",
+      "notoSans": "源ノ角ゴシック",
+      "notoSerif": "源ノ明朝",
+      "lxgwWenKai": "霞鹜文楷",
+      "lxgwWenKaiScreen": "霞鹜文楷（画面向け）"
     },
     "noteTypes": {
       "note": "メモ",

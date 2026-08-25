@@ -5,6 +5,7 @@ import { t } from "./i18n/i18n";
 import {
   getDefaultNoteTypes,
   getHighlightColors,
+  getReadingFonts,
   getReadingThemes,
   getSourceLinkFormats,
   HIGHLIGHT_OPACITY_MAX,
@@ -13,6 +14,7 @@ import {
   READING_SIDE_PADDING_MIN,
   READING_SIDE_PADDING_STEP,
   clampReadingSidePadding,
+  normalizeReadingFont,
   NoteType,
   PluginUiLocale,
   ReadingThemeId,
@@ -366,6 +368,23 @@ export class EpubSettingsTab extends PluginSettingTab {
           this.plugin.settings.fontSize = value;
           await this.plugin.saveSettings();
         },
+      });
+    });
+
+    this.addMemberSetting(containerEl, "reader", (s) => {
+      s.setName(t("settings.readingFont.name")).setDesc(t("settings.readingFont.desc"));
+      s.addDropdown((dropdown) => {
+        for (const font of getReadingFonts()) {
+          dropdown.addOption(font.id, font.label);
+        }
+        dropdown
+          .setValue(normalizeReadingFont(this.plugin.settings.readingFont))
+          .onChange(async (value) => {
+            const font = normalizeReadingFont(value);
+            this.plugin.settings.readingFont = font;
+            await this.plugin.saveSettings();
+            await this.plugin.readingFontManager.ensureAvailable(font);
+          });
       });
     });
 

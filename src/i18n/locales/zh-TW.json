@@ -23,6 +23,11 @@
     "progressSaveFailed": "閱讀進度儲存失敗（{{path}}），請確認摘錄資料夾存在且可寫",
     "updated": "已更新",
     "copyFailed": "複製失敗",
+    "fontMissing": "本機未找到字體「{{font}}」，正在下載…",
+    "fontDownloadProgress": "正在下載字體「{{font}}」（{{current}}/{{total}}）… {{percent}}%",
+    "fontDownloadProgressBusy": "正在下載字體「{{font}}」（{{current}}/{{total}}）…",
+    "fontDownloaded": "字體「{{font}}」已就緒",
+    "fontDownloadFailed": "字體「{{font}}」下載失敗，請檢查網路後重試",
     "highlighted": "已畫線",
     "highlightedAndInserted": "已畫線，已插入《{{name}}》",
     "annotationSaved": "標註已保存",
@@ -71,6 +76,7 @@
       "title": "閱讀設定",
       "fontSize": "字體大小",
       "fontSizePx": "字體大小 {{px}} px",
+      "fontFamily": "正文字體",
       "sidePadding": "兩側空白",
       "sidePaddingPx": "兩側空白 {{px}} px",
       "readingTheme": "閱讀主題"
@@ -201,6 +207,10 @@
       "name": "默認字體大小",
       "desc": "閱讀器內容區字體大小（px）"
     },
+    "readingFont": {
+      "name": "正文字體",
+      "desc": "EPUB 正文使用的字體。思源/霞鶩等若本機未安裝會自動下載並快取到外掛目錄"
+    },
     "sidePadding": {
       "name": "兩側空白",
       "desc": "閱讀正文左右留白（px），工具列 ◧-/◧+ 可快速調節"
@@ -329,6 +339,18 @@
       "green": "護眼綠",
       "sepia": "羊皮紙",
       "dark": "夜間"
+    },
+    "readingFonts": {
+      "obsidian": "跟隨 Obsidian",
+      "systemSans": "黑體",
+      "systemSerif": "宋體",
+      "systemKai": "楷體",
+      "systemFangSong": "仿宋",
+      "systemYuan": "圓體",
+      "notoSans": "思源黑體",
+      "notoSerif": "思源宋體",
+      "lxgwWenKai": "霞鶩文楷",
+      "lxgwWenKaiScreen": "霞鶩文楷螢幕版"
     },
     "noteTypes": {
       "note": "做筆記",

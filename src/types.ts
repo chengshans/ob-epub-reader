@@ -89,6 +89,107 @@ export function normalizeReadingTheme(raw: string | undefined): ReadingThemeId {
   return "obsidian";
 }
 
+// ---- Reading fonts（预设 + 可下载缓存，不打包字体文件） ----
+
+export type ReadingFontId =
+  | "obsidian"
+  | "systemSans"
+  | "systemSerif"
+  | "systemKai"
+  | "systemFangSong"
+  | "systemYuan"
+  | "notoSans"
+  | "notoSerif"
+  | "lxgwWenKai"
+  | "lxgwWenKaiScreen";
+
+export interface ReadingFontDef {
+  id: ReadingFontId;
+  label: string;
+  /** CSS font-family；obsidian 为空，运行时解析 */
+  cssFamily: string;
+}
+
+/** 对齐微信读书常见分类：系统黑体/宋体/楷体/仿宋/圆体 + 思源 + 霞鹜 */
+const READING_FONT_DEFS: Omit<ReadingFontDef, "label">[] = [
+  { id: "obsidian", cssFamily: "" },
+  {
+    id: "systemSans",
+    cssFamily:
+      '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif',
+  },
+  {
+    id: "systemSerif",
+    cssFamily:
+      '"Songti SC", "STSong", SimSun, "Noto Serif CJK SC", "Source Han Serif SC", serif',
+  },
+  {
+    id: "systemKai",
+    cssFamily: '"Kaiti SC", "STKaiti", KaiTi, "AR PL UKai CN", serif',
+  },
+  {
+    id: "systemFangSong",
+    cssFamily: '"FangSong SC", "STFangsong", FangSong, serif',
+  },
+  {
+    id: "systemYuan",
+    cssFamily:
+      '"Yuanti SC", "STYuanti", "PingFang SC", "Microsoft YaHei", sans-serif',
+  },
+  {
+    id: "notoSans",
+    cssFamily: '"Noto Sans SC", "Source Han Sans SC", sans-serif',
+  },
+  {
+    id: "notoSerif",
+    cssFamily: '"Noto Serif SC", "Source Han Serif SC", serif',
+  },
+  {
+    id: "lxgwWenKai",
+    cssFamily: '"LXGW WenKai", "霞鹜文楷", serif',
+  },
+  {
+    id: "lxgwWenKaiScreen",
+    cssFamily: '"LXGW WenKai Screen", "霞鹜文楷屏幕版", "LXGW WenKai", serif',
+  },
+];
+
+const READING_FONT_IDS = new Set<string>(READING_FONT_DEFS.map((f) => f.id));
+
+const OBSIDIAN_FONT_FALLBACK =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+
+export function getReadingFonts(): ReadingFontDef[] {
+  return READING_FONT_DEFS.map((font) => ({
+    ...font,
+    label: isI18nInitialized() ? t(`defaults.readingFonts.${font.id}`) : font.id,
+  }));
+}
+
+export function normalizeReadingFont(raw: unknown): ReadingFontId {
+  if (typeof raw === "string" && READING_FONT_IDS.has(raw)) {
+    return raw as ReadingFontId;
+  }
+  // 旧版 custom 回退
+  return "obsidian";
+}
+
+/**
+ * 解析阅读正文字体 CSS。
+ * @param obsidianFallback 通常为 getComputedStyle 的 --font-text
+ */
+export function resolveReadingFontFamily(
+  settings: Pick<EpubPluginSettings, "readingFont">,
+  obsidianFallback?: string
+): string {
+  const id = normalizeReadingFont(settings.readingFont);
+  if (id === "obsidian") {
+    return obsidianFallback?.trim() || OBSIDIAN_FONT_FALLBACK;
+  }
+  const def = READING_FONT_DEFS.find((f) => f.id === id);
+  return def?.cssFamily || obsidianFallback?.trim() || OBSIDIAN_FONT_FALLBACK;
+}
+
 // ---- Note types (想法类型) ----
 
 export type NoteType = "note" | "inspiration" | "practice" | "revisit" | "question";
@@ -275,6 +376,7 @@ export interface EpubPluginSettings {
   defaultExcerptHighlightColor: HighlightColor;
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
+  readingFont: ReadingFontId;
   readingSidePadding: number;
   readingTheme: ReadingThemeId;
   noteIconSize: number;
@@ -299,6 +401,7 @@ export function getDefaultSettings(): EpubPluginSettings {
     defaultExcerptHighlightColor: "yellow",
     defaultFlow: "scrolled",
     fontSize: 16,
+    readingFont: "obsidian",
     readingSidePadding: 12,
     readingTheme: "obsidian",
     noteIconSize: 20,

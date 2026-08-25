@@ -1,12 +1,15 @@
 import { t } from "./i18n/i18n";
 import {
   EpubPluginSettings,
+  ReadingFontId,
   ReadingThemeId,
   clampHighlightOpacity,
   clampReadingSidePadding,
+  getReadingFonts,
   getReadingThemes,
   HIGHLIGHT_OPACITY_MAX,
   HIGHLIGHT_OPACITY_MIN,
+  normalizeReadingFont,
   READING_SIDE_PADDING_MIN,
   READING_SIDE_PADDING_MAX,
   READING_SIDE_PADDING_STEP,
@@ -23,6 +26,7 @@ export interface ReadingSettingsHandlers {
   onFontSizeDelta: (delta: number) => void;
   onFontSizeInput: (size: number) => void;
   onFontSizeCommit: (size: number) => void;
+  onReadingFontSelect: (id: ReadingFontId) => void;
   onSidePaddingDelta: (delta: number) => void;
   onSidePaddingInput: (padding: number) => void;
   onSidePaddingCommit: (padding: number) => void;
@@ -30,6 +34,8 @@ export interface ReadingSettingsHandlers {
   onHighlightInput: (opacity: number) => void;
   onHighlightCommit: (opacity: number) => void;
   onAutoPasteToggle: () => void;
+  /** EPUB iframe 文档：点正文也要能关掉弹层（iframe 事件不上冒泡到父 document） */
+  getContentDocuments?: () => Document[];
 }
 
 export class ReadingSettingsPopover {
@@ -38,9 +44,11 @@ export class ReadingSettingsPopover {
   private anchorEl: HTMLElement | null = null;
   private dismissHandler: ((e: MouseEvent) => void) | null = null;
   private dismissTimer: ReturnType<typeof setTimeout> | null = null;
+  private dismissContentDocs: Document[] = [];
 
   private fontSizeRangeEl: HTMLInputElement | null = null;
   private fontSizeValueEl: HTMLElement | null = null;
+  private fontSelectEl: HTMLSelectElement | null = null;
   private sidePaddingRangeEl: HTMLInputElement | null = null;
   private sidePaddingValueEl: HTMLElement | null = null;
   private themeSwatchesEl: HTMLElement | null = null;
@@ -79,6 +87,7 @@ export class ReadingSettingsPopover {
     });
 
     this.buildFontSizeRow(panel);
+    this.buildFontFamilyRow(panel);
     this.buildSidePaddingRow(panel);
     this.buildThemeRow(panel);
     this.buildHighlightRow(panel);
@@ -100,6 +109,7 @@ export class ReadingSettingsPopover {
     this.anchorEl = null;
     this.fontSizeRangeEl = null;
     this.fontSizeValueEl = null;
+    this.fontSelectEl = null;
     this.sidePaddingRangeEl = null;
     this.sidePaddingValueEl = null;
     this.themeSwatchesEl = null;
@@ -113,6 +123,7 @@ export class ReadingSettingsPopover {
 
     const settings = this.handlers.getSettings();
     const theme = this.handlers.getReadingTheme();
+    const fontId = normalizeReadingFont(settings.readingFont);
 
     if (this.fontSizeRangeEl) {
       const size = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(settings.fontSize)));
@@ -122,6 +133,9 @@ export class ReadingSettingsPopover {
     if (this.fontSizeValueEl) {
       const size = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(settings.fontSize)));
       this.fontSizeValueEl.setText(String(size));
+    }
+    if (this.fontSelectEl) {
+      this.fontSelectEl.value = fontId;
     }
     if (this.sidePaddingRangeEl) {
       const px = clampReadingSidePadding(settings.readingSidePadding);
@@ -215,6 +229,28 @@ export class ReadingSettingsPopover {
     this.fontSizeValueEl = controls.createSpan({ cls: "epub-reading-settings-value" });
   }
 
+  private buildFontFamilyRow(panel: HTMLElement): void {
+    const row = panel.createDiv({ cls: "epub-reading-settings-row epub-reading-settings-row-font" });
+    row.createSpan({
+      cls: "epub-reading-settings-label",
+      text: t("reader.readingSettings.fontFamily"),
+    });
+
+    const select = row.createEl("select", { cls: "epub-reading-settings-select" });
+    this.fontSelectEl = select;
+    for (const font of getReadingFonts()) {
+      select.createEl("option", { value: font.id, text: font.label });
+    }
+    select.addEventListener("mousedown", (e) => e.stopPropagation());
+    select.addEventListener("click", (e) => e.stopPropagation());
+    select.addEventListener("change", (e) => {
+      e.stopPropagation();
+      const id = normalizeReadingFont(select.value);
+      this.handlers.onReadingFontSelect(id);
+      this.sync();
+    });
+  }
+
   private buildSidePaddingRow(panel: HTMLElement): void {
     const row = panel.createDiv({ cls: "epub-reading-settings-row" });
     row.createSpan({ cls: "epub-reading-settings-label", text: t("reader.readingSettings.sidePadding") });
@@ -244,7 +280,6 @@ export class ReadingSettingsPopover {
     this.sidePaddingRangeEl = range;
     range.addEventListener("input", () => {
       const px = clampReadingSidePadding(Number(range.value));
-      range.value = String(px);
       range.title = t("reader.readingSettings.sidePaddingPx", { px });
       if (this.sidePaddingValueEl) this.sidePaddingValueEl.setText(String(px));
       this.handlers.onSidePaddingInput(px);
@@ -271,11 +306,12 @@ export class ReadingSettingsPopover {
 
   private buildThemeRow(panel: HTMLElement): void {
     const row = panel.createDiv({ cls: "epub-reading-settings-row epub-reading-settings-row-theme" });
-    row.createSpan({ cls: "epub-reading-settings-label", text: t("reader.readingSettings.readingTheme") });
-
+    row.createSpan({
+      cls: "epub-reading-settings-label",
+      text: t("reader.readingSettings.readingTheme"),
+    });
     const swatches = row.createDiv({ cls: "epub-theme-swatches" });
     this.themeSwatchesEl = swatches;
-
     for (const theme of getReadingThemes()) {
       const swatch = swatches.createEl("button", {
         cls: "epub-theme-swatch",
@@ -376,10 +412,16 @@ export class ReadingSettingsPopover {
       this.close();
     };
 
+    const contentDocs = this.handlers.getContentDocuments?.() ?? [];
+    this.dismissContentDocs = contentDocs;
+
     this.dismissTimer = setTimeout(() => {
       this.dismissTimer = null;
       this.dismissHandler = handler;
-      document.addEventListener("mousedown", handler, { capture: true });
+      document.addEventListener("pointerdown", handler, { capture: true });
+      for (const doc of contentDocs) {
+        doc.addEventListener("pointerdown", handler, { capture: true });
+      }
     }, 0);
   }
 
@@ -389,8 +431,12 @@ export class ReadingSettingsPopover {
       this.dismissTimer = null;
     }
     if (this.dismissHandler) {
-      document.removeEventListener("mousedown", this.dismissHandler, { capture: true });
+      document.removeEventListener("pointerdown", this.dismissHandler, { capture: true });
+      for (const doc of this.dismissContentDocs) {
+        doc.removeEventListener("pointerdown", this.dismissHandler, { capture: true });
+      }
       this.dismissHandler = null;
+      this.dismissContentDocs = [];
     }
   }
 }

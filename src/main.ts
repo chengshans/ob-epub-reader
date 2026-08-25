@@ -6,9 +6,10 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingFont, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { applyHighlightRectInflatePatch } from "./highlightRectInflate";
+import { ReadingFontManager } from "./ReadingFontManager";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
@@ -21,6 +22,7 @@ export default class ObEpubPlugin extends Plugin {
   progressStore!: ProgressStore;
   annotationVaultStore!: AnnotationVaultStore;
   excerptPasteTarget!: ExcerptPasteTarget;
+  readingFontManager!: ReadingFontManager;
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
   private lastGotoKey = "";
   private lastGotoAt = 0;
@@ -44,6 +46,8 @@ export default class ObEpubPlugin extends Plugin {
     );
     await initializeI18n(uiLocale);
     await this.loadSettings();
+
+    this.readingFontManager = new ReadingFontManager(this);
 
     this.annotationVaultStore = new AnnotationVaultStore(this.app, this.settings);
     this.progressStore = new ProgressStore(this.app, this.settings, this.annotationVaultStore, {
@@ -122,7 +126,15 @@ export default class ObEpubPlugin extends Plugin {
         async (skip) => {
           this.settings.skipDeleteAnnotationConfirm = skip;
           await this.saveSettings({ skipViewUpdate: true });
-        }
+        },
+        async (font) => {
+          this.settings.readingFont = normalizeReadingFont(font);
+          await this.saveSettings({ skipViewUpdate: true });
+          if (this.app.setting.activeTab === this.settingsTab) {
+            this.settingsTab.display();
+          }
+        },
+        this.readingFontManager
       );
     });
 
@@ -533,6 +545,7 @@ export default class ObEpubPlugin extends Plugin {
     this.settings = Object.assign({}, getDefaultSettings(), data?.settings ?? {});
     this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
+    this.settings.readingFont = normalizeReadingFont(this.settings.readingFont);
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
     this.settings.sourceLinkFormat = normalizeSourceLinkFormat(this.settings.sourceLinkFormat);
     this.settings.defaultExcerptHighlightColor = normalizeHighlightColor(
