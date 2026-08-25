@@ -853,6 +853,13 @@ export class EpubReaderView extends FileView {
       this.book.spine.hooks.content.register((doc: Document) => {
         if (this.isBookSessionStale(generation)) return;
         stripExecutableFromDocument(doc);
+        // 在章节文档进入 iframe 前同步注入 @font-face，避免首帧回退系统字体
+        this.injectReadingThemeIntoDocument(
+          doc,
+          this.readingFontManager.getFontFaceCssSync(
+            normalizeReadingFont(this.settings.readingFont)
+          )
+        );
       });
       await this.book.replacements();
       if (this.isBookSessionStale(generation)) return;
@@ -904,6 +911,16 @@ export class EpubReaderView extends FileView {
       // Apply font size
       this.rendition.themes.fontSize(`${this.fontSize}px`);
 
+      // 预热字体 CSS 缓存，后续换章可同步注入 @font-face
+      await this.readingFontManager.ensureAvailable(
+        normalizeReadingFont(this.settings.readingFont),
+        { quiet: true }
+      );
+      await this.readingFontManager.buildFontFaceCss(
+        normalizeReadingFont(this.settings.readingFont)
+      );
+      if (this.isBookSessionStale(generation)) return;
+
       // Apply theme CSS variables
       this.applyTheme();
 
@@ -924,22 +941,21 @@ export class EpubReaderView extends FileView {
       });
 
       // Mouse wheel + keyboard navigation (bound inside each iframe document)
-      this.rendition.hooks.content.register(async (contents: { document?: Document }) => {
+      // 注意：不得返回 Promise。epub.js 会等 content hook 全部 resolve 才 show；
+      // 换章时旧 view 已卸，若此处 await 字体会造成空白闪烁。
+      this.rendition.hooks.content.register((contents: { document?: Document }) => {
         if (this.isBookSessionStale(generation)) return;
         try {
+          const fontId = normalizeReadingFont(this.settings.readingFont);
+          this.injectReadingThemeIntoDocument(
+            contents?.document,
+            this.readingFontManager.getFontFaceCssSync(fontId)
+          );
           this.attachContentNavigation(contents);
-          await this.inlineBlockedStylesheets(contents);
-          await this.readingFontManager.ensureAvailable(
-            normalizeReadingFont(this.settings.readingFont),
-            { quiet: true }
-          );
-          const fontFaceCss = await this.readingFontManager.buildFontFaceCss(
-            normalizeReadingFont(this.settings.readingFont)
-          );
-          this.injectReadingThemeIntoDocument(contents?.document, fontFaceCss);
         } catch (err) {
-          console.warn("ob-epub: content hook failed", err);
+          console.warn("ob-epub: content hook (sync) failed", err);
         }
+        void this.finalizeContentDocument(contents, generation);
       });
 
       // Track location changes
@@ -1053,6 +1069,31 @@ export class EpubReaderView extends FileView {
   }
 
   // ---------- Navigation: wheel + keyboard ----------
+
+  /**
+   * content hook 的异步收尾：不阻塞 epub.js show。
+   * 内联被 CSP 拦截的 stylesheet，并在字体 CSS 缓存未命中时补注入。
+   */
+  private async finalizeContentDocument(
+    contents: { document?: Document },
+    generation: number
+  ): Promise<void> {
+    if (this.isBookSessionStale(generation)) return;
+    try {
+      const fontId = normalizeReadingFont(this.settings.readingFont);
+      const before = this.readingFontManager.getFontFaceCssSync(fontId);
+      await this.inlineBlockedStylesheets(contents);
+      if (this.isBookSessionStale(generation)) return;
+      await this.readingFontManager.ensureAvailable(fontId, { quiet: true });
+      const fontFaceCss = await this.readingFontManager.buildFontFaceCss(fontId);
+      if (this.isBookSessionStale(generation)) return;
+      if (fontFaceCss !== before) {
+        this.injectReadingThemeIntoDocument(contents?.document, fontFaceCss);
+      }
+    } catch (err) {
+      console.warn("ob-epub: content finalize failed", err);
+    }
+  }
 
   /** Obsidian CSP blocks blob:/data: stylesheet links in EPUB iframes. */
   private async inlineBlockedStylesheets(contents: any): Promise<void> {
@@ -1366,13 +1407,7 @@ export class EpubReaderView extends FileView {
       }
 
       let styleEl = doc.getElementById(READING_THEME_STYLE_ID) as HTMLStyleElement | null;
-      if (!styleEl) {
-        styleEl = doc.createElement("style");
-        styleEl.id = READING_THEME_STYLE_ID;
-      } else {
-        styleEl.remove();
-      }
-      styleEl.textContent = this.buildInjectedThemeCss(
+      const css = this.buildInjectedThemeCss(
         background,
         textColor,
         linkColor,
@@ -1380,7 +1415,15 @@ export class EpubReaderView extends FileView {
         fontFamily,
         fontFaceCss
       );
-      doc.head.appendChild(styleEl);
+      if (!styleEl) {
+        styleEl = doc.createElement("style");
+        styleEl.id = READING_THEME_STYLE_ID;
+        styleEl.textContent = css;
+        doc.head.appendChild(styleEl);
+      } else if (styleEl.textContent !== css) {
+        // 就地更新，避免 remove 后短暂无样式造成空白闪烁
+        styleEl.textContent = css;
+      }
     } catch (err) {
       console.warn("ob-epub: inject reading theme failed", err);
     }
@@ -1389,13 +1432,19 @@ export class EpubReaderView extends FileView {
   private async applyThemeToAllContents(): Promise<void> {
     if (!this.rendition) return;
     try {
-      const fontFaceCss = await this.readingFontManager.buildFontFaceCss(
-        normalizeReadingFont(this.settings.readingFont)
-      );
+      const fontId = normalizeReadingFont(this.settings.readingFont);
+      // 先同步注入缓存，再异步刷新，避免换章后主题刷新时闪一下
+      const cached = this.readingFontManager.getFontFaceCssSync(fontId);
       const contents = this.rendition.getContents() as Array<{ document?: Document }>;
       if (!Array.isArray(contents)) return;
       for (const content of contents) {
-        this.injectReadingThemeIntoDocument(content?.document, fontFaceCss);
+        this.injectReadingThemeIntoDocument(content?.document, cached);
+      }
+      const fontFaceCss = await this.readingFontManager.buildFontFaceCss(fontId);
+      if (fontFaceCss !== cached) {
+        for (const content of contents) {
+          this.injectReadingThemeIntoDocument(content?.document, fontFaceCss);
+        }
       }
       this.scheduleScrolledContentHeightSync();
     } catch (err) {

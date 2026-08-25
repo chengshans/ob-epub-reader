@@ -236,6 +236,8 @@ class FontDownloadProgressNotice {
 export class ReadingFontManager {
   private plugin: Plugin;
   private inflight = new Map<DownloadableFontId, Promise<boolean>>();
+  /** 已生成的 @font-face CSS，供换章时同步注入，避免 await 导致首帧回退系统字体 */
+  private fontFaceCssCache = new Map<DownloadableFontId, string>();
 
   constructor(plugin: Plugin) {
     this.plugin = plugin;
@@ -269,19 +271,34 @@ export class ReadingFontManager {
     return this.plugin.app.vault.adapter.getResourcePath(this.assetPath(fileName));
   }
 
+  /** 同步取缓存的 @font-face CSS（换章首帧注入用） */
+  getFontFaceCssSync(id: ReadingFontId): string {
+    const fontId = normalizeReadingFont(id);
+    if (!isDownloadableFontId(fontId)) return "";
+    return this.fontFaceCssCache.get(fontId) ?? "";
+  }
+
   /** 生成可注入 iframe 的 @font-face CSS；未缓存则返回空串 */
   async buildFontFaceCss(id: ReadingFontId): Promise<string> {
     if (!isDownloadableFontId(id)) return "";
-    if (!(await this.isCached(id))) return "";
+    const hit = this.fontFaceCssCache.get(id);
+    if (hit) return hit;
+    if (!(await this.isCached(id))) {
+      this.fontFaceCssCache.delete(id);
+      return "";
+    }
     const spec = DOWNLOADABLE[id];
     const blocks: string[] = [];
     for (const asset of spec.assets) {
       const url = this.getResourceUrl(asset.fileName).replace(/\\/g, "/");
+      // swap：本地字体通常很快；block 会在解析大字体时整页空白
       blocks.push(
         `@font-face{font-family:"${spec.family}";font-style:normal;font-weight:${asset.weight};font-display:swap;src:url("${url}") ${fontFormatHint(asset.fileName)}}`
       );
     }
-    return blocks.join("\n");
+    const css = blocks.join("\n");
+    this.fontFaceCssCache.set(id, css);
+    return css;
   }
 
   /**
@@ -291,6 +308,8 @@ export class ReadingFontManager {
   async ensureAvailable(id: ReadingFontId, opts?: { quiet?: boolean }): Promise<boolean> {
     const fontId = normalizeReadingFont(id);
     if (!isDownloadableFontId(fontId)) return true;
+    // 内存已有 @font-face CSS：换章热路径，避免反复 vault.exists
+    if (this.fontFaceCssCache.has(fontId)) return true;
 
     const existing = this.inflight.get(fontId);
     if (existing) return existing;
@@ -312,7 +331,10 @@ export class ReadingFontManager {
     const label =
       getReadingFonts().find((f) => f.id === id)?.label ?? spec.family;
 
-    if (await this.isCached(id)) return true;
+    if (await this.isCached(id)) {
+      await this.buildFontFaceCss(id);
+      return true;
+    }
 
     const progress = quiet
       ? null
@@ -335,6 +357,7 @@ export class ReadingFontManager {
         doneAssets += 1;
         progress?.setWeightedProgress(doneAssets, 0, 1);
       }
+      await this.buildFontFaceCss(id);
       progress?.succeed();
       return true;
     } catch (err) {
