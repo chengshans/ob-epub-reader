@@ -1093,6 +1093,8 @@ a.ob-epub-goto-link {
   pointer-events: none;
   border-radius: 3px;
   box-sizing: border-box;
+  /* 默认 multiply；暗色主题由 JS 设为 screen，避免盖住文字 */
+  mix-blend-mode: multiply;
 }
 
 .epub-context-menu {

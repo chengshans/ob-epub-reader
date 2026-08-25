@@ -1267,6 +1267,8 @@ export class EpubReaderView extends FileView {
     this.readingTheme = id;
     this.readingSettingsPopover.sync();
     this.applyThemeSafe();
+    // 混合模式随亮/暗主题变化，需重画标注层
+    void this.refreshHighlights();
     if (this.onReadingThemeChange) {
       try {
         await this.onReadingThemeChange(id);
@@ -1985,13 +1987,23 @@ export class EpubReaderView extends FileView {
     this.bindContextMenuDismiss(true, contents?.document);
   }
 
-  /** 选中高亮色：优先用强调色，保证对比度（Obsidian --text-selection 往往过淡） */
+  /** 选中/标注高亮混合模式：只染色背景感，避免盖住字形 */
+  private highlightBlendMode(): "multiply" | "screen" {
+    if (this.readingTheme === "dark") return "screen";
+    if (this.readingTheme === "obsidian" && document.body.hasClass("theme-dark")) {
+      return "screen";
+    }
+    return "multiply";
+  }
+
+  /** 选中高亮色：半透明强调色，透明度跟随设置，配合 mix-blend-mode 不挡字 */
   private resolveSelectionHighlightColor(): string {
+    const alpha = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     const { accent, selectionBg } = this.resolveThemeColors();
-    const fromAccent = colorToRgba(accent || this.accentColor, 0.55);
+    const fromAccent = colorToRgba(accent || this.accentColor, alpha);
     if (fromAccent) return fromAccent;
-    const boosted = boostRgbaAlpha(selectionBg, 0.5);
-    return boosted ?? "rgba(70, 130, 230, 0.5)";
+    const boosted = boostRgbaAlpha(selectionBg, alpha);
+    return boosted ?? `rgba(70, 130, 230, ${alpha})`;
   }
 
   /** 在父文档画饱满强调色覆盖层（拖选过程与菜单态共用） */
@@ -2016,6 +2028,7 @@ export class EpubReaderView extends FileView {
 
     const iframeRect = iframe.getBoundingClientRect();
     const fill = this.resolveSelectionHighlightColor();
+    const blend = this.highlightBlendMode();
 
     let host = this.selectionOverlayHost;
     if (!host || !host.isConnected) {
@@ -2041,6 +2054,7 @@ export class EpubReaderView extends FileView {
         width: `${boxRect.width}px`,
         height: `${boxRect.height}px`,
         background: fill,
+        mixBlendMode: blend,
       });
       host.appendChild(box);
     }
@@ -2381,7 +2395,8 @@ export class EpubReaderView extends FileView {
       {
         fill: hex,
         "fill-opacity": String(clampHighlightOpacity(this.settings.epubHighlightOpacity)),
-        "mix-blend-mode": "normal",
+        // multiply/screen：高亮只染色，不盖住正文笔画
+        "mix-blend-mode": this.highlightBlendMode(),
       }
     );
     if (!annotation.note) {

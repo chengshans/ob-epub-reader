@@ -407,7 +407,7 @@ export function getDefaultSettings(): EpubPluginSettings {
     noteIconSize: 20,
     noteIconOffsetX: 2,
     noteIconOffsetY: 0,
-    epubHighlightOpacity: 0.38,
+    epubHighlightOpacity: 0.28,
     excerptCalloutOpacity: 0.2,
     noteTypes: getDefaultNoteTypes().map((entry) => ({ ...entry })),
     featureGroups: { ...DEFAULT_FEATURE_GROUPS },
@@ -549,8 +549,8 @@ export const NOTE_ICON_OFFSET_X_MAX = 100;
 export const NOTE_ICON_OFFSET_Y_MIN = -8;
 export const NOTE_ICON_OFFSET_Y_MAX = 10;
 
-export const HIGHLIGHT_OPACITY_MIN = 0.15;
-export const HIGHLIGHT_OPACITY_MAX = 0.85;
+export const HIGHLIGHT_OPACITY_MIN = 0.12;
+export const HIGHLIGHT_OPACITY_MAX = 0.5;
 
 export const READING_SIDE_PADDING_MIN = 12;
 export const READING_SIDE_PADDING_MAX = 120;
@@ -571,7 +571,7 @@ export function clampReadingSidePadding(value: number): number {
 
 export function clampHighlightOpacity(value: number): number {
   const n = Number(value);
-  if (!Number.isFinite(n)) return 0.38;
+  if (!Number.isFinite(n)) return 0.28;
   return Math.min(HIGHLIGHT_OPACITY_MAX, Math.max(HIGHLIGHT_OPACITY_MIN, n));
 }
 
