@@ -749,8 +749,8 @@ export class EpubReaderView extends FileView {
       this.resizeObserver = null;
     });
     this.safeCleanup("keydownHandler", () => {
-      if (this.keydownHandler && this.containerEl.isConnected) {
-        this.containerEl.removeEventListener("keydown", this.keydownHandler);
+      if (this.keydownHandler) {
+        document.removeEventListener("keydown", this.keydownHandler);
       }
       this.keydownHandler = null;
     });
@@ -1084,13 +1084,17 @@ export class EpubReaderView extends FileView {
   private registerKeyboardNavigation() {
     if (this.keydownHandler) return;
     this.keydownHandler = (e: KeyboardEvent) => {
+      // Host-level: listen on document so keys still work after cross-spine
+      // iframe teardown moves focus to body (outside containerEl).
       const active = document.activeElement;
       const tag = active?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea") return;
+      if (active instanceof HTMLElement && active.isContentEditable) return;
       if (!this.containerEl.isShown()) return;
+      if (this.app.workspace.getActiveViewOfType(EpubReaderView) !== this) return;
       this.handleNavKey(e);
     };
-    this.containerEl.addEventListener("keydown", this.keydownHandler);
+    document.addEventListener("keydown", this.keydownHandler);
   }
 
   private cssVar(name: string, fallback: string): string {
