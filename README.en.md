@@ -23,15 +23,15 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 
 - **Built-in reader** — Open any `.epub` file in your vault from the file explorer
 - **TOC and notes sidebar** — Chapter outline (auto-highlights current chapter while reading) and annotations for the current book (search and filter by color or note type)
-- **EPUB bookshelf** — Browse all EPUBs in the vault with progress and cumulative reading time (can be disabled in settings)
-- **Reading progress** — Auto-saved position; excerpt frontmatter stores percent, chapter, and reading time
+- **EPUB bookshelf** — Sidebar cover grid of all vault EPUBs: cover, title/author, progress bar and percent, last-read date; right-click to mark finished (also auto-marked at 100%)
+- **Reading progress** — Auto-saved position; excerpt frontmatter stores percent, chapter, reading time, and finished state
 - **Highlights and margin notes** — Select text to highlight (yellow/red/green/blue/purple) or add a thought; highlight/recolor auto-copies excerpts
 - **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only (optional color); split-view co-reading can auto-insert into the recently edited Markdown note
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
 - **Excerpt export** — Annotations sync to Markdown excerpt files with five configurable excerpt link formats (including **plain text** — selected passage only, ideal for copying elsewhere); excerpt folder and filename support `{filefolder}`, `{title}`, and `{filename}` placeholders
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading settings panel** — Toolbar ⚙ popover: font size slider, body font, side margins, six reading themes, highlight opacity, auto-paste toggle
-- **Body fonts** — Heiti / Songti / Kaiti / FangSong / Yuanti, Source Han, LXGW WenKai, and more; downloadable fonts are cached on demand with progress
+- **Body fonts** — Heiti / Songti / Kaiti / FangSong / Yuanti, Source Han, LXGW WenKai, and more; downloadable fonts are cached on demand; import local font files from settings
 - **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px)
 - **Toolbar placement** — Top (inside reader) or bottom (pinned to Obsidian status bar), with progress bar
 - **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in reading settings; set default in settings)
@@ -48,8 +48,10 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - [x] Multiple excerpt link formats (including plain text) plus batch convert / metadata check
 - [x] Split-view co-reading: copy excerpts, optional auto-paste into notes
 - [x] EPUB bookshelf and cumulative reading time
+- [x] Sidebar cover-grid bookshelf (cover/author/progress bar, finished badge, context menu)
 - [x] Reading settings panel (font size, margins, themes, highlight opacity)
 - [x] Body font presets; Source Han / LXGW download-and-cache when missing (with progress)
+- [x] Import local font files (sanitizes Chromium-incompatible tables)
 - [x] Selection and annotation highlights use blend modes so text stays readable
 - [x] Toolbar top / bottom layout with status-bar progress
 - [x] UI i18n (en / zh / zh-TW / ja)
@@ -62,7 +64,6 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - [ ] **Line / paragraph / letter spacing** — Typography controls in reading settings
 - [ ] **Full-text search** — Search within the current book and jump to hits
 - [ ] **Bookmarks** — Position bookmarks independent of highlights
-- [ ] **Local fonts** — Pick from system fonts or import user font files
 - [ ] **More open-source font presets** — Expand downloadable fonts where licensing allows
 - [ ] **Reading stats** — Time and progress trends on the bookshelf or a dedicated view
 - [ ] **Fixed-layout EPUB** — Better support and messaging for fixed-layout books
@@ -77,8 +78,10 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 ### Open a book
 
 - Click any `.epub` file in the file explorer
-- Command palette: **Open EPUB bookshelf** — Browse all EPUBs in the vault and their progress
+- Command palette: **Open EPUB bookshelf** — Sidebar cover grid of all vault EPUBs, progress, and finished state
 - Command palette: **Open in EPUB reader** — Open the currently selected EPUB file
+
+Each bookshelf card shows the cover (extracted and cached from the EPUB), title and author, progress bar/percent, and last-read date. Right-click to mark or unmark finished; reaching 100% progress marks finished automatically.
 
 ### Highlights and margin notes
 
@@ -141,7 +144,7 @@ Wiki links in excerpts (`[[book.epub#cfi=...|...]]`), **Source** links, or `ob-e
 Click **⚙** on the toolbar to open the reading settings panel:
 
 - **Font size** — Slider or A-/A+ (10–32 px, persisted)
-- **Body font** — System Heiti / Songti / Kaiti and more, plus Source Han and LXGW WenKai (downloadable cache)
+- **Body font** — System Heiti / Songti / Kaiti and more, plus Source Han and LXGW WenKai (downloadable cache); import local font files in settings
 - **Side margins** — Slider or ◧-/◧+ (12–120 px; works in paginated and scroll modes)
 - **Reading theme** — Six theme swatches for instant switching
 - **Highlight opacity** — Adjust highlight layer strength in the reader (shown when annotations are enabled)
@@ -192,7 +195,7 @@ Configure under **Settings → EPUB Marginalia** (grouped, collapsible sections)
 |--------|-------------|---------|
 | Default reading mode | Paginated / scroll | Scroll |
 | Default font size | Reader font size (px) | 16 |
-| Body font | Follow Obsidian / Heiti / Songti / Kaiti / FangSong / Yuanti / Source Han / LXGW, etc. | Follow Obsidian |
+| Body font | Follow Obsidian / Heiti / Songti / Kaiti / FangSong / Yuanti / Source Han / LXGW, etc.; import local fonts | Follow Obsidian |
 | Side margins | Horizontal padding of reading content (px) | 12 |
 | Default reading theme | Follow Obsidian / White / Yellow / Green / Sepia / Dark | Follow Obsidian |
 | Toolbar placement | Top (in reader) / Bottom (Obsidian status bar) | Bottom |
@@ -222,7 +225,7 @@ This group can be disabled (does not affect **Open in EPUB reader**).
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| EPUB bookshelf | Sidebar bookshelf, ribbon icon, and **Open EPUB bookshelf** command | On |
+| EPUB bookshelf | Sidebar cover grid, ribbon icon, and **Open EPUB bookshelf** command; mark finished | On |
 
 ## Data storage
 
@@ -231,7 +234,9 @@ This group can be disabled (does not affect **Open in EPUB reader**).
 | Excerpt Markdown | `{excerpt folder}/` (filename configurable; default `{title} excerpts.md`) | Highlights and margin notes; frontmatter includes `epub-source` and reading progress |
 | `data.json` | `.obsidian/plugins/ob-epub-reader/` | Plugin settings (not annotations or progress) |
 
-Progress fields in excerpt frontmatter: `progress-percent`, `progress-cfi`, `progress-chapter`, `last-read`, `reading-time-seconds` (cumulative reading time in seconds).
+Progress fields in excerpt frontmatter: `progress-percent`, `progress-cfi`, `progress-chapter`, `last-read`, `reading-time` / `reading-time-seconds` (cumulative reading time), optional `reading-finished`.
+
+Cover cache directory: `.obsidian/plugins/ob-epub-reader/covers/` (for the bookshelf).
 
 Older versions stored annotations and progress in `data.json` or `reading-progress.json`. The plugin migrates them into excerpt frontmatter on first load. You may delete `reading-progress.json` after migration.
 
