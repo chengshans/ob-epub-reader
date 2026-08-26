@@ -5,6 +5,7 @@ import { EPUB_READER_VIEW_TYPE, EpubReaderView } from "./EpubReaderView";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
+import { EpubMetaCache } from "./EpubMetaCache";
 import { EpubSettingsTab } from "./SettingsTab";
 import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeCustomFonts, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingFont, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
@@ -23,6 +24,7 @@ export default class ObEpubPlugin extends Plugin {
   annotationVaultStore!: AnnotationVaultStore;
   excerptPasteTarget!: ExcerptPasteTarget;
   readingFontManager!: ReadingFontManager;
+  epubMetaCache!: EpubMetaCache;
   private pendingCfiForNextOpen: { filePath: string; cfi: string } | null = null;
   private lastGotoKey = "";
   private lastGotoAt = 0;
@@ -38,6 +40,7 @@ export default class ObEpubPlugin extends Plugin {
     progress: HTMLElement | null;
     container: HTMLElement;
   } | null = null;
+  private bookshelfProgressRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async onload() {
     const data = await this.loadData();
@@ -64,6 +67,12 @@ export default class ObEpubPlugin extends Plugin {
       },
     });
     await this.progressStore.load();
+
+    this.epubMetaCache = new EpubMetaCache(this);
+
+    this.progressStore.setOnProgressChanged(() => {
+      this.scheduleBookshelfProgressRefresh();
+    });
 
     // Migrate old annotations from plugin data.json (one-time)
     await this.migrateOldAnnotations();
@@ -161,7 +170,7 @@ export default class ObEpubPlugin extends Plugin {
 
     // Bookshelf sidebar view
     this.registerView(BOOKSHELF_VIEW_TYPE, (leaf) => {
-      return new BookshelfView(leaf, this.progressStore, (file) => {
+      return new BookshelfView(leaf, this.progressStore, this.epubMetaCache, (file) => {
         void this.openEpubFile(file);
       });
     });
@@ -187,10 +196,38 @@ export default class ObEpubPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
         if (file instanceof TFile && file.extension === "epub") {
+          this.epubMetaCache.invalidate(file.path);
           this.refreshBookshelfViews();
         }
       })
     );
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && file.extension === "epub") {
+          this.epubMetaCache.invalidate(file.path);
+          this.refreshBookshelfViews();
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        if (file instanceof TFile && file.extension === "epub") {
+          this.epubMetaCache.invalidate(oldPath);
+          this.epubMetaCache.invalidate(file.path);
+          this.refreshBookshelfViews();
+        }
+      })
+    );
+
+    // vault 索引就绪后重扫进度，避免 onload 过早扫描为空导致书架一直 0%
+    this.app.workspace.onLayoutReady(() => {
+      void this.progressStore
+        .load()
+        .then(() => this.refreshBookshelfViews())
+        .catch((err) => {
+          console.error("ob-epub: progress reload on layout ready failed", err);
+        });
+    });
 
     // Deep-link: obsidian://ob-epub-goto?file=...&cfi=...
     // NOTE: Cannot register "open" — Obsidian core already owns that action.
@@ -386,6 +423,17 @@ export default class ObEpubPlugin extends Plugin {
         console.error("ob-epub: bookshelf refresh failed", err);
       }
     });
+  }
+
+  /** 阅读中进度频繁保存时合并刷新，避免书架反复整页重绘 */
+  private scheduleBookshelfProgressRefresh(): void {
+    if (this.bookshelfProgressRefreshTimer) {
+      clearTimeout(this.bookshelfProgressRefreshTimer);
+    }
+    this.bookshelfProgressRefreshTimer = setTimeout(() => {
+      this.bookshelfProgressRefreshTimer = null;
+      this.refreshBookshelfViews();
+    }, 1200);
   }
 
   /** Consumed by EpubReaderView.onLoadFile to honour a pending deep-link jump. */

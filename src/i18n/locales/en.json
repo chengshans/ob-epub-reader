@@ -49,7 +49,12 @@
     "empty": "No EPUB files found in vault.",
     "lastRead": "Last read: {{chapter}} · {{date}}",
     "readTime": "Read {{time}}",
-    "unknownChapter": "Unknown chapter"
+    "unknownChapter": "Unknown chapter",
+    "finished": "Finished",
+    "markFinished": "Mark as finished",
+    "unmarkFinished": "Unmark finished",
+    "unknownAuthor": "Unknown author",
+    "noCover": "No cover"
   },
   "reader": {
     "sidebar": {

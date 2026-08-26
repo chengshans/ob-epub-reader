@@ -49,7 +49,12 @@
     "empty": "Vault 中没有找到 EPUB 文件。",
     "lastRead": "上次阅读：{{chapter}} · {{date}}",
     "readTime": "已读 {{time}}",
-    "unknownChapter": "未知章节"
+    "unknownChapter": "未知章节",
+    "finished": "读完",
+    "markFinished": "标记为已读完",
+    "unmarkFinished": "取消已读完",
+    "unknownAuthor": "未知作者",
+    "noCover": "无封面"
   },
   "reader": {
     "sidebar": {

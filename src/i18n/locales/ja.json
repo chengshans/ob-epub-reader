@@ -49,7 +49,12 @@
     "empty": "Vault に EPUB ファイルが見つかりません。",
     "lastRead": "前回の閲覧: {{chapter}} · {{date}}",
     "readTime": "読了 {{time}}",
-    "unknownChapter": "不明な章"
+    "unknownChapter": "不明な章",
+    "finished": "読了",
+    "markFinished": "読了にする",
+    "unmarkFinished": "読了を解除",
+    "unknownAuthor": "作者不明",
+    "noCover": "表紙なし"
   },
   "reader": {
     "sidebar": {

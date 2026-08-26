@@ -49,7 +49,12 @@
     "empty": "資料庫中沒有找到 EPUB 檔案。",
     "lastRead": "上次閱讀：{{chapter}} · {{date}}",
     "readTime": "已讀 {{time}}",
-    "unknownChapter": "未知章節"
+    "unknownChapter": "未知章節",
+    "finished": "讀完",
+    "markFinished": "標記為已讀完",
+    "unmarkFinished": "取消已讀完",
+    "unknownAuthor": "未知作者",
+    "noCover": "無封面"
   },
   "reader": {
     "sidebar": {

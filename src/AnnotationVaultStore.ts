@@ -495,11 +495,12 @@ export class AnnotationVaultStore {
     const lastReadMatch = body.match(/^last-read:\s*(.+)$/m);
     const readingTimeMatch = body.match(/^reading-time:\s*(.+)$/m);
     const readingTimeSecondsMatch = body.match(/^reading-time-seconds:\s*(\d+)/m);
+    const finishedMatch = body.match(/^reading-finished:\s*(true|false)\s*$/m);
+    const finished = finishedMatch ? finishedMatch[1] === "true" : undefined;
 
-    if (!cfiMatch) return null;
-
-    const cfi = this.parseYamlScalar(cfiMatch[1]);
-    if (!cfi.startsWith("epubcfi(")) return null;
+    const cfi = cfiMatch ? this.parseYamlScalar(cfiMatch[1]) : "";
+    const hasValidCfi = cfi.startsWith("epubcfi(");
+    if (!hasValidCfi && finished !== true) return null;
 
     let percent = percentMatch ? Number(percentMatch[1]) : 0;
     if (!Number.isFinite(percent) || percent < 0) percent = 0;
@@ -514,11 +515,12 @@ export class AnnotationVaultStore {
     if (!Number.isFinite(readingTimeSeconds) || readingTimeSeconds < 0) readingTimeSeconds = 0;
 
     return {
-      cfi,
+      cfi: hasValidCfi ? cfi : "",
       chapter: chapterMatch ? this.parseYamlScalar(chapterMatch[1]) : "",
       percent,
       lastRead: lastReadMatch ? this.parseYamlScalar(lastReadMatch[1]) : "",
       readingTimeSeconds: Math.floor(readingTimeSeconds),
+      ...(finished === true ? { finished: true } : {}),
     };
   }
 
@@ -531,13 +533,19 @@ export class AnnotationVaultStore {
   }
 
   buildProgressFrontmatterFields(progress: BookProgress): string {
-    return [
+    const lines = [
       `progress-percent: ${progress.percent}`,
       `progress-cfi: ${this.yamlQuote(progress.cfi)}`,
       `progress-chapter: ${this.yamlQuote(progress.chapter)}`,
       `last-read: ${progress.lastRead}`,
       `reading-time: ${this.yamlQuote(formatReadingTime(progress.readingTimeSeconds ?? 0))}`,
-    ].join("\n");
+    ];
+    if (progress.finished === true) {
+      lines.push("reading-finished: true");
+    } else if (progress.finished === false) {
+      lines.push("reading-finished: false");
+    }
+    return lines.join("\n");
   }
 
   upsertProgressInContent(content: string, progress: BookProgress): string {
@@ -556,6 +564,7 @@ export class AnnotationVaultStore {
       .replace(/^last-read:.*$/m, "")
       .replace(/^reading-time:.*$/m, "")
       .replace(/^reading-time-seconds:.*$/m, "")
+      .replace(/^reading-finished:.*$/m, "")
       .replace(/\n{3,}/g, "\n\n")
       .trimEnd();
 
@@ -574,10 +583,27 @@ export class AnnotationVaultStore {
     if (!this.annotationsEnabled()) return;
     const file = await this.ensureFile(epubFilePath);
     const content = await this.app.vault.read(file);
-    const updated = this.upsertProgressInContent(content, progress);
+    let updated = this.upsertProgressInContent(content, progress);
+    // 历史摘录可能缺 epub-source，写入进度时一并补上，避免书架扫不到
+    if (!this.extractEpubSourceFromFrontmatter(updated)) {
+      updated = this.upsertEpubSourceInContent(updated, epubFilePath);
+    }
     if (updated === content) return;
     this.pauseWatch();
     await this.app.vault.modify(file, updated);
+  }
+
+  /** 在 frontmatter 中写入 / 覆盖 epub-source */
+  upsertEpubSourceInContent(content: string, epubFilePath: string): string {
+    const line = `epub-source: ${this.yamlQuote(epubFilePath)}`;
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!fmMatch) {
+      return `---\n${line}\n---\n\n${content}`;
+    }
+    let body = fmMatch[1].replace(/^epub-source:.*$/m, "").replace(/\n{3,}/g, "\n\n").trimEnd();
+    const newBody = body ? `${line}\n${body}` : line;
+    const rest = content.slice(fmMatch[0].length);
+    return `---\n${newBody}\n---${rest}`;
   }
 
   async scanAllProgress(): Promise<Record<string, BookProgress>> {
@@ -587,11 +613,30 @@ export class AnnotationVaultStore {
 
     for (const file of files) {
       const content = await this.app.vault.read(file);
-      const epubSource = this.extractEpubSourceFromFrontmatter(content);
+      // 部分历史摘录缺 epub-source，需从路径 / 正文 wiki 链推断
+      const epubSource = this.resolveEpubSourceForExcerpt(file.path, content);
       if (!epubSource) continue;
+
+      const normalizedSource = normalizePath(epubSource);
+      const epubFile = this.app.vault.getAbstractFileByPath(normalizedSource);
+      const key = epubFile instanceof TFile ? epubFile.path : normalizedSource;
+
+      // 静默补全缺失的 epub-source，便于后续扫描与跳转
+      if (!this.extractEpubSourceFromFrontmatter(content)) {
+        try {
+          const patched = this.upsertEpubSourceInContent(content, key);
+          if (patched !== content) {
+            this.pauseWatch();
+            await this.app.vault.modify(file, patched);
+          }
+        } catch (err) {
+          console.warn("ob-epub: failed to backfill epub-source for", file.path, err);
+        }
+      }
+
       const progress = this.parseProgressFromContent(content);
       if (progress) {
-        result[epubSource] = progress;
+        result[key] = progress;
       }
     }
 

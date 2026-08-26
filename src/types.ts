@@ -516,6 +516,8 @@ export interface BookProgress {
   percent: number;
   lastRead: string;
   readingTimeSeconds?: number;
+  /** 已读完标记（进度跨过 100% 时自动设为 true，可手动切换） */
+  finished?: boolean;
 }
 
 export function unknownChapterLabel(): string {

@@ -17,6 +17,8 @@ export type PluginProgressPersistence = {
   savePluginProgress: (progress: Record<string, BookProgress>) => Promise<void>;
 };
 
+export type ProgressChangedHandler = (epubPath: string) => void;
+
 /** 将 epub.js 的 EpubCFI 对象或历史 JSON 对象统一为 CFI 字符串 */
 export function normalizeCfi(cfi: unknown): string {
   if (!cfi) return "";
@@ -50,11 +52,13 @@ function normalizeReadingTimeSeconds(seconds: number | undefined): number {
 }
 
 function normalizeProgress(progress: BookProgress): BookProgress {
+  const finished = progress.finished === true;
   return {
     ...progress,
     cfi: normalizeCfi(progress.cfi),
     percent: normalizePercent(progress.percent),
     readingTimeSeconds: normalizeReadingTimeSeconds(progress.readingTimeSeconds),
+    ...(finished ? { finished: true } : {}),
   };
 }
 
@@ -65,6 +69,8 @@ export class ProgressStore {
   private annotationVaultStore: AnnotationVaultStore;
   private loadPluginProgress: () => Promise<Record<string, BookProgress>>;
   private savePluginProgress: (progress: Record<string, BookProgress>) => Promise<void>;
+  private onProgressChanged: ProgressChangedHandler | null = null;
+  private loadPromise: Promise<void> | null = null;
 
   constructor(
     app: App,
@@ -81,6 +87,18 @@ export class ProgressStore {
     this.savePluginProgress =
       persistence?.savePluginProgress ??
       (async () => undefined);
+  }
+
+  setOnProgressChanged(handler: ProgressChangedHandler | null): void {
+    this.onProgressChanged = handler;
+  }
+
+  private notifyProgressChanged(epubPath: string): void {
+    try {
+      this.onProgressChanged?.(epubPath);
+    } catch (err) {
+      console.error("ob-epub: progress changed handler failed", err);
+    }
   }
 
   async updateSettings(settings: EpubPluginSettings) {
@@ -236,6 +254,15 @@ export class ProgressStore {
   }
 
   async load() {
+    // 并发调用合并为同一次扫描
+    if (this.loadPromise) return this.loadPromise;
+    this.loadPromise = this.loadInternal().finally(() => {
+      this.loadPromise = null;
+    });
+    return this.loadPromise;
+  }
+
+  private async loadInternal() {
     const fromFrontmatter = await this.annotationVaultStore.scanAllProgress();
     this.progress = { ...fromFrontmatter };
 
@@ -286,6 +313,27 @@ export class ProgressStore {
     return normalizeProgress(progress);
   }
 
+  /**
+   * 书架等场景：内存未命中时按 EPUB 路径回读摘录 frontmatter（不依赖 epub-source 字段）。
+   */
+  async resolveProgress(epubPath: string): Promise<BookProgress | null> {
+    const cached = this.getProgress(epubPath);
+    if (cached) return cached;
+
+    if (!this.annotationsEnabled()) return null;
+
+    try {
+      const fromDisk = await this.annotationVaultStore.readProgress(epubPath);
+      if (!fromDisk) return null;
+      const normalized = normalizeProgress(fromDisk);
+      this.progress[epubPath] = normalized;
+      return normalized;
+    } catch (err) {
+      console.warn("ob-epub: resolveProgress failed for", epubPath, err);
+      return null;
+    }
+  }
+
   async saveProgress(filePath: string, cfi: unknown, chapter: string, percent: number) {
     const cfiStr = normalizeCfi(cfi);
     if (!cfiStr) {
@@ -299,17 +347,25 @@ export class ProgressStore {
       return;
     }
 
-    const entry: BookProgress = {
+    const prevPercent = existing?.percent ?? 0;
+    let finished = existing?.finished === true;
+    if (normalizedPercent >= 1 && prevPercent < 1) {
+      finished = true;
+    }
+
+    const entry: BookProgress = normalizeProgress({
       cfi: cfiStr,
       chapter,
       percent: normalizedPercent,
       lastRead: new Date().toISOString(),
       readingTimeSeconds: existing?.readingTimeSeconds ?? 0,
-    };
+      ...(finished ? { finished: true } : {}),
+    });
 
     this.progress[filePath] = entry;
     try {
       await this.persistProgress(entry, filePath);
+      this.notifyProgressChanged(filePath);
     } catch (err) {
       const dest = this.annotationsEnabled()
         ? this.getProgressFilePath(filePath)
@@ -335,17 +391,19 @@ export class ProgressStore {
       return;
     }
 
-    const entry: BookProgress = {
+    const entry: BookProgress = normalizeProgress({
       cfi: cfiStr,
       chapter: existing?.chapter || context?.chapter || "",
       percent: existing?.percent ?? normalizePercent(context?.percent ?? 0),
       lastRead: new Date().toISOString(),
       readingTimeSeconds: normalizedTotal,
-    };
+      ...(existing?.finished === true ? { finished: true } : {}),
+    });
 
-    this.progress[filePath] = normalizeProgress(entry);
+    this.progress[filePath] = entry;
     try {
       await this.persistProgress(this.progress[filePath], filePath);
+      this.notifyProgressChanged(filePath);
     } catch (err) {
       const dest = this.annotationsEnabled()
         ? this.getProgressFilePath(filePath)
@@ -361,6 +419,35 @@ export class ProgressStore {
 
   getPercent(filePath: string): number {
     return normalizePercent(this.progress[filePath]?.percent ?? 0);
+  }
+
+  /** 手动标记 / 取消已读完 */
+  async setFinished(filePath: string, finished: boolean): Promise<void> {
+    const existing = await this.resolveExistingProgress(filePath);
+    const base: BookProgress = {
+      cfi: existing?.cfi ?? "",
+      chapter: existing?.chapter ?? "",
+      percent: existing?.percent ?? 0,
+      lastRead: existing?.lastRead || new Date().toISOString(),
+      readingTimeSeconds: existing?.readingTimeSeconds ?? 0,
+      finished,
+    };
+    const forMemory = normalizeProgress(base);
+    if (!finished) delete forMemory.finished;
+    else forMemory.finished = true;
+
+    this.progress[filePath] = forMemory;
+    try {
+      // 取消时显式写 false，便于 upsert 覆盖旧的 reading-finished: true
+      await this.persistProgress(base, filePath);
+      this.notifyProgressChanged(filePath);
+    } catch (err) {
+      const dest = this.annotationsEnabled()
+        ? this.getProgressFilePath(filePath)
+        : "plugin data.json";
+      console.error("ob-epub: failed to save finished flag to", dest, err);
+      throw err;
+    }
   }
 
   /** 重新开启标注与摘录时，将内存进度合并写入摘录 frontmatter */
