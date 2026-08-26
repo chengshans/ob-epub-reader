@@ -1,4 +1,4 @@
-import { App, ExtraButtonComponent, Notice, PluginSettingTab, Setting, SliderComponent, TextComponent } from "obsidian";
+import { App, ExtraButtonComponent, Notice, Platform, PluginSettingTab, Setting, SliderComponent, TextComponent } from "obsidian";
 import type ObEpubPlugin from "./main";
 import { ExcerptCheckModal } from "./ExcerptCheckModal";
 import { t } from "./i18n/i18n";
@@ -14,14 +14,17 @@ import {
   READING_SIDE_PADDING_MIN,
   READING_SIDE_PADDING_STEP,
   clampReadingSidePadding,
+  normalizeCustomFonts,
   normalizeReadingFont,
   NoteType,
   PluginUiLocale,
   ReadingThemeId,
   SourceLinkFormat,
   FeatureGroupId,
+  CustomReadingFont,
   isFeatureGroupCollapsed,
   resolveNoteTypes,
+  toCustomReadingFontId,
 } from "./types";
 import {
   NOTE_ICON_OFFSET_X_MAX,
@@ -51,6 +54,200 @@ export class EpubSettingsTab extends PluginSettingTab {
     if (patch.label !== undefined) types[idx] = { ...types[idx], label: patch.label };
     this.plugin.settings.noteTypes = resolveNoteTypes(types);
     await this.plugin.saveSettings();
+  }
+
+  private pickAndImportCustomFont(): void {
+    // 桌面端用 Electron 原生对话框（HTML file input 的 programmatic click 常被静默忽略）
+    if (Platform.isDesktopApp) {
+      const showOpenDialogSync = this.resolveElectronOpenDialog();
+      if (showOpenDialogSync) {
+        try {
+          // 必须在 click 同步栈内打开对话框
+          const paths = showOpenDialogSync({
+            title: t("settings.customFonts.import"),
+            properties: ["openFile", "dontAddToRecent"],
+            filters: [
+              {
+                name: "Fonts",
+                extensions: ["ttf", "otf", "woff", "woff2"],
+              },
+            ],
+          });
+          if (!paths?.length) return;
+          const loaded = this.readLocalFileBytes(paths[0]);
+          if (!loaded) {
+            new Notice(t("notice.fontImportFailed"));
+            return;
+          }
+          void this.importCustomFontBytes(loaded.name, loaded.data);
+          return;
+        } catch (err) {
+          console.warn("ob-epub: electron font picker failed", err);
+          new Notice(t("notice.fontImportFailed"));
+          return;
+        }
+      }
+    }
+    this.pickCustomFontViaHtmlInput();
+  }
+
+  private resolveElectronOpenDialog():
+    | ((opts: {
+        title?: string;
+        properties?: string[];
+        filters?: { name: string; extensions: string[] }[];
+      }) => string[] | undefined)
+    | null {
+    const w = window as Window & {
+      electron?: {
+        remote?: {
+          dialog?: {
+            showOpenDialogSync?: (opts: {
+              title?: string;
+              properties?: string[];
+              filters?: { name: string; extensions: string[] }[];
+            }) => string[] | undefined;
+          };
+        };
+      };
+      require?: (id: string) => {
+        remote?: {
+          dialog?: {
+            showOpenDialogSync?: (opts: {
+              title?: string;
+              properties?: string[];
+              filters?: { name: string; extensions: string[] }[];
+            }) => string[] | undefined;
+          };
+        };
+        dialog?: {
+          showOpenDialogSync?: (opts: {
+            title?: string;
+            properties?: string[];
+            filters?: { name: string; extensions: string[] }[];
+          }) => string[] | undefined;
+        };
+      };
+    };
+
+    const fromWindow = w.electron?.remote?.dialog?.showOpenDialogSync;
+    if (fromWindow) return fromWindow.bind(w.electron!.remote!.dialog);
+
+    if (typeof w.require !== "function") return null;
+    try {
+      const electron = w.require("electron");
+      const viaRemote = electron?.remote?.dialog?.showOpenDialogSync;
+      if (viaRemote) return viaRemote.bind(electron.remote!.dialog);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const remote = w.require("@electron/remote");
+      const viaPackage = remote?.dialog?.showOpenDialogSync;
+      if (viaPackage) return viaPackage.bind(remote.dialog);
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  private readLocalFileBytes(
+    filePath: string
+  ): { name: string; data: ArrayBuffer } | null {
+    const w = window as Window & {
+      require?: (id: string) => unknown;
+    };
+    if (typeof w.require !== "function") return null;
+    try {
+      const fs = w.require("fs") as {
+        readFileSync: (p: string) => Uint8Array;
+      };
+      const pathMod = w.require("path") as {
+        basename: (p: string) => string;
+      };
+      const buf = fs.readFileSync(filePath);
+      const copy = new Uint8Array(buf.byteLength);
+      copy.set(buf);
+      return { name: pathMod.basename(filePath), data: copy.buffer };
+    } catch (err) {
+      console.warn("ob-epub: read local font failed", filePath, err);
+      return null;
+    }
+  }
+
+  private pickCustomFontViaHtmlInput(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2";
+    input.style.display = "none";
+    // 必须挂到 DOM，否则 Electron/Chromium 会忽略 input.click()
+    document.body.appendChild(input);
+    const cleanup = () => {
+      input.remove();
+    };
+    input.addEventListener("change", () => {
+      const file = input.files?.[0] ?? null;
+      cleanup();
+      if (!file) return;
+      void this.importCustomFontFile(file);
+    });
+    // 用户取消时部分环境会触发 cancel
+    input.addEventListener("cancel", cleanup);
+    input.click();
+  }
+
+  private async importCustomFontBytes(
+    originalName: string,
+    data: ArrayBuffer
+  ): Promise<void> {
+    const meta = await this.plugin.readingFontManager.importFromBytes(
+      originalName,
+      data
+    );
+    if (!meta) return;
+    this.plugin.settings.customFonts = [
+      ...normalizeCustomFonts(this.plugin.settings.customFonts),
+      meta,
+    ];
+    await this.plugin.saveSettings();
+    this.display();
+  }
+
+  private async importCustomFontFile(file: File): Promise<void> {
+    const meta = await this.plugin.readingFontManager.importFromFile(file);
+    if (!meta) return;
+    this.plugin.settings.customFonts = [
+      ...normalizeCustomFonts(this.plugin.settings.customFonts),
+      meta,
+    ];
+    await this.plugin.saveSettings();
+    this.display();
+  }
+
+  private async deleteCustomFont(font: CustomReadingFont): Promise<void> {
+    const readingId = toCustomReadingFontId(font.id);
+    const wasSelected =
+      normalizeReadingFont(
+        this.plugin.settings.readingFont,
+        this.plugin.settings.customFonts
+      ) === readingId;
+
+    await this.plugin.readingFontManager.removeCustomFont(font);
+    this.plugin.settings.customFonts = normalizeCustomFonts(
+      this.plugin.settings.customFonts
+    ).filter((f) => f.id !== font.id);
+
+    if (wasSelected) {
+      this.plugin.settings.readingFont = "obsidian";
+    } else {
+      this.plugin.settings.readingFont = normalizeReadingFont(
+        this.plugin.settings.readingFont,
+        this.plugin.settings.customFonts
+      );
+    }
+
+    await this.plugin.saveSettings();
+    this.display();
   }
 
   /** Obsidian 设置页只稳定渲染 containerEl 的直接子节点，分组用 data 属性 + CSS 实现。 */
@@ -374,19 +571,55 @@ export class EpubSettingsTab extends PluginSettingTab {
     this.addMemberSetting(containerEl, "reader", (s) => {
       s.setName(t("settings.readingFont.name")).setDesc(t("settings.readingFont.desc"));
       s.addDropdown((dropdown) => {
-        for (const font of getReadingFonts()) {
+        for (const font of getReadingFonts(this.plugin.settings)) {
           dropdown.addOption(font.id, font.label);
         }
         dropdown
-          .setValue(normalizeReadingFont(this.plugin.settings.readingFont))
+          .setValue(
+            normalizeReadingFont(
+              this.plugin.settings.readingFont,
+              this.plugin.settings.customFonts
+            )
+          )
           .onChange(async (value) => {
-            const font = normalizeReadingFont(value);
+            const font = normalizeReadingFont(value, this.plugin.settings.customFonts);
             this.plugin.settings.readingFont = font;
             await this.plugin.saveSettings();
             await this.plugin.readingFontManager.ensureAvailable(font);
           });
       });
     });
+
+    this.addMemberSetting(containerEl, "reader", (s) => {
+      s.setName(t("settings.customFonts.name")).setDesc(t("settings.customFonts.desc"));
+      s.addButton((btn) => {
+        btn.setButtonText(t("settings.customFonts.import")).onClick(() => {
+          this.pickAndImportCustomFont();
+        });
+      });
+    });
+
+    const customFonts = normalizeCustomFonts(this.plugin.settings.customFonts);
+    if (customFonts.length === 0) {
+      this.addMemberSetting(containerEl, "reader", (s) => {
+        s.setName("").setDesc(t("settings.customFonts.empty"));
+      });
+    } else {
+      for (const font of customFonts) {
+        this.addMemberSetting(containerEl, "reader", (s) => {
+          s.setName(font.label).setDesc(font.fileName);
+          s.addButton((btn) => {
+            btn
+              .setButtonText(t("settings.customFonts.delete"))
+              .setCta()
+              .setClass("epub-confirm-delete")
+              .onClick(() => {
+                void this.deleteCustomFont(font);
+              });
+          });
+        });
+      }
+    }
 
     this.addMemberSetting(containerEl, "reader", (s) => {
       s.setName(t("settings.sidePadding.name")).setDesc(t("settings.sidePadding.desc"));

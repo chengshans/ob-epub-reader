@@ -28,6 +28,12 @@
     "fontDownloadProgressBusy": "正在下載字體「{{font}}」（{{current}}/{{total}}）…",
     "fontDownloaded": "字體「{{font}}」已就緒",
     "fontDownloadFailed": "字體「{{font}}」下載失敗，請檢查網路後重試",
+    "fontImported": "已匯入字體「{{font}}」",
+    "fontImportFailed": "字體匯入失敗",
+    "fontDeleted": "已刪除字體「{{font}}」",
+    "fontUnsupportedFormat": "不支援的字體格式，請使用 .ttf / .otf / .woff / .woff2",
+    "fontApplyFailed": "字體「{{font}}」套用失敗。該檔案可能無法被 Chromium 載入，請嘗試重新匯入或改用其他字體",
+    "fontApplying": "正在套用字體「{{font}}」…（檔案較大，請稍候）",
     "highlighted": "已畫線",
     "highlightedAndInserted": "已畫線，已插入《{{name}}》",
     "annotationSaved": "標註已保存",
@@ -210,6 +216,13 @@
     "readingFont": {
       "name": "正文字體",
       "desc": "EPUB 正文使用的字體。思源/霞鶩等若本機未安裝會自動下載並快取到外掛目錄"
+    },
+    "customFonts": {
+      "name": "自訂字體",
+      "desc": "從本機匯入 .ttf / .otf / .woff / .woff2，匯入後會出現在正文字體列表中",
+      "import": "匯入字體",
+      "delete": "刪除",
+      "empty": "尚無自訂字體"
     },
     "sidePadding": {
       "name": "兩側空白",

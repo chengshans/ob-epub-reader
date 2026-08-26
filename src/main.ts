@@ -6,7 +6,7 @@ import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubSettingsTab } from "./SettingsTab";
-import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingFont, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeCustomFonts, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingFont, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { applyHighlightRectInflatePatch } from "./highlightRectInflate";
 import { ReadingFontManager } from "./ReadingFontManager";
@@ -128,7 +128,10 @@ export default class ObEpubPlugin extends Plugin {
           await this.saveSettings({ skipViewUpdate: true });
         },
         async (font) => {
-          this.settings.readingFont = normalizeReadingFont(font);
+          this.settings.readingFont = normalizeReadingFont(
+            font,
+            this.settings.customFonts
+          );
           await this.saveSettings({ skipViewUpdate: true });
           if (this.app.setting.activeTab === this.settingsTab) {
             this.settingsTab.display();
@@ -545,7 +548,11 @@ export default class ObEpubPlugin extends Plugin {
     this.settings = Object.assign({}, getDefaultSettings(), data?.settings ?? {});
     this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
     this.settings.readingTheme = normalizeReadingTheme(this.settings.readingTheme);
-    this.settings.readingFont = normalizeReadingFont(this.settings.readingFont);
+    this.settings.customFonts = normalizeCustomFonts(this.settings.customFonts);
+    this.settings.readingFont = normalizeReadingFont(
+      this.settings.readingFont,
+      this.settings.customFonts
+    );
     this.settings.noteTypes = resolveNoteTypes(this.settings.noteTypes);
     this.settings.sourceLinkFormat = normalizeSourceLinkFormat(this.settings.sourceLinkFormat);
     this.settings.defaultExcerptHighlightColor = normalizeHighlightColor(
@@ -575,6 +582,11 @@ export default class ObEpubPlugin extends Plugin {
       (existing.settings as EpubPluginSettings | undefined)?.featureGroups
     );
     this.settings.featureGroups = normalizeFeatureGroups(this.settings.featureGroups);
+    this.settings.customFonts = normalizeCustomFonts(this.settings.customFonts);
+    this.settings.readingFont = normalizeReadingFont(
+      this.settings.readingFont,
+      this.settings.customFonts
+    );
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
     this.settings.readingSidePadding = clampReadingSidePadding(this.settings.readingSidePadding);

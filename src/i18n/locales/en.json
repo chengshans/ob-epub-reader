@@ -28,6 +28,12 @@
     "fontDownloadProgressBusy": "Downloading font “{{font}}” ({{current}}/{{total}})…",
     "fontDownloaded": "Font “{{font}}” is ready",
     "fontDownloadFailed": "Failed to download font “{{font}}”; check network and retry",
+    "fontImported": "Imported font “{{font}}”",
+    "fontImportFailed": "Failed to import font",
+    "fontDeleted": "Deleted font “{{font}}”",
+    "fontUnsupportedFormat": "Unsupported font format; use .ttf, .otf, .woff, or .woff2",
+    "fontApplyFailed": "Failed to apply font “{{font}}”. The file may be incompatible with Chromium; try another font or re-import.",
+    "fontApplying": "Applying font “{{font}}”… (large file, please wait)",
     "highlighted": "Highlighted",
     "highlightedAndInserted": "Highlighted and inserted into «{{name}}»",
     "annotationSaved": "Annotation saved",
@@ -210,6 +216,13 @@
     "readingFont": {
       "name": "Body font",
       "desc": "Font for EPUB body text. Noto / LXGW WenKai are downloaded and cached in the plugin folder if not installed"
+    },
+    "customFonts": {
+      "name": "Custom fonts",
+      "desc": "Import local .ttf / .otf / .woff / .woff2 files; they appear in the body font list",
+      "import": "Import font",
+      "delete": "Delete",
+      "empty": "No custom fonts yet"
     },
     "sidePadding": {
       "name": "Side margins",

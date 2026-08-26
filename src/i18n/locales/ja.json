@@ -28,6 +28,12 @@
     "fontDownloadProgressBusy": "フォント「{{font}}」をダウンロード中（{{current}}/{{total}}）…",
     "fontDownloaded": "フォント「{{font}}」の準備ができました",
     "fontDownloadFailed": "フォント「{{font}}」のダウンロードに失敗しました。ネットワークを確認して再試行してください",
+    "fontImported": "フォント「{{font}}」をインポートしました",
+    "fontImportFailed": "フォントのインポートに失敗しました",
+    "fontDeleted": "フォント「{{font}}」を削除しました",
+    "fontUnsupportedFormat": "未対応のフォント形式です。.ttf / .otf / .woff / .woff2 を使用してください",
+    "fontApplyFailed": "フォント「{{font}}」の適用に失敗しました。Chromium で読み込めない可能性があります。再インポートするか別のフォントを試してください",
+    "fontApplying": "フォント「{{font}}」を適用しています…（大きいファイルのためお待ちください）",
     "highlighted": "ハイライトしました",
     "highlightedAndInserted": "ハイライトし、「{{name}}」に挿入しました",
     "annotationSaved": "注釈を保存しました",
@@ -210,6 +216,13 @@
     "readingFont": {
       "name": "本文フォント",
       "desc": "EPUB 本文のフォント。源ノ角ゴシック / 霞鹜文楷などは未インストール時に自動ダウンロードしてプラグインフォルダへキャッシュします"
+    },
+    "customFonts": {
+      "name": "カスタムフォント",
+      "desc": "ローカルの .ttf / .otf / .woff / .woff2 をインポートすると、本文フォント一覧に表示されます",
+      "import": "フォントをインポート",
+      "delete": "削除",
+      "empty": "カスタムフォントはまだありません"
     },
     "sidePadding": {
       "name": "左右余白",

@@ -194,6 +194,25 @@ a.ob-epub-goto-link {
   background: var(--interactive-hover);
 }
 
+.epub-reading-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 3px;
+  line-height: 0;
+  --icon-size: 20px;
+}
+
+.epub-reading-settings-btn svg.svg-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+.epub-toolbar.is-in-statusbar .epub-reading-settings-btn {
+  padding: 0 1px;
+  --icon-size: 16px;
+}
+
 .epub-side-padding {
   display: inline-flex;
   align-items: center;

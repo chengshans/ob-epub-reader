@@ -89,9 +89,9 @@ export function normalizeReadingTheme(raw: string | undefined): ReadingThemeId {
   return "obsidian";
 }
 
-// ---- Reading fonts（预设 + 可下载缓存，不打包字体文件） ----
+// ---- Reading fonts（预设 + 可下载缓存 + 用户导入，不打包字体文件） ----
 
-export type ReadingFontId =
+export type BuiltinReadingFontId =
   | "obsidian"
   | "systemSans"
   | "systemSerif"
@@ -102,6 +102,18 @@ export type ReadingFontId =
   | "notoSerif"
   | "lxgwWenKai"
   | "lxgwWenKaiScreen";
+
+/** 内置 ID，或 `custom:${CustomReadingFont.id}` */
+export type ReadingFontId = BuiltinReadingFontId | `custom:${string}`;
+
+export interface CustomReadingFont {
+  /** 稳定短 id（不含 custom: 前缀） */
+  id: string;
+  /** 显示名，默认取导入文件名去扩展名 */
+  label: string;
+  /** 相对 fonts/custom/ 的文件名 */
+  fileName: string;
+}
 
 export interface ReadingFontDef {
   id: ReadingFontId;
@@ -159,18 +171,78 @@ const READING_FONT_IDS = new Set<string>(READING_FONT_DEFS.map((f) => f.id));
 const OBSIDIAN_FONT_FALLBACK =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
 
-export function getReadingFonts(): ReadingFontDef[] {
-  return READING_FONT_DEFS.map((font) => ({
+const CUSTOM_FONT_ID_PREFIX = "custom:";
+
+/** @font-face 与 font-family 共用的自定义字体族名 */
+export function customReadingFontFamily(customId: string): string {
+  return `ObEpubCustom-${customId}`;
+}
+
+export function toCustomReadingFontId(customId: string): ReadingFontId {
+  return `${CUSTOM_FONT_ID_PREFIX}${customId}`;
+}
+
+export function parseCustomReadingFontId(raw: string): string | null {
+  if (!raw.startsWith(CUSTOM_FONT_ID_PREFIX)) return null;
+  const id = raw.slice(CUSTOM_FONT_ID_PREFIX.length).trim();
+  return id || null;
+}
+
+export function isCustomReadingFontId(id: string): id is `custom:${string}` {
+  return parseCustomReadingFontId(id) !== null;
+}
+
+export function normalizeCustomFonts(raw: unknown): CustomReadingFont[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CustomReadingFont[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const id = typeof rec.id === "string" ? rec.id.trim() : "";
+    const label = typeof rec.label === "string" ? rec.label.trim() : "";
+    const fileName = typeof rec.fileName === "string" ? rec.fileName.trim() : "";
+    if (!id || !fileName || seen.has(id)) continue;
+    if (id.includes("/") || id.includes("\\") || id.includes("..")) continue;
+    if (fileName.includes("..") || fileName.includes("/") || fileName.includes("\\")) continue;
+    seen.add(id);
+    out.push({
+      id,
+      label: label || id,
+      fileName,
+    });
+  }
+  return out;
+}
+
+export function getReadingFonts(
+  settings?: Pick<EpubPluginSettings, "customFonts">
+): ReadingFontDef[] {
+  const builtins = READING_FONT_DEFS.map((font) => ({
     ...font,
     label: isI18nInitialized() ? t(`defaults.readingFonts.${font.id}`) : font.id,
   }));
+  const customs = normalizeCustomFonts(settings?.customFonts).map((font) => ({
+    id: toCustomReadingFontId(font.id),
+    label: font.label,
+    cssFamily: `"${customReadingFontFamily(font.id)}", sans-serif`,
+  }));
+  return [...builtins, ...customs];
 }
 
-export function normalizeReadingFont(raw: unknown): ReadingFontId {
-  if (typeof raw === "string" && READING_FONT_IDS.has(raw)) {
-    return raw as ReadingFontId;
+export function normalizeReadingFont(
+  raw: unknown,
+  customFonts: CustomReadingFont[] = []
+): ReadingFontId {
+  if (typeof raw !== "string") return "obsidian";
+  if (READING_FONT_IDS.has(raw)) {
+    return raw as BuiltinReadingFontId;
   }
-  // 旧版 custom 回退
+  const customId = parseCustomReadingFontId(raw);
+  if (customId && normalizeCustomFonts(customFonts).some((f) => f.id === customId)) {
+    return toCustomReadingFontId(customId);
+  }
+  // 旧版裸 "custom" 或已删除的自定义字体 → 回退
   return "obsidian";
 }
 
@@ -179,12 +251,17 @@ export function normalizeReadingFont(raw: unknown): ReadingFontId {
  * @param obsidianFallback 通常为 getComputedStyle 的 --font-text
  */
 export function resolveReadingFontFamily(
-  settings: Pick<EpubPluginSettings, "readingFont">,
+  settings: Pick<EpubPluginSettings, "readingFont" | "customFonts">,
   obsidianFallback?: string
 ): string {
-  const id = normalizeReadingFont(settings.readingFont);
+  const customs = normalizeCustomFonts(settings.customFonts);
+  const id = normalizeReadingFont(settings.readingFont, customs);
   if (id === "obsidian") {
     return obsidianFallback?.trim() || OBSIDIAN_FONT_FALLBACK;
+  }
+  const customId = parseCustomReadingFontId(id);
+  if (customId) {
+    return `"${customReadingFontFamily(customId)}", sans-serif`;
   }
   const def = READING_FONT_DEFS.find((f) => f.id === id);
   return def?.cssFamily || obsidianFallback?.trim() || OBSIDIAN_FONT_FALLBACK;
@@ -377,6 +454,8 @@ export interface EpubPluginSettings {
   defaultFlow: "paginated" | "scrolled";
   fontSize: number;
   readingFont: ReadingFontId;
+  /** 用户导入的本地字体（文件在插件 fonts/custom/） */
+  customFonts: CustomReadingFont[];
   readingSidePadding: number;
   readingTheme: ReadingThemeId;
   noteIconSize: number;
@@ -402,6 +481,7 @@ export function getDefaultSettings(): EpubPluginSettings {
     defaultFlow: "scrolled",
     fontSize: 16,
     readingFont: "obsidian",
+    customFonts: [],
     readingSidePadding: 12,
     readingTheme: "obsidian",
     noteIconSize: 20,

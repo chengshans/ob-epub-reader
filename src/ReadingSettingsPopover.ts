@@ -123,7 +123,7 @@ export class ReadingSettingsPopover {
 
     const settings = this.handlers.getSettings();
     const theme = this.handlers.getReadingTheme();
-    const fontId = normalizeReadingFont(settings.readingFont);
+    const fontId = normalizeReadingFont(settings.readingFont, settings.customFonts);
 
     if (this.fontSizeRangeEl) {
       const size = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(settings.fontSize)));
@@ -135,6 +135,7 @@ export class ReadingSettingsPopover {
       this.fontSizeValueEl.setText(String(size));
     }
     if (this.fontSelectEl) {
+      this.rebuildFontSelectOptions(this.fontSelectEl, settings);
       this.fontSelectEl.value = fontId;
     }
     if (this.sidePaddingRangeEl) {
@@ -238,17 +239,30 @@ export class ReadingSettingsPopover {
 
     const select = row.createEl("select", { cls: "epub-reading-settings-select" });
     this.fontSelectEl = select;
-    for (const font of getReadingFonts()) {
-      select.createEl("option", { value: font.id, text: font.label });
-    }
+    this.rebuildFontSelectOptions(select, this.handlers.getSettings());
     select.addEventListener("mousedown", (e) => e.stopPropagation());
     select.addEventListener("click", (e) => e.stopPropagation());
     select.addEventListener("change", (e) => {
       e.stopPropagation();
-      const id = normalizeReadingFont(select.value);
+      const settings = this.handlers.getSettings();
+      const id = normalizeReadingFont(select.value, settings.customFonts);
       this.handlers.onReadingFontSelect(id);
       this.sync();
     });
+  }
+
+  private rebuildFontSelectOptions(
+    select: HTMLSelectElement,
+    settings: EpubPluginSettings
+  ): void {
+    const current = select.value;
+    select.empty();
+    for (const font of getReadingFonts(settings)) {
+      select.createEl("option", { value: font.id, text: font.label });
+    }
+    if (current) {
+      select.value = normalizeReadingFont(current, settings.customFonts);
+    }
   }
 
   private buildSidePaddingRow(panel: HTMLElement): void {
