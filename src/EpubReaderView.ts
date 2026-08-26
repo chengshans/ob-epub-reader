@@ -37,7 +37,7 @@ import { ExcerptInsertResult, ExcerptPasteTarget, noticeExcerptCopy } from "./Ex
 import { NoteInputModal } from "./NoteInputModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { ReadingSettingsPopover } from "./ReadingSettingsPopover";
-import { ReadingFontManager, ReadingFontManagerHost } from "./ReadingFontManager";
+import { ReadingFontManager } from "./ReadingFontManager";
 import { fitHighlightRect } from "./highlightRectInflate";
 import { colorToRgba, boostRgbaAlpha } from "./selectionColor";
 import {
@@ -218,7 +218,7 @@ export class EpubReaderView extends FileView {
         app: this.app,
         manifest: { dir: "" },
         settings: this.settings,
-      } as ReadingFontManagerHost);
+      });
     this.flow = settings.defaultFlow;
     this.fontSize = settings.fontSize;
     this.readingTheme = normalizeReadingTheme(settings.readingTheme);

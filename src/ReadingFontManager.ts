@@ -1,4 +1,4 @@
-import { Notice, Plugin, normalizePath, requestUrl } from "obsidian";
+import { App, Notice, normalizePath, requestUrl } from "obsidian";
 import { t } from "./i18n/i18n";
 import { sanitizeOpenTypeForChromium } from "./fontSanitize";
 import {
@@ -259,7 +259,10 @@ class FontDownloadProgressNotice {
   }
 }
 
-export type ReadingFontManagerHost = Plugin & {
+/** 不交叉 Plugin：基类 settings 为 @since 1.13.0，会触发 no-unsupported-api。 */
+export type ReadingFontManagerHost = {
+  app: App;
+  manifest: { dir?: string };
   settings: Pick<EpubPluginSettings, "customFonts" | "readingFont">;
 };
 

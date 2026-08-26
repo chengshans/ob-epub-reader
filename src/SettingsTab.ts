@@ -179,7 +179,7 @@ export class EpubSettingsTab extends PluginSettingTab {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2";
-    input.style.display = "none";
+    input.hide();
     // 必须挂到 DOM，否则 Electron/Chromium 会忽略 input.click()
     document.body.appendChild(input);
     const cleanup = () => {

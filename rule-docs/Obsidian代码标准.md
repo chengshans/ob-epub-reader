@@ -37,7 +37,7 @@ ob-epub/
 | 字段 | 要求 |
 |------|------|
 | `id` | 与插件目录名一致，如 `ob-epub-reader` |
-| `minAppVersion` | **必须**覆盖代码中使用的最高版本 API（当前 `1.7.2`） |
+| `minAppVersion` | **必须**覆盖代码中使用的最高版本 API（当前 `1.8.7`；目标 Obsidian 1.12.7，**不得**为消 lint 升到 1.13） |
 | `description` | **不得**包含单词 `Obsidian`（社区审核冗余词） |
 | `isDesktopOnly` | 仅桌面端能力时设为 `true` |
 
@@ -83,6 +83,26 @@ btn.setCta();
 ```
 
 参考：`src/ConfirmModal.ts`、`src/EpubReaderView.ts`（v1.3.12）。
+
+#### `Plugin.settings` 类型陷阱（`no-unsupported-api`）
+
+最新 `obsidian.d.ts` 给基类加了 `settings?: unknown`（`@since 1.13.0`）。交叉类型会让自有 `settings` 被误判为 1.13 API，**不要**因此把 `minAppVersion` 升到 1.13。
+
+```typescript
+// ❌ 交叉到基类 Plugin.settings（@since 1.13.0）
+export type ReadingFontManagerHost = Plugin & {
+  settings: Pick<EpubPluginSettings, "customFonts" | "readingFont">;
+};
+
+// ✅ 自建宿主类型，不继承 Plugin.settings
+export type ReadingFontManagerHost = {
+  app: App;
+  manifest: { dir?: string };
+  settings: Pick<EpubPluginSettings, "customFonts" | "readingFont">;
+};
+```
+
+参考：`src/ReadingFontManager.ts`。
 
 ### 2.3 版本号发布
 
@@ -333,6 +353,7 @@ PLUGIN_DIR="/path/to/.obsidian/plugins/ob-epub-reader" npm run build
 
 - [ ] 无 `innerHTML` 赋值；动态内容用 `appendText` / `createEl` / `DOMParser`
 - [ ] 无超出 `minAppVersion` 的 Obsidian API（尤其 `setDestructive` 等 1.13+ API）
+- [ ] 无 `Plugin & { settings: ... }`（会触发 `Plugin.settings` `@since 1.13.0` 误报）
 - [ ] `minAppVersion` 与新增 API 一致
 - [ ] `versions.json` 已更新新版本条目
 - [ ] 无 `el.style.*` 直接赋值；动态样式用 `setCssProps` / CSS 类
