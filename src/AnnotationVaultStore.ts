@@ -71,11 +71,20 @@ interface OldAnnotation {
   created: string;
 }
 
+import { ExcerptConflictChoice } from "./ExcerptConflictModal";
+
+export type ExcerptConflictHandler = (
+  filePath: string
+) => Promise<ExcerptConflictChoice | "cancel">;
+
 export class AnnotationVaultStore {
   private app: App;
   private settings: EpubPluginSettings;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private watchPausedUntil = 0;
+  /** Last known mtime (ms) after plugin writes, keyed by excerpt path. */
+  private lastWriteMtime = new Map<string, number>();
+  private conflictHandler: ExcerptConflictHandler | null = null;
   /** Serialize excerpt read-modify-write per EPUB to avoid lost annotations. */
   private excerptWriteChains = new Map<string, Promise<void>>();
   /** Book TOC order (chapter keys) for excerpt grouping; set while reader is open. */
@@ -116,6 +125,10 @@ export class AnnotationVaultStore {
 
   updateSettings(settings: EpubPluginSettings) {
     this.settings = settings;
+  }
+
+  setConflictHandler(handler: ExcerptConflictHandler | null): void {
+    this.conflictHandler = handler;
   }
 
   private annotationsEnabled(): boolean {
@@ -776,7 +789,44 @@ export class AnnotationVaultStore {
 
   private async writeContent(epubFilePath: string, content: string): Promise<void> {
     const file = await this.ensureFile(epubFilePath);
-    await this.app.vault.modify(file, content);
+    const intended = content;
+    let toWrite = intended;
+
+    const adapter = this.app.vault.adapter;
+    const stat = adapter?.stat ? await adapter.stat(file.path) : null;
+    const mtime = stat?.mtime ?? 0;
+    const prevMtime = this.lastWriteMtime.get(file.path);
+
+    if (prevMtime !== undefined && mtime > prevMtime + 1 && this.conflictHandler) {
+      const external = await this.app.vault.read(file);
+      if (external !== intended && this.conflictHandler) {
+        const choice = await this.conflictHandler(file.path);
+        if (choice === "cancel" || choice === "keepExternal") {
+          this.lastWriteMtime.set(file.path, mtime);
+          return;
+        }
+        if (choice === "merge") {
+          const externalAnns = this.parseContent(external, epubFilePath);
+          const intendedAnns = this.parseContent(intended, epubFilePath);
+          const byId = new Map<string, Annotation>();
+          for (const ann of externalAnns) byId.set(ann.id, ann);
+          for (const ann of intendedAnns) byId.set(ann.id, ann);
+          toWrite = this.recomposeExcerptFromContent(
+            external,
+            epubFilePath,
+            Array.from(byId.values())
+          );
+        }
+      }
+    }
+
+    await this.app.vault.modify(file, toWrite);
+    const afterStat = adapter?.stat ? await adapter.stat(file.path) : null;
+    if (afterStat?.mtime) {
+      this.lastWriteMtime.set(file.path, afterStat.mtime);
+    } else {
+      this.lastWriteMtime.set(file.path, Date.now());
+    }
   }
 
   // ── Block serialisation ───────────────────────────────────────────────────

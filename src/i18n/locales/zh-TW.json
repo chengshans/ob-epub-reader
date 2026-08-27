@@ -41,7 +41,8 @@
     "parseGotoFailed": "無法解析摘錄跳轉鏈接，請重新標註",
     "insertedAndCopied": "已插入《{{name}}》並複製摘錄",
     "readingModeCopied": "目標筆記處於閱讀模式，已複製到剪貼簿",
-    "copiedExcerpt": "已複製摘錄"
+    "copiedExcerpt": "已複製摘錄",
+    "exportDone": "摘錄匯出已儲存"
   },
   "bookshelf": {
     "title": "EPUB 書架",
@@ -54,16 +55,22 @@
     "markFinished": "標記為已讀完",
     "unmarkFinished": "取消已讀完",
     "unknownAuthor": "未知作者",
-    "noCover": "無封面"
+    "noCover": "無封面",
+    "statsSummary": "{{books}} 本書 · {{days}} 活躍天 · 累計 {{time}}"
   },
   "reader": {
     "sidebar": {
       "toc": "目錄",
-      "annotations": "標註"
+      "search": "搜尋",
+      "annotations": "標註",
+      "bookmarks": "書籤"
     },
     "toolbar": {
       "toggleToc": "切換目錄",
       "openReadingSettings": "閱讀設定",
+      "openSearch": "全書搜尋",
+      "addBookmark": "新增書籤",
+      "removeBookmark": "移除書籤",
       "fontSmaller": "減小字體",
       "fontLarger": "增大字體",
       "sidePaddingSmaller": "減少兩側空白",
@@ -90,7 +97,31 @@
       "fontFamily": "正文字體",
       "sidePadding": "兩側空白",
       "sidePaddingPx": "兩側空白 {{px}} px",
+      "lineHeight": "行距",
+      "paragraphSpacing": "段距",
+      "letterSpacing": "字距",
       "readingTheme": "閱讀主題"
+    },
+    "search": {
+      "placeholder": "搜尋本書…",
+      "button": "搜尋",
+      "clear": "清除搜尋",
+      "prev": "上一處",
+      "next": "下一處",
+      "running": "搜尋中…",
+      "noResults": "無符合",
+      "failed": "搜尋失敗",
+      "resultCount": "{{current}} / {{total}}"
+    },
+    "bookmarks": {
+      "heading": "書籤",
+      "empty": "尚無書籤",
+      "jump": "跳轉",
+      "remove": "刪除",
+      "added": "已新增書籤",
+      "removed": "已移除書籤",
+      "pageBadge": "本頁已加書籤（點擊移除）",
+      "noLocation": "無法新增書籤：位置未知"
     },
     "loading": "正在加載 EPUB…",
     "loadFailed": "加載失敗: {{error}}",
@@ -154,6 +185,25 @@
       "epubSource": "epub-source: {{value}}",
       "localEpub": "同級 EPUB: {{value}}",
       "expectedPath": "當前設置應對應: {{value}}"
+    },
+    "excerptConflict": {
+      "title": "摘錄檔案已被外部修改",
+      "message": "「{{path}}」在插件外被編輯。如何合併？",
+      "merge": "合併標註",
+      "overwrite": "用插件版本覆蓋",
+      "keepExternal": "保留外部檔案"
+    },
+    "excerptExport": {
+      "title": "匯出摘錄",
+      "epubFilter": "限定書籍",
+      "allBooks": "全部書籍",
+      "since": "起始日期 (YYYY-MM-DD)",
+      "until": "截止日期 (YYYY-MM-DD)",
+      "format": "格式",
+      "formatCsv": "CSV",
+      "formatMarkdown": "Markdown",
+      "formatPlain": "純文字",
+      "export": "匯出"
     }
   },
   "settings": {
@@ -273,6 +323,15 @@
       "desc": "檢查摘錄 frontmatter 的 epub-source 是否指向存在的 EPUB；僅當 epub-source 缺失或無效時，才按 {filefolder} 規則查找同級 EPUB",
       "button": "開始檢查"
     },
+    "exportExcerpts": {
+      "name": "匯出摘錄",
+      "desc": "依書籍/日期篩選，匯出為 CSV、Markdown 或純文字",
+      "button": "匯出…"
+    },
+    "mobile": {
+      "name": "行動版支援",
+      "desc": "Obsidian 行動版可基本閱讀；字體匯入等桌面功能在行動版不可用"
+    },
     "highlightOpacity": {
       "name": "EPUB 高亮透明度",
       "desc": "控制閱讀器內畫線/高亮層的透明度"
@@ -368,7 +427,9 @@
       "notoSans": "思源黑體",
       "notoSerif": "思源宋體",
       "lxgwWenKai": "霞鶩文楷",
-      "lxgwWenKaiScreen": "霞鶩文楷螢幕版"
+      "lxgwWenKaiScreen": "霞鶩文楷螢幕版",
+      "literata": "Literata",
+      "firaSans": "Fira Sans"
     },
     "noteTypes": {
       "note": "做筆記",

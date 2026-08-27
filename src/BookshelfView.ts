@@ -3,7 +3,8 @@ import { EpubBookMeta, EpubMetaCache } from "./EpubMetaCache";
 import { t } from "./i18n/i18n";
 import { BOOKSHELF_ICON_ID } from "./icons/bookshelfIcon";
 import { ProgressStore } from "./ProgressStore";
-import { BookProgress } from "./types";
+import { sumReadingSeconds } from "./readingStats";
+import { BookProgress, formatReadingTime } from "./types";
 
 export const BOOKSHELF_VIEW_TYPE = "epub-bookshelf";
 
@@ -74,6 +75,7 @@ export class BookshelfView extends ItemView {
     container.addClass("ob-epub-bookshelf-view");
 
     container.createEl("h4", { cls: "bookshelf-heading", text: t("bookshelf.heading") });
+    this.renderStatsSummary(container);
 
     const epubFiles = this.app.vault
       .getFiles()
@@ -180,6 +182,31 @@ export class BookshelfView extends ItemView {
     }
 
     void this.fillProgressAndMetaAsync(generation, cardRefs);
+  }
+
+  private renderStatsSummary(container: HTMLElement): void {
+    const history = this.progressStore.getAllReadingHistory();
+    const entries = Object.entries(history);
+    if (entries.length === 0) return;
+
+    let totalSeconds = 0;
+    let activeDays = 0;
+    const daySet = new Set<string>();
+    for (const [, snapshots] of entries) {
+      totalSeconds += sumReadingSeconds(snapshots);
+      for (const snap of snapshots) daySet.add(snap.date);
+    }
+    activeDays = daySet.size;
+
+    const stats = container.createDiv({ cls: "bookshelf-stats" });
+    stats.createDiv({
+      cls: "bookshelf-stats-line",
+      text: t("bookshelf.statsSummary", {
+        books: entries.length,
+        days: activeDays,
+        time: formatReadingTime(totalSeconds),
+      }),
+    });
   }
 
   private applyProgressToCard(card: BookshelfCardRef, progress: BookProgress | null): void {

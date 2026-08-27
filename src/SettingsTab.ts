@@ -1,6 +1,7 @@
 import { App, ExtraButtonComponent, Notice, Platform, PluginSettingTab, Setting, SliderComponent, TextComponent } from "obsidian";
 import type ObEpubPlugin from "./main";
 import { ExcerptCheckModal } from "./ExcerptCheckModal";
+import { ExcerptExportModal } from "./ExcerptExportModal";
 import { t } from "./i18n/i18n";
 import {
   getDefaultNoteTypes,
@@ -683,6 +684,9 @@ export class EpubSettingsTab extends PluginSettingTab {
 
     this.renderSourceLinkFormat(containerEl, "reader");
     this.renderDefaultExcerptColor(containerEl, "reader");
+    this.addMemberSetting(containerEl, "reader", (s) => {
+      s.setName(t("settings.mobile.name")).setDesc(t("settings.mobile.desc"));
+    });
     this.endGroup(containerEl, "reader");
 
     // ── 标注与摘录 ──
@@ -811,6 +815,22 @@ export class EpubSettingsTab extends PluginSettingTab {
             } finally {
               btn.setDisabled(false);
             }
+          })
+        );
+    });
+
+    this.addMemberSetting(containerEl, "annotations", (s) => {
+      s.setName(t("settings.exportExcerpts.name"))
+        .setDesc(t("settings.exportExcerpts.desc"))
+        .addButton((btn) =>
+          btn.setButtonText(t("settings.exportExcerpts.button")).onClick(() => {
+            const epubFiles = this.app.vault.getFiles().filter((f) => f.extension === "epub");
+            new ExcerptExportModal(
+              this.app,
+              this.plugin.settings,
+              this.plugin.annotationVaultStore,
+              epubFiles
+            ).open();
           })
         );
     });

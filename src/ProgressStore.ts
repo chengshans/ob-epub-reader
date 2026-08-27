@@ -1,4 +1,5 @@
 import { App, TFile, normalizePath } from "obsidian";
+import { recordDailyReadingSnapshot, normalizeReadingHistory, ReadingHistoryStore } from "./readingStats";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { isCfiAhead } from "./cfi/compare";
 import { cfiSpineKey } from "./cfi/cfiMatch";
@@ -15,6 +16,8 @@ const HIDDEN_PROGRESS_FILENAME = ".reading-progress.json";
 export type PluginProgressPersistence = {
   loadPluginProgress: () => Promise<Record<string, BookProgress>>;
   savePluginProgress: (progress: Record<string, BookProgress>) => Promise<void>;
+  loadReadingHistory?: () => Promise<ReadingHistoryStore>;
+  saveReadingHistory?: (history: ReadingHistoryStore) => Promise<void>;
 };
 
 export type ProgressChangedHandler = (epubPath: string) => void;
@@ -64,11 +67,14 @@ function normalizeProgress(progress: BookProgress): BookProgress {
 
 export class ProgressStore {
   private progress: Record<string, BookProgress> = {};
+  private readingHistory: ReadingHistoryStore = {};
   private app: App;
   private settings: EpubPluginSettings;
   private annotationVaultStore: AnnotationVaultStore;
   private loadPluginProgress: () => Promise<Record<string, BookProgress>>;
   private savePluginProgress: (progress: Record<string, BookProgress>) => Promise<void>;
+  private loadReadingHistory: () => Promise<ReadingHistoryStore>;
+  private saveReadingHistory: (history: ReadingHistoryStore) => Promise<void>;
   private onProgressChanged: ProgressChangedHandler | null = null;
   private loadPromise: Promise<void> | null = null;
 
@@ -86,6 +92,12 @@ export class ProgressStore {
       (async () => ({}));
     this.savePluginProgress =
       persistence?.savePluginProgress ??
+      (async () => undefined);
+    this.loadReadingHistory =
+      persistence?.loadReadingHistory ??
+      (async () => ({}));
+    this.saveReadingHistory =
+      persistence?.saveReadingHistory ??
       (async () => undefined);
   }
 
@@ -248,9 +260,27 @@ export class ProgressStore {
   private async persistProgress(entry: BookProgress, filePath: string): Promise<void> {
     if (this.annotationsEnabled()) {
       await this.annotationVaultStore.writeProgress(filePath, entry);
-      return;
+    } else {
+      await this.savePluginProgress(this.progress);
     }
-    await this.savePluginProgress(this.progress);
+    await this.recordReadingHistory(filePath, entry);
+  }
+
+  private async recordReadingHistory(filePath: string, entry: BookProgress): Promise<void> {
+    this.readingHistory = recordDailyReadingSnapshot(this.readingHistory, filePath, entry);
+    try {
+      await this.saveReadingHistory(this.readingHistory);
+    } catch (err) {
+      console.warn("ob-epub: failed to save reading history", err);
+    }
+  }
+
+  getReadingHistory(epubPath: string) {
+    return [...(this.readingHistory[normalizePath(epubPath)] ?? [])];
+  }
+
+  getAllReadingHistory(): ReadingHistoryStore {
+    return { ...this.readingHistory };
   }
 
   async load() {
@@ -263,6 +293,7 @@ export class ProgressStore {
   }
 
   private async loadInternal() {
+    this.readingHistory = normalizeReadingHistory(await this.loadReadingHistory());
     const fromFrontmatter = await this.annotationVaultStore.scanAllProgress();
     this.progress = { ...fromFrontmatter };
 

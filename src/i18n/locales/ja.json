@@ -41,7 +41,8 @@
     "parseGotoFailed": "抜粋ジャンプリンクを解析できません。再注釈するか抜粋形式を確認してください",
     "insertedAndCopied": "「{{name}}」に挿入し、抜粋をコピーしました",
     "readingModeCopied": "対象ノートは閲覧モードです。クリップボードにコピーしました",
-    "copiedExcerpt": "抜粋をコピーしました"
+    "copiedExcerpt": "抜粋をコピーしました",
+    "exportDone": "抜粋のエクスポートを保存しました"
   },
   "bookshelf": {
     "title": "EPUB 本棚",
@@ -54,16 +55,22 @@
     "markFinished": "読了にする",
     "unmarkFinished": "読了を解除",
     "unknownAuthor": "作者不明",
-    "noCover": "表紙なし"
+    "noCover": "表紙なし",
+    "statsSummary": "{{books}} 冊 · {{days}} 日 · 合計 {{time}}"
   },
   "reader": {
     "sidebar": {
       "toc": "目次",
-      "annotations": "注釈"
+      "search": "検索",
+      "annotations": "注釈",
+      "bookmarks": "ブックマーク"
     },
     "toolbar": {
       "toggleToc": "目次の表示切替",
       "openReadingSettings": "閲覧設定",
+      "openSearch": "本文検索",
+      "addBookmark": "ブックマークを追加",
+      "removeBookmark": "ブックマークを削除",
       "fontSmaller": "フォントを小さく",
       "fontLarger": "フォントを大きく",
       "sidePaddingSmaller": "左右余白を減らす",
@@ -90,7 +97,31 @@
       "fontFamily": "本文フォント",
       "sidePadding": "左右余白",
       "sidePaddingPx": "左右余白 {{px}} px",
+      "lineHeight": "行間",
+      "paragraphSpacing": "段落間隔",
+      "letterSpacing": "字間",
       "readingTheme": "閲覧テーマ"
+    },
+    "search": {
+      "placeholder": "この本を検索…",
+      "button": "検索",
+      "clear": "検索をクリア",
+      "prev": "前の一致",
+      "next": "次の一致",
+      "running": "検索中…",
+      "noResults": "一致なし",
+      "failed": "検索に失敗しました",
+      "resultCount": "{{current}} / {{total}}"
+    },
+    "bookmarks": {
+      "heading": "ブックマーク",
+      "empty": "ブックマークはありません",
+      "jump": "移動",
+      "remove": "削除",
+      "added": "ブックマークを追加しました",
+      "removed": "ブックマークを削除しました",
+      "pageBadge": "ブックマーク済み（クリックで削除）",
+      "noLocation": "位置が不明なためブックマークできません"
     },
     "loading": "EPUB を読み込み中…",
     "loadFailed": "読み込み失敗: {{error}}",
@@ -154,6 +185,25 @@
       "epubSource": "epub-source: {{value}}",
       "localEpub": "同階層 EPUB: {{value}}",
       "expectedPath": "想定パス: {{value}}"
+    },
+    "excerptConflict": {
+      "title": "抜粋ファイルが外部で変更されました",
+      "message": "「{{path}}」がプラグイン外で編集されました。どう統合しますか？",
+      "merge": "注釈を統合",
+      "overwrite": "プラグイン版で上書き",
+      "keepExternal": "外部ファイルを保持"
+    },
+    "excerptExport": {
+      "title": "抜粋をエクスポート",
+      "epubFilter": "書籍で絞り込み",
+      "allBooks": "すべての書籍",
+      "since": "開始日 (YYYY-MM-DD)",
+      "until": "終了日 (YYYY-MM-DD)",
+      "format": "形式",
+      "formatCsv": "CSV",
+      "formatMarkdown": "Markdown",
+      "formatPlain": "プレーンテキスト",
+      "export": "エクスポート"
     }
   },
   "settings": {
@@ -273,6 +323,15 @@
       "desc": "抜粋 frontmatter の epub-source が存在する EPUB を指すか確認。欠落・無効時のみ {filefolder} 規則で同階層 EPUB を検索",
       "button": "確認を開始"
     },
+    "exportExcerpts": {
+      "name": "抜粋をエクスポート",
+      "desc": "書籍・日付で絞り込み、CSV / Markdown / プレーンテキストで出力",
+      "button": "エクスポート…"
+    },
+    "mobile": {
+      "name": "モバイル対応",
+      "desc": "Obsidian モバイルでも基本閲覧可能。フォント取り込みなど一部機能はデスクトップ専用です"
+    },
     "highlightOpacity": {
       "name": "EPUB ハイライト不透明度",
       "desc": "リーダー内ハイライト層の不透明度"
@@ -368,7 +427,9 @@
       "notoSans": "源ノ角ゴシック",
       "notoSerif": "源ノ明朝",
       "lxgwWenKai": "霞鹜文楷",
-      "lxgwWenKaiScreen": "霞鹜文楷（画面向け）"
+      "lxgwWenKaiScreen": "霞鹜文楷（画面向け）",
+      "literata": "Literata",
+      "firaSans": "Fira Sans"
     },
     "noteTypes": {
       "note": "メモ",

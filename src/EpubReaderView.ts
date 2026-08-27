@@ -1,7 +1,10 @@
 import { FileView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
-import { cfiProgressMatches } from "./cfi/cfiMatch";
+import { BookmarkStore } from "./BookmarkStore";
+import { searchEpubBook, EpubSearchHit } from "./epubSearch";
+import { cfiProgressMatches, cfiSpineKey } from "./cfi/cfiMatch";
+import { compareCfi } from "./cfi/compare";
 import { parseEpubSubpath } from "./epubSubpath";
 import { ProgressStore, normalizeCfi, normalizePercent } from "./ProgressStore";
 import { t } from "./i18n/i18n";
@@ -23,6 +26,10 @@ import {
   clampNoteIconOffsetY,
   clampHighlightOpacity,
   clampReadingSidePadding,
+  clampLineHeight,
+  clampParagraphSpacing,
+  clampLetterSpacing,
+  EpubBookmark,
   noteIconGlyphSize,
   normalizeReadingTheme,
   normalizeReadingFont,
@@ -69,9 +76,14 @@ import {
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
 
 const ANNOTATION_TYPE = "highlight";
+const SEARCH_HIGHLIGHT_TYPE = "highlight";
 const HIGHLIGHT_CLASS = "epub-user-highlight";
+const SEARCH_HIGHLIGHT_CLASS = "epub-search-hit";
 const NOTE_ICON_CLASS = "epub-note-icon";
-const CFI_IGNORE_CLASSES = "epub-user-highlight epubjs-hl epubjs-ul epub-note-icon";
+const CFI_IGNORE_CLASSES =
+  "epub-user-highlight epub-search-hit epubjs-hl epubjs-ul epub-note-icon";
+const SEARCH_HIGHLIGHT_FILL = "#e8b339";
+const SEARCH_HIGHLIGHT_OPACITY = "0.55";
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
 
@@ -79,6 +91,7 @@ const READING_THEME_ATTR = "data-ob-epub-theme";
 type EpubLayoutManager = {
   settings?: { gap?: number };
   updateLayout?: () => void;
+  container?: HTMLElement;
   views?: { forEach: (fn: (view: EpubView) => void) => void };
 };
 
@@ -106,6 +119,9 @@ export class EpubReaderView extends FileView {
   private onReadingFontChange?: (font: ReadingFontId) => Promise<void>;
   private onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>;
   private onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>;
+  private onLineHeightChange?: (lineHeight: number) => Promise<void>;
+  private onParagraphSpacingChange?: (spacing: number) => Promise<void>;
+  private onLetterSpacingChange?: (spacing: number) => Promise<void>;
   private readingFontManager: ReadingFontManager;
   private contextMenu: HTMLElement | null = null;
   private contextMenuDismissHandler: ((e: MouseEvent) => void) | null = null;
@@ -124,6 +140,7 @@ export class EpubReaderView extends FileView {
   private openBridge: EpubOpenBridge;
   private annotationVaultStore: AnnotationVaultStore;
   private progressStore: ProgressStore;
+  private bookmarkStore: BookmarkStore;
   private excerptPasteTarget: ExcerptPasteTarget;
   private settings: EpubPluginSettings;
   private pendingCfi: string = "";
@@ -169,15 +186,28 @@ export class EpubReaderView extends FileView {
   private readingSettingsPopover: ReadingSettingsPopover;
   private sidebarEl: HTMLElement | null = null;
   private notesTabEl: HTMLElement | null = null;
+  private searchTabEl: HTMLElement | null = null;
+  private bookmarksTabEl: HTMLElement | null = null;
   private tocTabEl: HTMLElement | null = null;
   private tocEl: HTMLElement | null = null;
+  private searchEl: HTMLElement | null = null;
+  private bookmarksEl: HTMLElement | null = null;
   private notesEl: HTMLElement | null = null;
   private readerEl: HTMLElement | null = null;
+  private readerMountEl: HTMLElement | null = null;
   private progressEl: HTMLElement | null = null;
   private tocToggleBtn: HTMLElement | null = null;
   private tocVisible: boolean = false;
   private tocHighlightedChapter = "";
-  private sidebarMode: "toc" | "notes" = "toc";
+  private sidebarMode: "toc" | "search" | "notes" | "bookmarks" = "toc";
+  private searchQuery = "";
+  private searchHits: EpubSearchHit[] = [];
+  private searchHitIndex = -1;
+  private searchRunning = false;
+  private searchHighlightCfi: string | null = null;
+  private pageBookmarkBadgeEl: HTMLElement | null = null;
+  private bookmarkToolbarBtn: HTMLElement | null = null;
+  private isFixedLayout = false;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private wheelAccum: number = 0;
   private wheelCooldown: boolean = false;
@@ -188,6 +218,7 @@ export class EpubReaderView extends FileView {
     openBridge: EpubOpenBridge,
     annotationVaultStore: AnnotationVaultStore,
     progressStore: ProgressStore,
+    bookmarkStore: BookmarkStore,
     excerptPasteTarget: ExcerptPasteTarget,
     settings: EpubPluginSettings,
     onReadingThemeChange?: (themeId: ReadingThemeId) => Promise<void>,
@@ -197,12 +228,16 @@ export class EpubReaderView extends FileView {
     onAutoPasteExcerptChange?: (enabled: boolean) => Promise<void>,
     onSkipDeleteAnnotationConfirmChange?: (skip: boolean) => Promise<void>,
     onReadingFontChange?: (font: ReadingFontId) => Promise<void>,
+    onLineHeightChange?: (lineHeight: number) => Promise<void>,
+    onParagraphSpacingChange?: (spacing: number) => Promise<void>,
+    onLetterSpacingChange?: (spacing: number) => Promise<void>,
     readingFontManager?: ReadingFontManager
   ) {
     super(leaf);
     this.openBridge = openBridge;
     this.annotationVaultStore = annotationVaultStore;
     this.progressStore = progressStore;
+    this.bookmarkStore = bookmarkStore;
     this.excerptPasteTarget = excerptPasteTarget;
     this.settings = settings;
     this.onReadingThemeChange = onReadingThemeChange;
@@ -212,6 +247,9 @@ export class EpubReaderView extends FileView {
     this.onAutoPasteExcerptChange = onAutoPasteExcerptChange;
     this.onSkipDeleteAnnotationConfirmChange = onSkipDeleteAnnotationConfirmChange;
     this.onReadingFontChange = onReadingFontChange;
+    this.onLineHeightChange = onLineHeightChange;
+    this.onParagraphSpacingChange = onParagraphSpacingChange;
+    this.onLetterSpacingChange = onLetterSpacingChange;
     this.readingFontManager =
       readingFontManager ??
       new ReadingFontManager({
@@ -250,6 +288,12 @@ export class EpubReaderView extends FileView {
         void this.onAutoPasteExcerptChange?.(next);
         this.readingSettingsPopover.sync();
       },
+      onLineHeightDelta: (delta) => this.changeLineHeight(delta),
+      onLineHeightCommit: (value) => this.applyLineHeight(value, true),
+      onParagraphSpacingDelta: (delta) => this.changeParagraphSpacing(delta),
+      onParagraphSpacingCommit: (value) => this.applyParagraphSpacing(value, true),
+      onLetterSpacingDelta: (delta) => this.changeLetterSpacing(delta),
+      onLetterSpacingCommit: (value) => this.applyLetterSpacing(value, true),
       getContentDocuments: () => this.collectContentDocuments(),
     });
   }
@@ -431,20 +475,32 @@ export class EpubReaderView extends FileView {
     const tabs = this.sidebarEl.createDiv({ cls: "epub-sidebar-tabs" });
     const tocTab = tabs.createEl("button", { cls: "epub-sidebar-tab is-active", text: t("reader.sidebar.toc") });
     this.tocTabEl = tocTab;
+    this.searchTabEl = tabs.createEl("button", { cls: "epub-sidebar-tab", text: t("reader.sidebar.search") });
     this.notesTabEl = tabs.createEl("button", { cls: "epub-sidebar-tab", text: t("reader.sidebar.annotations") });
+    this.bookmarksTabEl = tabs.createEl("button", { cls: "epub-sidebar-tab", text: t("reader.sidebar.bookmarks") });
     tocTab.addEventListener("click", () => this.setSidebarMode("toc"));
+    this.searchTabEl.addEventListener("click", () => this.setSidebarMode("search"));
     this.notesTabEl.addEventListener("click", () => this.setSidebarMode("notes"));
+    this.bookmarksTabEl.addEventListener("click", () => this.setSidebarMode("bookmarks"));
 
     const panelsEl = this.sidebarEl.createDiv({ cls: "epub-sidebar-panels" });
 
     // TOC panel
     this.tocEl = panelsEl.createDiv({ cls: "epub-toc" });
 
+    // Search panel
+    this.searchEl = panelsEl.createDiv({ cls: "epub-search is-hidden" });
+
     // Notes panel (hidden via CSS class — avoid hide()/toggleVisibility mismatch)
     this.notesEl = panelsEl.createDiv({ cls: "epub-notes is-hidden" });
 
-    // Reader area
+    // Bookmarks panel
+    this.bookmarksEl = panelsEl.createDiv({ cls: "epub-bookmarks is-hidden" });
+
+    // Reader area（角标与 epub.js 挂载点分离，避免 empty/renderTo 清掉角标）
     this.readerEl = bodyEl.createDiv({ cls: "epub-reader-area" });
+    this.readerMountEl = this.readerEl.createDiv({ cls: "epub-reader-mount" });
+    this.ensurePageBookmarkBadge();
 
     // Bottom progress bar（底部模式时 DOM 迁到 Obsidian 状态栏）
     this.progressEl = container.createDiv({ cls: "epub-progress-bar-wrap" });
@@ -548,6 +604,28 @@ export class EpubReaderView extends FileView {
       e.stopPropagation();
       this.toggleReadingSettingsPopover(settingsBtn);
     });
+
+    const searchBtn = toolbar.createEl("button", {
+      cls: "epub-toolbar-btn",
+      attr: { type: "button", id: "epub-search-btn" },
+    });
+    setIcon(searchBtn, "search");
+    searchBtn.title = t("reader.toolbar.openSearch");
+    searchBtn.addEventListener("click", () => {
+      this.tocVisible = true;
+      this.sidebarEl?.removeClass("is-collapsed");
+      this.setSidebarMode("search");
+      this.scheduleResizeRendition();
+    });
+
+    const bookmarkBtn = toolbar.createEl("button", {
+      cls: "epub-toolbar-btn",
+      attr: { type: "button", id: "epub-bookmark-btn" },
+    });
+    this.bookmarkToolbarBtn = bookmarkBtn;
+    setIcon(bookmarkBtn, "bookmark");
+    bookmarkBtn.title = t("reader.toolbar.addBookmark");
+    bookmarkBtn.addEventListener("click", () => void this.toggleBookmarkAtCurrentLocation());
 
     // Flow toggle
     const flowBtn = toolbar.createEl("button", {
@@ -673,16 +751,26 @@ export class EpubReaderView extends FileView {
     this.scheduleResizeRendition();
   }
 
-  private setSidebarMode(mode: "toc" | "notes") {
+  private setSidebarMode(mode: "toc" | "search" | "notes" | "bookmarks") {
     this.sidebarMode = mode;
     this.tocEl?.toggleClass("is-hidden", mode !== "toc");
+    this.searchEl?.toggleClass("is-hidden", mode !== "search");
     this.notesEl?.toggleClass("is-hidden", mode !== "notes");
-    const tabs = this.sidebarEl?.querySelectorAll(".epub-sidebar-tab");
-    tabs?.forEach((tab, i) => {
-      const active = (i === 0 && mode === "toc") || (i === 1 && mode === "notes");
-      tab.toggleClass("is-active", active);
-    });
+    this.bookmarksEl?.toggleClass("is-hidden", mode !== "bookmarks");
+
+    const tabMap: Record<typeof mode, HTMLElement | null> = {
+      toc: this.tocTabEl,
+      search: this.searchTabEl,
+      notes: this.notesTabEl,
+      bookmarks: this.bookmarksTabEl,
+    };
+    for (const [key, tab] of Object.entries(tabMap)) {
+      tab?.toggleClass("is-active", key === mode);
+    }
+
     if (mode === "notes") void this.renderNotesPanel();
+    if (mode === "search") this.renderSearchPanel();
+    if (mode === "bookmarks") void this.renderBookmarksPanel();
   }
 
   private changeFontSize(delta: number) {
@@ -746,6 +834,507 @@ export class EpubReaderView extends FileView {
       void this.onReadingSidePaddingChange(next);
     }
     this.readingSettingsPopover.sync();
+  }
+
+  private resolvedLineHeight(): number {
+    return clampLineHeight(this.settings.lineHeight ?? 1.8);
+  }
+
+  private resolvedParagraphSpacing(): number {
+    return clampParagraphSpacing(this.settings.paragraphSpacing ?? 0);
+  }
+
+  private resolvedLetterSpacing(): number {
+    return clampLetterSpacing(this.settings.letterSpacing ?? 0);
+  }
+
+  private changeLineHeight(delta: number): void {
+    this.applyLineHeight(this.resolvedLineHeight() + delta, true);
+  }
+
+  private applyLineHeight(value: number, persist: boolean): void {
+    const next = clampLineHeight(value);
+    if (next === this.resolvedLineHeight() && persist) return;
+    this.settings.lineHeight = next;
+    this.applyThemeToAllContents();
+    if (persist) void this.onLineHeightChange?.(next);
+    this.readingSettingsPopover.sync();
+  }
+
+  private changeParagraphSpacing(delta: number): void {
+    this.applyParagraphSpacing(this.resolvedParagraphSpacing() + delta, true);
+  }
+
+  private applyParagraphSpacing(value: number, persist: boolean): void {
+    const next = clampParagraphSpacing(value);
+    if (next === this.resolvedParagraphSpacing() && persist) return;
+    this.settings.paragraphSpacing = next;
+    this.applyThemeToAllContents();
+    if (persist) void this.onParagraphSpacingChange?.(next);
+    this.readingSettingsPopover.sync();
+  }
+
+  private changeLetterSpacing(delta: number): void {
+    this.applyLetterSpacing(this.resolvedLetterSpacing() + delta, true);
+  }
+
+  private applyLetterSpacing(value: number, persist: boolean): void {
+    const next = clampLetterSpacing(value);
+    if (next === this.resolvedLetterSpacing() && persist) return;
+    this.settings.letterSpacing = next;
+    this.applyThemeToAllContents();
+    if (persist) void this.onLetterSpacingChange?.(next);
+    this.readingSettingsPopover.sync();
+  }
+
+  private renderSearchPanel(): void {
+    if (!this.searchEl) return;
+    this.searchEl.empty();
+
+    const toolbar = this.searchEl.createDiv({ cls: "epub-search-toolbar" });
+    const inputRow = toolbar.createDiv({ cls: "epub-search-input-row" });
+    const input = inputRow.createEl("input", {
+      cls: "epub-search-input",
+      type: "search",
+      attr: { placeholder: t("reader.search.placeholder") },
+    });
+    input.value = this.searchQuery;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") void this.runBookSearch(input.value);
+      if (e.key === "Escape") this.clearBookSearch();
+    });
+
+    const clearBtn = inputRow.createEl("button", {
+      cls: "epub-toolbar-btn epub-search-clear",
+      text: "×",
+      attr: {
+        type: "button",
+        title: t("reader.search.clear"),
+        "aria-label": t("reader.search.clear"),
+      },
+    });
+    clearBtn.toggleVisibility(!!this.searchQuery || this.searchHits.length > 0);
+    clearBtn.addEventListener("click", () => this.clearBookSearch());
+
+    const searchBtn = toolbar.createEl("button", {
+      cls: "epub-toolbar-btn",
+      text: t("reader.search.button"),
+    });
+    searchBtn.addEventListener("click", () => void this.runBookSearch(input.value));
+
+    const nav = toolbar.createDiv({ cls: "epub-search-nav" });
+    const prevBtn = nav.createEl("button", { cls: "epub-toolbar-btn", text: "◀" });
+    prevBtn.title = t("reader.search.prev");
+    prevBtn.addEventListener("click", () => this.navigateSearchHit(-1));
+    const nextBtn = nav.createEl("button", { cls: "epub-toolbar-btn", text: "▶" });
+    nextBtn.title = t("reader.search.next");
+    nextBtn.addEventListener("click", () => this.navigateSearchHit(1));
+
+    const status = this.searchEl.createDiv({ cls: "epub-search-status" });
+    if (this.searchRunning) {
+      status.setText(t("reader.search.running"));
+    } else if (this.searchQuery && this.searchHits.length === 0) {
+      status.setText(t("reader.search.noResults"));
+    } else if (this.searchHits.length > 0) {
+      status.setText(
+        t("reader.search.resultCount", {
+          current: this.searchHitIndex + 1,
+          total: this.searchHits.length,
+        })
+      );
+    }
+
+    const list = this.searchEl.createDiv({ cls: "epub-search-results" });
+    this.searchHits.forEach((hit, index) => {
+      const item = list.createDiv({
+        cls: `epub-search-result${index === this.searchHitIndex ? " is-active" : ""}`,
+      });
+      const excerptEl = item.createDiv({ cls: "epub-search-excerpt" });
+      this.appendHighlightedExcerpt(excerptEl, hit.excerpt, this.searchQuery);
+      item.addEventListener("click", () => {
+        this.searchHitIndex = index;
+        void this.jumpToSearchHit(index);
+        this.renderSearchPanel();
+      });
+    });
+  }
+
+  private clearBookSearch(): void {
+    this.searchQuery = "";
+    this.searchHits = [];
+    this.searchHitIndex = -1;
+    this.searchRunning = false;
+    this.clearSearchHighlight();
+    this.renderSearchPanel();
+  }
+
+  /** Append excerpt text with query matches wrapped in <mark> (no innerHTML). */
+  private appendHighlightedExcerpt(parent: HTMLElement, excerpt: string, query: string): void {
+    const q = query.trim();
+    if (!q) {
+      parent.appendText(excerpt);
+      return;
+    }
+    const lower = excerpt.toLowerCase();
+    const needle = q.toLowerCase();
+    let start = 0;
+    let pos = lower.indexOf(needle);
+    while (pos >= 0) {
+      if (pos > start) parent.appendText(excerpt.slice(start, pos));
+      parent.createEl("mark", {
+        cls: "epub-search-hit-mark",
+        text: excerpt.slice(pos, pos + needle.length),
+      });
+      start = pos + needle.length;
+      pos = lower.indexOf(needle, start);
+    }
+    if (start < excerpt.length) parent.appendText(excerpt.slice(start));
+  }
+
+  private clearSearchHighlight(): void {
+    if (!this.rendition || !this.searchHighlightCfi) {
+      this.searchHighlightCfi = null;
+      return;
+    }
+    try {
+      this.rendition.annotations.remove(this.searchHighlightCfi, SEARCH_HIGHLIGHT_TYPE);
+    } catch {
+      /* ignore */
+    }
+    this.searchHighlightCfi = null;
+  }
+
+  private applySearchHitHighlight(cfi: string): void {
+    if (!this.rendition || !cfi) return;
+    this.clearSearchHighlight();
+    try {
+      this.rendition.annotations.add(
+        SEARCH_HIGHLIGHT_TYPE,
+        cfi,
+        { id: "ob-epub-search-hit" },
+        undefined,
+        SEARCH_HIGHLIGHT_CLASS,
+        {
+          fill: SEARCH_HIGHLIGHT_FILL,
+          "fill-opacity": SEARCH_HIGHLIGHT_OPACITY,
+          "mix-blend-mode": this.highlightBlendMode(),
+        }
+      );
+      this.searchHighlightCfi = cfi;
+    } catch (err) {
+      console.warn("ob-epub: search highlight failed", err);
+    }
+  }
+
+  private async jumpToSearchHit(index: number): Promise<void> {
+    const hit = this.searchHits[index];
+    if (!hit) return;
+    this.searchHitIndex = index;
+    await this.navigateToCfi(hit.cfi);
+    this.applySearchHitHighlight(hit.cfi);
+  }
+
+  private async runBookSearch(query: string): Promise<void> {
+    this.searchQuery = query.trim();
+    this.searchHits = [];
+    this.searchHitIndex = -1;
+    this.clearSearchHighlight();
+    if (!this.searchQuery || !this.book) {
+      this.renderSearchPanel();
+      return;
+    }
+    this.searchRunning = true;
+    this.renderSearchPanel();
+    try {
+      this.searchHits = await searchEpubBook(this.book, this.searchQuery);
+      if (this.searchHits.length > 0) {
+        await this.jumpToSearchHit(0);
+      }
+    } catch (err) {
+      console.error("ob-epub: book search failed", err);
+      new Notice(t("reader.search.failed"));
+    } finally {
+      this.searchRunning = false;
+      this.renderSearchPanel();
+    }
+  }
+
+  private navigateSearchHit(delta: number): void {
+    if (this.searchHits.length === 0) return;
+    const next =
+      (this.searchHitIndex + delta + this.searchHits.length) % this.searchHits.length;
+    void this.jumpToSearchHit(next).then(() => this.renderSearchPanel());
+  }
+
+  private async renderBookmarksPanel(): Promise<void> {
+    if (!this.bookmarksEl || !this.file) return;
+    this.bookmarksEl.empty();
+    this.bookmarksEl.createDiv({ cls: "epub-bookmarks-heading", text: t("reader.bookmarks.heading") });
+
+    const bookmarks = this.bookmarkStore.getByFile(this.file.path);
+    if (bookmarks.length === 0) {
+      this.bookmarksEl.createDiv({ cls: "epub-bookmarks-empty", text: t("reader.bookmarks.empty") });
+      return;
+    }
+
+    const list = this.bookmarksEl.createDiv({ cls: "epub-bookmarks-list" });
+    for (const bookmark of bookmarks) {
+      const item = list.createDiv({ cls: "epub-bookmark-item" });
+      const preview = bookmark.label?.trim() || bookmark.chapter;
+      item.createDiv({ cls: "epub-bookmark-label", text: preview });
+      if (bookmark.chapter && bookmark.chapter !== preview) {
+        item.createDiv({ cls: "epub-bookmark-chapter", text: bookmark.chapter });
+      }
+      const actions = item.createDiv({ cls: "epub-bookmark-actions" });
+      const jumpBtn = actions.createEl("button", {
+        cls: "epub-toolbar-btn",
+        text: t("reader.bookmarks.jump"),
+      });
+      jumpBtn.addEventListener("click", () => void this.navigateToCfi(bookmark.cfi));
+      const deleteBtn = actions.createEl("button", {
+        cls: "epub-toolbar-btn",
+        text: t("reader.bookmarks.remove"),
+      });
+      deleteBtn.addEventListener("click", async () => {
+        await this.bookmarkStore.remove(this.file!.path, bookmark.id);
+        this.syncPageBookmarkIndicator();
+        void this.renderBookmarksPanel();
+      });
+    }
+  }
+
+  /**
+   * Find a bookmark on the currently visible page only.
+   * Paginated: CFI within location start..end.
+   * Scrolled: DOM geometry vs iframe viewport (~one screen = one page).
+   */
+  private findBookmarkOnCurrentPage(): EpubBookmark | null {
+    if (!this.file || !this.currentCfi) return null;
+    const bookmarks = this.bookmarkStore.getByFile(this.file.path);
+    if (bookmarks.length === 0) return null;
+
+    if (this.flow === "scrolled") {
+      return this.findBookmarkInScrolledViewport(bookmarks);
+    }
+
+    const range = this.getVisibleLocationRange();
+    if (range) {
+      for (const bm of bookmarks) {
+        if (cfiSpineKey(bm.cfi) !== cfiSpineKey(range.start)) continue;
+        if (compareCfi(bm.cfi, range.start) >= 0 && compareCfi(bm.cfi, range.end) <= 0) {
+          return bm;
+        }
+      }
+      return null;
+    }
+
+    for (const bm of bookmarks) {
+      if (
+        cfiProgressMatches(bm.cfi, this.currentCfi, {
+          minContentSteps: 3,
+          offsetTolerance: 48,
+        })
+      ) {
+        return bm;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Among bookmarks whose start position still lies in the scrolled reading viewport
+   * (~one screen), pick nearest to the visible top.
+   *
+   * epub.js scrolled-doc scrolls the manager container while the iframe is expanded to
+   * full chapter height — so iframe innerHeight is NOT the visible page. Compare in
+   * parent coordinates: iframeRect + rangeRect vs containerRect.
+   * Use the range top (bookmark anchor), not full-block overlap, so a tall paragraph
+   * does not keep blocking new bookmarks after ~one screen of scroll.
+   */
+  private findBookmarkInScrolledViewport(bookmarks: EpubBookmark[]): EpubBookmark | null {
+    const viewport = this.getScrolledVisibleViewportRect();
+    if (!viewport) return null;
+
+    const margin = 8;
+    let best: EpubBookmark | null = null;
+    let bestDist = Infinity;
+    for (const bm of bookmarks) {
+      const pageRect = this.getBookmarkPageRect(bm.cfi);
+      if (!pageRect) continue;
+      const y = pageRect.top;
+      if (!(y > viewport.top - margin && y < viewport.bottom - margin)) continue;
+      const dist = Math.abs(y - viewport.top);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = bm;
+      }
+    }
+    return best;
+  }
+
+  /** Visible reading area in page coordinates (epub.js manager container). */
+  private getScrolledVisibleViewportRect(): DOMRect | null {
+    const manager = this.getEpubLayoutManager();
+    const container = manager?.container;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      if (rect.height > 0) return rect;
+    }
+    // Fallback: reader host (still better than tall iframe innerHeight)
+    const host = this.readerEl;
+    if (!host) return null;
+    const rect = host.getBoundingClientRect();
+    return rect.height > 0 ? rect : null;
+  }
+
+  /**
+   * Bookmark CFI → axis-aligned rect in the parent page coordinate space
+   * (iframe local rect translated by the iframe element's page offset).
+   */
+  private getBookmarkPageRect(cfi: string): { top: number; bottom: number } | null {
+    try {
+      const range = (this.rendition as { getRange?: (c: string) => Range | null } | null)?.getRange?.(
+        cfi
+      );
+      if (!range) return null;
+      const local = range.getBoundingClientRect();
+      if (local.width === 0 && local.height === 0 && local.top === 0 && local.bottom === 0) {
+        return null;
+      }
+
+      const ownerDoc = range.startContainer.ownerDocument;
+      const iframe = ownerDoc?.defaultView?.frameElement as HTMLIFrameElement | null;
+      if (iframe) {
+        const iframeRect = iframe.getBoundingClientRect();
+        return {
+          top: iframeRect.top + local.top,
+          bottom: iframeRect.top + local.bottom,
+        };
+      }
+      // Already in the same coordinate space as the reader
+      return { top: local.top, bottom: local.bottom };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Visible page CFI range for paginated mode (handles spread arrays). */
+  private getVisibleLocationRange(): { start: string; end: string } | null {
+    try {
+      const raw = this.rendition?.currentLocation?.() as
+        | { start?: { cfi?: string }; end?: { cfi?: string } }
+        | Array<{ start?: { cfi?: string }; end?: { cfi?: string } }>
+        | undefined;
+      const page = Array.isArray(raw) ? raw[0] : raw;
+      const start = normalizeCfi(page?.start?.cfi || this.currentCfi);
+      let end = normalizeCfi(page?.end?.cfi || start);
+      if (!start) return null;
+      if (compareCfi(end, start) < 0) end = start;
+      return { start, end };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Prefer live location.start (viewport top) over possibly stale currentCfi. */
+  private getViewportTopCfi(): string {
+    return normalizeCfi(this.getVisibleLocationRange()?.start || this.currentCfi);
+  }
+
+  private extractFirstLineAtLocation(atCfi?: string): string {
+    try {
+      const cfi = normalizeCfi(atCfi || this.currentCfi);
+      if (this.rendition && cfi) {
+        const range = (this.rendition as { getRange?: (c: string) => Range | null }).getRange?.(cfi);
+        if (range) {
+          const node =
+            range.startContainer.nodeType === Node.TEXT_NODE
+              ? range.startContainer.parentElement
+              : (range.startContainer as Element | null);
+          const block =
+            node?.closest?.("p, li, h1, h2, h3, h4, h5, h6, blockquote, div") ?? node;
+          const raw = (block?.textContent ?? "").replace(/\s+/g, " ").trim();
+          if (raw) return raw.slice(0, 100);
+        }
+      }
+
+      const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
+      const text = (iframe?.contentDocument?.body?.innerText ?? "").trim();
+      if (!text) return "";
+      const first =
+        text
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .find((s) => s.length > 0) ?? "";
+      return first.slice(0, 100);
+    } catch {
+      return "";
+    }
+  }
+
+  private ensurePageBookmarkBadge(): void {
+    if (!this.readerEl) return;
+    if (this.pageBookmarkBadgeEl?.isConnected) return;
+    this.pageBookmarkBadgeEl = this.readerEl.createDiv({
+      cls: "epub-page-bookmark-badge is-hidden",
+      attr: {
+        title: t("reader.bookmarks.pageBadge"),
+        "aria-label": t("reader.bookmarks.pageBadge"),
+      },
+    });
+    setIcon(this.pageBookmarkBadgeEl, "bookmark");
+    this.pageBookmarkBadgeEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void this.toggleBookmarkAtCurrentLocation();
+    });
+  }
+
+  private syncPageBookmarkIndicator(): void {
+    const existing = this.findBookmarkOnCurrentPage();
+    const on = !!existing;
+    this.pageBookmarkBadgeEl?.toggleClass("is-hidden", !on);
+    this.pageBookmarkBadgeEl?.toggleClass("is-active", on);
+
+    if (this.bookmarkToolbarBtn) {
+      this.bookmarkToolbarBtn.toggleClass("is-bookmarked", on);
+      this.bookmarkToolbarBtn.title = on
+        ? t("reader.toolbar.removeBookmark")
+        : t("reader.toolbar.addBookmark");
+      this.bookmarkToolbarBtn.empty();
+      setIcon(this.bookmarkToolbarBtn, on ? "bookmark-check" : "bookmark");
+    }
+  }
+
+  private async toggleBookmarkAtCurrentLocation(): Promise<void> {
+    const cfi = this.getViewportTopCfi();
+    if (!this.file || !cfi) {
+      new Notice(t("reader.bookmarks.noLocation"));
+      return;
+    }
+
+    const existing = this.findBookmarkOnCurrentPage();
+    if (existing) {
+      await this.bookmarkStore.remove(this.file.path, existing.id);
+      new Notice(t("reader.bookmarks.removed"));
+      this.syncPageBookmarkIndicator();
+      if (this.sidebarMode === "bookmarks") void this.renderBookmarksPanel();
+      return;
+    }
+
+    const firstLine = this.extractFirstLineAtLocation(cfi);
+    const chapter = this.currentChapter || unknownChapterLabel();
+    const bookmark: EpubBookmark = {
+      id: `bm-${Date.now()}`,
+      cfi,
+      label: firstLine || chapter,
+      chapter,
+      createdAt: new Date().toISOString(),
+    };
+    await this.bookmarkStore.add(this.file.path, bookmark);
+    new Notice(t("reader.bookmarks.added"));
+    this.syncPageBookmarkIndicator();
+    if (this.sidebarMode === "bookmarks") void this.renderBookmarksPanel();
   }
 
   private flowButtonText(): string {
@@ -827,7 +1416,7 @@ export class EpubReaderView extends FileView {
       this.book = null;
     });
     this.safeCleanup("readerEl", () => {
-      this.readerEl?.empty();
+      this.readerMountEl?.empty();
     });
   }
 
@@ -836,10 +1425,12 @@ export class EpubReaderView extends FileView {
     startCfi: string = "",
     opts?: { preserveFlow?: boolean }
   ) {
-    if (!this.readerEl) return;
-    this.readerEl.empty();
+    if (!this.readerEl || !this.readerMountEl) return;
+    this.readerMountEl.empty();
+    this.ensurePageBookmarkBadge();
     const generation = this.beginBookSession();
     this.destroyBook(false);
+    this.ensurePageBookmarkBadge();
 
     if (this.progressSaveTimer) {
       clearTimeout(this.progressSaveTimer);
@@ -850,7 +1441,7 @@ export class EpubReaderView extends FileView {
     this.blockProgressSave = !!resumeCfi;
     this.isBookInitializing = true;
 
-    const loadingEl = this.readerEl.createEl("div", { cls: "epub-loading", text: t("reader.loading") });
+    const loadingEl = this.readerMountEl.createEl("div", { cls: "epub-loading", text: t("reader.loading") });
 
     try {
       const arrayBuffer = await this.app.vault.adapter.readBinary(file.path);
@@ -912,13 +1503,18 @@ export class EpubReaderView extends FileView {
       const h = Math.max(rect.height || 500, 200);
 
       // Render
-      this.rendition = this.book.renderTo(this.readerEl, {
+      const renderOpts: Record<string, unknown> = {
         flow: this.flow === "scrolled" ? "scrolled-doc" : "paginated",
         width: w,
         height: h,
         allowScriptedContent: false,
         ignoreClass: CFI_IGNORE_CLASSES,
-      });
+      };
+      if (this.isFixedLayout) {
+        renderOpts.flow = "paginated";
+        renderOpts.spread = "none";
+      }
+      this.rendition = this.book.renderTo(this.readerMountEl, renderOpts);
       // Apply font size
       this.rendition.themes.fontSize(`${this.fontSize}px`);
 
@@ -962,6 +1558,7 @@ export class EpubReaderView extends FileView {
             contents?.document,
             this.readingFontManager.getFontFaceCssSync(fontId)
           );
+          this.applyFixedLayoutStyles(contents?.document);
           this.attachContentNavigation(contents);
         } catch (err) {
           console.warn("ob-epub: content hook (sync) failed", err);
@@ -978,6 +1575,7 @@ export class EpubReaderView extends FileView {
         this.currentCfi = normalizeCfi(location?.start?.cfi);
         this.syncChapterFromLocation(location);
         this.applyProgressFromLocation(location);
+        this.syncPageBookmarkIndicator();
         if (!this.isNavigating) {
           this.scheduleHighlightSync();
         }
@@ -994,10 +1592,16 @@ export class EpubReaderView extends FileView {
             void this.refreshHighlights().then(() => {
               this.highlightsInitialLoaded = true;
               this.scheduleHighlightSync();
+              if (this.searchHighlightCfi) {
+                this.applySearchHitHighlight(this.searchHighlightCfi);
+              }
             });
           } else {
             // Re-sync after layout changes (resize / re-render) to fix orphan marks.
             this.scheduleHighlightSync();
+            if (this.searchHighlightCfi) {
+              this.applySearchHitHighlight(this.searchHighlightCfi);
+            }
           }
         }, 150);
       });
@@ -1339,8 +1943,12 @@ export class EpubReaderView extends FileView {
       },
       body: {
         "font-family": `${fontFamily} !important`,
-        "line-height": "1.8",
+        "line-height": String(this.resolvedLineHeight()),
+        "letter-spacing": `${this.resolvedLetterSpacing()}px`,
         padding: bodyPadding,
+      },
+      "body p, body li, body blockquote, body div": {
+        "margin-bottom": `${this.resolvedParagraphSpacing()}px`,
       },
       // EPUB 内嵌样式常在子元素上写死 color/font，仅设置 body 无法覆盖
       "body *": {
@@ -1392,11 +2000,15 @@ export class EpubReaderView extends FileView {
     const root = `html[${READING_THEME_ATTR}] body`;
     const bodyPadding = this.getReadingBodyPadding();
     const sidePx = `${clampReadingSidePadding(this.settings.readingSidePadding)}px`;
+    const lineHeight = this.resolvedLineHeight();
+    const letterSpacing = this.resolvedLetterSpacing();
+    const paragraphSpacing = this.resolvedParagraphSpacing();
     const blocks: string[] = [];
     if (fontFaceCss) blocks.push(fontFaceCss);
     blocks.push(
-      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily} !important;line-height:1.8;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
+      `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily} !important;line-height:${lineHeight};letter-spacing:${letterSpacing}px;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
       `${root} *{color:${textColor} !important;font-family:${fontFamily} !important;-webkit-user-select:text !important;user-select:text !important}`,
+      `${root} p,${root} li,${root} blockquote{margin-bottom:${paragraphSpacing}px !important}`,
       `${root} a,${root} a *{color:${linkColor} !important}`,
       // 原生选区透明：拖选与菜单态统一走 epub-selection-overlay，避免颜色跳变
       `${root} ::selection{background:transparent !important;color:inherit !important}`,
@@ -1594,10 +2206,32 @@ export class EpubReaderView extends FileView {
     }
 
     if (meta?.layout === "pre-paginated") {
+      this.isFixedLayout = true;
+      this.flow = "paginated";
+      this.contentEl.addClass("epub-fixed-layout");
       new Notice(t("notice.fixedLayoutWarning"));
+    } else {
+      this.isFixedLayout = false;
+      this.contentEl.removeClass("epub-fixed-layout");
     }
 
     this.syncFlowLayoutClass();
+  }
+
+  private applyFixedLayoutStyles(doc: Document | null | undefined): void {
+    if (!this.isFixedLayout || !doc?.head) return;
+    const styleId = "ob-epub-fixed-layout";
+    let styleEl = doc.getElementById(styleId) as HTMLStyleElement | null;
+    if (!styleEl) {
+      styleEl = doc.createElement("style");
+      styleEl.id = styleId;
+      doc.head.appendChild(styleEl);
+    }
+    styleEl.textContent = [
+      "html,body{margin:0 !important;padding:0 !important;overflow:hidden !important;}",
+      "body{display:flex !important;justify-content:center !important;align-items:center !important;}",
+      "img,svg,canvas{max-width:100% !important;max-height:100vh !important;object-fit:contain !important;}",
+    ].join("\n");
   }
 
   private async loadTocData() {
@@ -3238,6 +3872,9 @@ export class EpubReaderView extends FileView {
     const prevSidePadding = this.settings.readingSidePadding;
     const prevFont = this.settings.readingFont;
     const prevCustomFonts = this.settings.customFonts;
+    const prevLineHeight = this.settings.lineHeight;
+    const prevParagraphSpacing = this.settings.paragraphSpacing;
+    const prevLetterSpacing = this.settings.letterSpacing;
     this.settings = settings;
     const annotationsChanged = prevAnnotationsOn !== this.annotationsEnabled();
     const toolbarPlacementChanged = prevToolbarPlacement !== settings.toolbarPlacement;
@@ -3268,8 +3905,13 @@ export class EpubReaderView extends FileView {
     const fontChanged =
       normalizeReadingFont(settings.readingFont, settings.customFonts) !==
       normalizeReadingFont(prevFont, prevCustomFonts);
+    const typographyChanged =
+      clampLineHeight(prevLineHeight) !== clampLineHeight(settings.lineHeight) ||
+      clampParagraphSpacing(prevParagraphSpacing) !==
+        clampParagraphSpacing(settings.paragraphSpacing) ||
+      clampLetterSpacing(prevLetterSpacing) !== clampLetterSpacing(settings.letterSpacing);
     if (this.rendition) {
-      if (themeChanged || fontChanged) {
+      if (themeChanged || fontChanged || typographyChanged) {
         if (fontChanged) {
           void this.applyReadingFont(normalizeReadingFont(settings.readingFont, settings.customFonts), false);
         } else {
@@ -3282,17 +3924,21 @@ export class EpubReaderView extends FileView {
       void this.refreshHighlights();
     }
     if (this.sidebarMode === "notes") void this.renderNotesPanel();
+    if (this.sidebarMode === "search") this.renderSearchPanel();
+    if (this.sidebarMode === "bookmarks") void this.renderBookmarksPanel();
   }
 
   /** Refresh user-visible labels after plugin locale change (no epub.js reload). */
   refreshLocaleUi(): void {
     this.tocTabEl?.setText(t("reader.sidebar.toc"));
+    this.searchTabEl?.setText(t("reader.sidebar.search"));
     this.notesTabEl?.setText(t("reader.sidebar.annotations"));
+    this.bookmarksTabEl?.setText(t("reader.sidebar.bookmarks"));
     if (this.toolbarEl) {
       this.buildToolbar(this.toolbarEl);
     }
-    if (this.sidebarMode === "notes" && this.notesEl) {
-      void this.renderNotesPanel();
-    }
+    if (this.sidebarMode === "notes") void this.renderNotesPanel();
+    if (this.sidebarMode === "search") this.renderSearchPanel();
+    if (this.sidebarMode === "bookmarks") void this.renderBookmarksPanel();
   }
 }

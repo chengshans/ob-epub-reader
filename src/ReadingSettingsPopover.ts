@@ -5,6 +5,9 @@ import {
   ReadingThemeId,
   clampHighlightOpacity,
   clampReadingSidePadding,
+  clampLineHeight,
+  clampParagraphSpacing,
+  clampLetterSpacing,
   getReadingFonts,
   getReadingThemes,
   HIGHLIGHT_OPACITY_MAX,
@@ -13,6 +16,15 @@ import {
   READING_SIDE_PADDING_MIN,
   READING_SIDE_PADDING_MAX,
   READING_SIDE_PADDING_STEP,
+  LINE_HEIGHT_MIN,
+  LINE_HEIGHT_MAX,
+  LINE_HEIGHT_STEP,
+  PARAGRAPH_SPACING_MIN,
+  PARAGRAPH_SPACING_MAX,
+  PARAGRAPH_SPACING_STEP,
+  LETTER_SPACING_MIN,
+  LETTER_SPACING_MAX,
+  LETTER_SPACING_STEP,
 } from "./types";
 
 const FONT_SIZE_MIN = 10;
@@ -34,6 +46,12 @@ export interface ReadingSettingsHandlers {
   onHighlightInput: (opacity: number) => void;
   onHighlightCommit: (opacity: number) => void;
   onAutoPasteToggle: () => void;
+  onLineHeightDelta: (delta: number) => void;
+  onLineHeightCommit: (value: number) => void;
+  onParagraphSpacingDelta: (delta: number) => void;
+  onParagraphSpacingCommit: (value: number) => void;
+  onLetterSpacingDelta: (delta: number) => void;
+  onLetterSpacingCommit: (value: number) => void;
   /** EPUB iframe 文档：点正文也要能关掉弹层（iframe 事件不上冒泡到父 document） */
   getContentDocuments?: () => Document[];
 }
@@ -55,6 +73,12 @@ export class ReadingSettingsPopover {
   private highlightRowEl: HTMLElement | null = null;
   private highlightRangeEl: HTMLInputElement | null = null;
   private autoPasteToggleEl: HTMLButtonElement | null = null;
+  private lineHeightRangeEl: HTMLInputElement | null = null;
+  private lineHeightValueEl: HTMLElement | null = null;
+  private paragraphSpacingRangeEl: HTMLInputElement | null = null;
+  private paragraphSpacingValueEl: HTMLElement | null = null;
+  private letterSpacingRangeEl: HTMLInputElement | null = null;
+  private letterSpacingValueEl: HTMLElement | null = null;
 
   constructor(handlers: ReadingSettingsHandlers) {
     this.handlers = handlers;
@@ -89,6 +113,9 @@ export class ReadingSettingsPopover {
     this.buildFontSizeRow(panel);
     this.buildFontFamilyRow(panel);
     this.buildSidePaddingRow(panel);
+    this.buildLineHeightRow(panel);
+    this.buildParagraphSpacingRow(panel);
+    this.buildLetterSpacingRow(panel);
     this.buildThemeRow(panel);
     this.buildHighlightRow(panel);
     this.buildAutoPasteRow(panel);
@@ -116,6 +143,12 @@ export class ReadingSettingsPopover {
     this.highlightRowEl = null;
     this.highlightRangeEl = null;
     this.autoPasteToggleEl = null;
+    this.lineHeightRangeEl = null;
+    this.lineHeightValueEl = null;
+    this.paragraphSpacingRangeEl = null;
+    this.paragraphSpacingValueEl = null;
+    this.letterSpacingRangeEl = null;
+    this.letterSpacingValueEl = null;
   }
 
   sync(): void {
@@ -146,6 +179,27 @@ export class ReadingSettingsPopover {
     if (this.sidePaddingValueEl) {
       const px = clampReadingSidePadding(settings.readingSidePadding);
       this.sidePaddingValueEl.setText(String(px));
+    }
+    if (this.lineHeightRangeEl) {
+      const lh = clampLineHeight(settings.lineHeight);
+      this.lineHeightRangeEl.value = String(lh);
+    }
+    if (this.lineHeightValueEl) {
+      this.lineHeightValueEl.setText(String(clampLineHeight(settings.lineHeight)));
+    }
+    if (this.paragraphSpacingRangeEl) {
+      const ps = clampParagraphSpacing(settings.paragraphSpacing);
+      this.paragraphSpacingRangeEl.value = String(ps);
+    }
+    if (this.paragraphSpacingValueEl) {
+      this.paragraphSpacingValueEl.setText(String(clampParagraphSpacing(settings.paragraphSpacing)));
+    }
+    if (this.letterSpacingRangeEl) {
+      const ls = clampLetterSpacing(settings.letterSpacing);
+      this.letterSpacingRangeEl.value = String(ls);
+    }
+    if (this.letterSpacingValueEl) {
+      this.letterSpacingValueEl.setText(String(clampLetterSpacing(settings.letterSpacing)));
     }
     if (this.themeSwatchesEl) {
       this.themeSwatchesEl.querySelectorAll(".epub-theme-swatch").forEach((node) => {
@@ -316,6 +370,78 @@ export class ReadingSettingsPopover {
     });
 
     this.sidePaddingValueEl = controls.createSpan({ cls: "epub-reading-settings-value" });
+  }
+
+  private buildLineHeightRow(panel: HTMLElement): void {
+    const row = panel.createDiv({ cls: "epub-reading-settings-row" });
+    row.createSpan({ cls: "epub-reading-settings-label", text: t("reader.readingSettings.lineHeight") });
+    const controls = row.createDiv({ cls: "epub-reading-settings-controls" });
+    const range = controls.createEl("input", {
+      cls: "epub-reading-settings-range",
+      type: "range",
+      attr: {
+        min: String(LINE_HEIGHT_MIN),
+        max: String(LINE_HEIGHT_MAX),
+        step: String(LINE_HEIGHT_STEP),
+      },
+    });
+    this.lineHeightRangeEl = range;
+    range.addEventListener("input", () => {
+      const value = clampLineHeight(Number(range.value));
+      if (this.lineHeightValueEl) this.lineHeightValueEl.setText(String(value));
+      this.handlers.onLineHeightCommit(value);
+    });
+    this.lineHeightValueEl = controls.createSpan({ cls: "epub-reading-settings-value" });
+  }
+
+  private buildParagraphSpacingRow(panel: HTMLElement): void {
+    const row = panel.createDiv({ cls: "epub-reading-settings-row" });
+    row.createSpan({
+      cls: "epub-reading-settings-label",
+      text: t("reader.readingSettings.paragraphSpacing"),
+    });
+    const controls = row.createDiv({ cls: "epub-reading-settings-controls" });
+    const range = controls.createEl("input", {
+      cls: "epub-reading-settings-range",
+      type: "range",
+      attr: {
+        min: String(PARAGRAPH_SPACING_MIN),
+        max: String(PARAGRAPH_SPACING_MAX),
+        step: String(PARAGRAPH_SPACING_STEP),
+      },
+    });
+    this.paragraphSpacingRangeEl = range;
+    range.addEventListener("input", () => {
+      const value = clampParagraphSpacing(Number(range.value));
+      if (this.paragraphSpacingValueEl) this.paragraphSpacingValueEl.setText(String(value));
+      this.handlers.onParagraphSpacingCommit(value);
+    });
+    this.paragraphSpacingValueEl = controls.createSpan({ cls: "epub-reading-settings-value" });
+  }
+
+  private buildLetterSpacingRow(panel: HTMLElement): void {
+    const row = panel.createDiv({ cls: "epub-reading-settings-row" });
+    row.createSpan({
+      cls: "epub-reading-settings-label",
+      text: t("reader.readingSettings.letterSpacing"),
+    });
+    const controls = row.createDiv({ cls: "epub-reading-settings-controls" });
+    const range = controls.createEl("input", {
+      cls: "epub-reading-settings-range",
+      type: "range",
+      attr: {
+        min: String(LETTER_SPACING_MIN),
+        max: String(LETTER_SPACING_MAX),
+        step: String(LETTER_SPACING_STEP),
+      },
+    });
+    this.letterSpacingRangeEl = range;
+    range.addEventListener("input", () => {
+      const value = clampLetterSpacing(Number(range.value));
+      if (this.letterSpacingValueEl) this.letterSpacingValueEl.setText(String(value));
+      this.handlers.onLetterSpacingCommit(value);
+    });
+    this.letterSpacingValueEl = controls.createSpan({ cls: "epub-reading-settings-value" });
   }
 
   private buildThemeRow(panel: HTMLElement): void {

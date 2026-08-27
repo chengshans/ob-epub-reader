@@ -45,6 +45,8 @@ export interface CfiProgressMatchOptions {
 
 /**
  * Stricter than legacy spine-only match: same itemref + similar in-chapter position.
+ * When either side lacks a character offset, requires a longer shared step path
+ * so early path prefixes alone do not count as “same place”.
  */
 export function cfiProgressMatches(
   target: string,
@@ -68,7 +70,7 @@ export function cfiProgressMatches(
   const tSteps = [...tParts.stepPath.matchAll(STEP_RE)].map((m) => m[1]);
   const aSteps = [...aParts.stepPath.matchAll(STEP_RE)].map((m) => m[1]);
   const compareLen = Math.min(minContentSteps, tSteps.length, aSteps.length);
-  if (compareLen === 0) return true;
+  if (compareLen === 0) return false;
 
   for (let i = 0; i < compareLen; i++) {
     if (tSteps[i] !== aSteps[i]) return false;
@@ -78,6 +80,10 @@ export function cfiProgressMatches(
     return Math.abs(tParts.offset - aParts.offset) <= offsetTolerance;
   }
 
+  // No offsets: only treat as match when the full remaining step paths are equal
+  // and long enough (avoids “same chapter prefix” false positives).
+  if (tSteps.length < 3 || aSteps.length < 3) return false;
+  if (tParts.stepPath !== aParts.stepPath) return false;
   return true;
 }
 

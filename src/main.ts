@@ -7,13 +7,16 @@ import { ProgressStore } from "./ProgressStore";
 import { BOOKSHELF_VIEW_TYPE, BookshelfView } from "./BookshelfView";
 import { EpubMetaCache } from "./EpubMetaCache";
 import { EpubSettingsTab } from "./SettingsTab";
-import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, normalizeCustomFonts, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingFont, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
+import { getDefaultSettings, EpubPluginSettings, FeatureGroupSettings, BookProgress, clampHighlightOpacity, clampReadingSidePadding, clampLineHeight, clampParagraphSpacing, clampLetterSpacing, normalizeCustomFonts, normalizeFeatureGroups, normalizeHighlightColor, normalizeReadingFont, normalizeReadingTheme, normalizeSourceLinkFormat, normalizeToolbarPlacement, normalizeUiLocale, resolveNoteTypes, isAnnotationsAndExcerptsEnabled, isBookshelfEnabled } from "./types";
 import { applyEpubjsCfiPatch } from "./cfi/epubjsPatch";
 import { applyHighlightRectInflatePatch } from "./highlightRectInflate";
 import { ReadingFontManager } from "./ReadingFontManager";
 import { decodeProtocolParam, registerExcerptGotoHandler } from "./ExcerptGotoHandler";
 import { registerExcerptPasteTarget, ExcerptPasteTarget } from "./ExcerptPasteTarget";
 import { patchEpubWikiLinkNavigation } from "./epubLinkNavigation";
+import { BookmarkStore } from "./BookmarkStore";
+import { ExcerptConflictModal } from "./ExcerptConflictModal";
+import { normalizeReadingHistory } from "./readingStats";
 
 applyEpubjsCfiPatch();
 applyHighlightRectInflatePatch();
@@ -22,6 +25,7 @@ export default class ObEpubPlugin extends Plugin {
   settings!: EpubPluginSettings;
   progressStore!: ProgressStore;
   annotationVaultStore!: AnnotationVaultStore;
+  bookmarkStore!: BookmarkStore;
   excerptPasteTarget!: ExcerptPasteTarget;
   readingFontManager!: ReadingFontManager;
   epubMetaCache!: EpubMetaCache;
@@ -65,8 +69,37 @@ export default class ObEpubPlugin extends Plugin {
         data.progress = progress;
         await this.saveData(data);
       },
+      loadReadingHistory: async () => {
+        const data = (await this.loadData()) ?? {};
+        return normalizeReadingHistory(data.readingHistory);
+      },
+      saveReadingHistory: async (history) => {
+        const data = (await this.loadData()) ?? {};
+        data.readingHistory = history;
+        await this.saveData(data);
+      },
     });
     await this.progressStore.load();
+
+    this.bookmarkStore = new BookmarkStore(this.app, {
+      loadBookmarks: async () => {
+        const data = (await this.loadData()) ?? {};
+        const raw = data.bookmarks as Record<string, import("./types").EpubBookmark[]> | undefined;
+        return raw && typeof raw === "object" ? { ...raw } : {};
+      },
+      saveBookmarks: async (bookmarks) => {
+        const data = (await this.loadData()) ?? {};
+        data.bookmarks = bookmarks;
+        await this.saveData(data);
+      },
+    });
+    await this.bookmarkStore.load();
+
+    this.annotationVaultStore.setConflictHandler(async (filePath) => {
+      return await new Promise((resolve) => {
+        new ExcerptConflictModal(this.app, filePath, (choice) => resolve(choice)).open();
+      });
+    });
 
     this.epubMetaCache = new EpubMetaCache(this);
 
@@ -107,6 +140,7 @@ export default class ObEpubPlugin extends Plugin {
         this,
         this.annotationVaultStore,
         this.progressStore,
+        this.bookmarkStore,
         this.excerptPasteTarget,
         this.settings,
         async (themeId) => {
@@ -145,6 +179,18 @@ export default class ObEpubPlugin extends Plugin {
           if (this.app.setting.activeTab === this.settingsTab) {
             this.settingsTab.display();
           }
+        },
+        async (lineHeight) => {
+          this.settings.lineHeight = clampLineHeight(lineHeight);
+          await this.saveSettings({ skipViewUpdate: true });
+        },
+        async (paragraphSpacing) => {
+          this.settings.paragraphSpacing = clampParagraphSpacing(paragraphSpacing);
+          await this.saveSettings({ skipViewUpdate: true });
+        },
+        async (letterSpacing) => {
+          this.settings.letterSpacing = clampLetterSpacing(letterSpacing);
+          await this.saveSettings({ skipViewUpdate: true });
         },
         this.readingFontManager
       );
@@ -609,6 +655,9 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
     this.settings.readingSidePadding = clampReadingSidePadding(this.settings.readingSidePadding);
+    this.settings.lineHeight = clampLineHeight(this.settings.lineHeight ?? 1.8);
+    this.settings.paragraphSpacing = clampParagraphSpacing(this.settings.paragraphSpacing ?? 0);
+    this.settings.letterSpacing = clampLetterSpacing(this.settings.letterSpacing ?? 0);
     this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
     const legacyImmersive = (data?.settings as { immersiveReadingDefault?: boolean } | undefined)
       ?.immersiveReadingDefault;
@@ -638,6 +687,9 @@ export default class ObEpubPlugin extends Plugin {
     this.settings.epubHighlightOpacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
     this.settings.excerptCalloutOpacity = clampHighlightOpacity(this.settings.excerptCalloutOpacity);
     this.settings.readingSidePadding = clampReadingSidePadding(this.settings.readingSidePadding);
+    this.settings.lineHeight = clampLineHeight(this.settings.lineHeight);
+    this.settings.paragraphSpacing = clampParagraphSpacing(this.settings.paragraphSpacing);
+    this.settings.letterSpacing = clampLetterSpacing(this.settings.letterSpacing);
     this.settings.autoPasteExcerpt = this.settings.autoPasteExcerpt !== false;
     existing.settings = this.settings;
     await this.saveData(existing);

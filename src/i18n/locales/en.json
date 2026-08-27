@@ -41,7 +41,8 @@
     "parseGotoFailed": "Cannot parse excerpt jump link; re-annotate or check excerpt format",
     "insertedAndCopied": "Inserted into «{{name}}» and copied excerpt",
     "readingModeCopied": "Target note is in reading mode; copied to clipboard",
-    "copiedExcerpt": "Excerpt copied"
+    "copiedExcerpt": "Excerpt copied",
+    "exportDone": "Excerpt export saved"
   },
   "bookshelf": {
     "title": "EPUB bookshelf",
@@ -54,16 +55,22 @@
     "markFinished": "Mark as finished",
     "unmarkFinished": "Unmark finished",
     "unknownAuthor": "Unknown author",
-    "noCover": "No cover"
+    "noCover": "No cover",
+    "statsSummary": "{{books}} books · {{days}} active days · {{time}} total"
   },
   "reader": {
     "sidebar": {
       "toc": "Contents",
-      "annotations": "Annotations"
+      "search": "Search",
+      "annotations": "Annotations",
+      "bookmarks": "Bookmarks"
     },
     "toolbar": {
       "toggleToc": "Toggle table of contents",
       "openReadingSettings": "Reading settings",
+      "openSearch": "Search in book",
+      "addBookmark": "Add bookmark",
+      "removeBookmark": "Remove bookmark",
       "fontSmaller": "Decrease font size",
       "fontLarger": "Increase font size",
       "sidePaddingSmaller": "Decrease side margins",
@@ -90,7 +97,31 @@
       "fontFamily": "Body font",
       "sidePadding": "Side margins",
       "sidePaddingPx": "Side margins {{px}} px",
+      "lineHeight": "Line height",
+      "paragraphSpacing": "Paragraph spacing",
+      "letterSpacing": "Letter spacing",
       "readingTheme": "Reading theme"
+    },
+    "search": {
+      "placeholder": "Search in this book…",
+      "button": "Search",
+      "clear": "Clear search",
+      "prev": "Previous match",
+      "next": "Next match",
+      "running": "Searching…",
+      "noResults": "No matches",
+      "failed": "Search failed",
+      "resultCount": "{{current}} / {{total}}"
+    },
+    "bookmarks": {
+      "heading": "Bookmarks",
+      "empty": "No bookmarks yet",
+      "jump": "Jump",
+      "remove": "Remove",
+      "added": "Bookmark added",
+      "removed": "Bookmark removed",
+      "pageBadge": "Bookmarked (click to remove)",
+      "noLocation": "Cannot bookmark: location unknown"
     },
     "loading": "Loading EPUB…",
     "loadFailed": "Load failed: {{error}}",
@@ -154,6 +185,25 @@
       "epubSource": "epub-source: {{value}}",
       "localEpub": "Sibling EPUB: {{value}}",
       "expectedPath": "Expected path: {{value}}"
+    },
+    "excerptConflict": {
+      "title": "Excerpt file changed externally",
+      "message": "「{{path}}」 was edited outside the plugin. How should changes be merged?",
+      "merge": "Merge annotations",
+      "overwrite": "Overwrite with plugin copy",
+      "keepExternal": "Keep external file"
+    },
+    "excerptExport": {
+      "title": "Export excerpts",
+      "epubFilter": "Limit to book",
+      "allBooks": "All books",
+      "since": "Since (YYYY-MM-DD)",
+      "until": "Until (YYYY-MM-DD)",
+      "format": "Format",
+      "formatCsv": "CSV",
+      "formatMarkdown": "Markdown",
+      "formatPlain": "Plain text",
+      "export": "Export"
     }
   },
   "settings": {
@@ -273,6 +323,15 @@
       "desc": "Verify excerpt frontmatter epub-source points to an existing EPUB; only when missing or invalid, look for sibling EPUB via {filefolder} rules",
       "button": "Start check"
     },
+    "exportExcerpts": {
+      "name": "Export excerpts",
+      "desc": "Export annotations to CSV, Markdown, or plain text with optional book and date filters",
+      "button": "Export…"
+    },
+    "mobile": {
+      "name": "Mobile support",
+      "desc": "Basic reading works on Obsidian Mobile; font import and some desktop-only features are hidden. Local font import requires the desktop app."
+    },
     "highlightOpacity": {
       "name": "EPUB highlight opacity",
       "desc": "Opacity of highlight layers in the reader"
@@ -368,7 +427,9 @@
       "notoSans": "Source Han Sans",
       "notoSerif": "Source Han Serif",
       "lxgwWenKai": "LXGW WenKai",
-      "lxgwWenKaiScreen": "LXGW WenKai Screen"
+      "lxgwWenKaiScreen": "LXGW WenKai Screen",
+      "literata": "Literata",
+      "firaSans": "Fira Sans"
     },
     "noteTypes": {
       "note": "Take notes",

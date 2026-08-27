@@ -41,7 +41,8 @@
     "parseGotoFailed": "无法解析摘录跳转链接，请重新标注",
     "insertedAndCopied": "已插入《{{name}}》并复制摘录",
     "readingModeCopied": "目标笔记处于阅读模式，已复制到剪贴板",
-    "copiedExcerpt": "已复制摘录"
+    "copiedExcerpt": "已复制摘录",
+    "exportDone": "摘录导出已保存"
   },
   "bookshelf": {
     "title": "EPUB 书架",
@@ -54,16 +55,22 @@
     "markFinished": "标记为已读完",
     "unmarkFinished": "取消已读完",
     "unknownAuthor": "未知作者",
-    "noCover": "无封面"
+    "noCover": "无封面",
+    "statsSummary": "{{books}} 本书 · {{days}} 活跃天 · 累计 {{time}}"
   },
   "reader": {
     "sidebar": {
       "toc": "目录",
-      "annotations": "标注"
+      "search": "搜索",
+      "annotations": "标注",
+      "bookmarks": "书签"
     },
     "toolbar": {
       "toggleToc": "切换目录",
       "openReadingSettings": "阅读设置",
+      "openSearch": "全书搜索",
+      "addBookmark": "添加书签",
+      "removeBookmark": "移除书签",
       "fontSmaller": "减小字体",
       "fontLarger": "增大字体",
       "sidePaddingSmaller": "减少两侧空白",
@@ -90,7 +97,31 @@
       "fontFamily": "正文字体",
       "sidePadding": "两侧空白",
       "sidePaddingPx": "两侧空白 {{px}} px",
+      "lineHeight": "行距",
+      "paragraphSpacing": "段距",
+      "letterSpacing": "字距",
       "readingTheme": "阅读主题"
+    },
+    "search": {
+      "placeholder": "搜索本书…",
+      "button": "搜索",
+      "clear": "清除搜索",
+      "prev": "上一处",
+      "next": "下一处",
+      "running": "搜索中…",
+      "noResults": "无匹配",
+      "failed": "搜索失败",
+      "resultCount": "{{current}} / {{total}}"
+    },
+    "bookmarks": {
+      "heading": "书签",
+      "empty": "暂无书签",
+      "jump": "跳转",
+      "remove": "删除",
+      "added": "已添加书签",
+      "removed": "已移除书签",
+      "pageBadge": "本页已加书签（点击移除）",
+      "noLocation": "无法添加书签：位置未知"
     },
     "loading": "正在加载 EPUB…",
     "loadFailed": "加载失败: {{error}}",
@@ -154,6 +185,25 @@
       "epubSource": "epub-source: {{value}}",
       "localEpub": "同级 EPUB: {{value}}",
       "expectedPath": "当前设置应对应: {{value}}"
+    },
+    "excerptConflict": {
+      "title": "摘录文件已被外部修改",
+      "message": "「{{path}}」在插件外被编辑。如何合并？",
+      "merge": "合并标注",
+      "overwrite": "用插件版本覆盖",
+      "keepExternal": "保留外部文件"
+    },
+    "excerptExport": {
+      "title": "导出摘录",
+      "epubFilter": "限定书籍",
+      "allBooks": "全部书籍",
+      "since": "起始日期 (YYYY-MM-DD)",
+      "until": "截止日期 (YYYY-MM-DD)",
+      "format": "格式",
+      "formatCsv": "CSV",
+      "formatMarkdown": "Markdown",
+      "formatPlain": "纯文本",
+      "export": "导出"
     }
   },
   "settings": {
@@ -273,6 +323,15 @@
       "desc": "检查摘录 frontmatter 的 epub-source 是否指向存在的 EPUB；仅当 epub-source 缺失或无效时，才按 {filefolder} 规则查找同级 EPUB",
       "button": "开始检查"
     },
+    "exportExcerpts": {
+      "name": "导出摘录",
+      "desc": "按书籍/日期筛选，导出为 CSV、Markdown 或纯文本",
+      "button": "导出…"
+    },
+    "mobile": {
+      "name": "移动端支持",
+      "desc": "Obsidian 移动端可基本阅读；字体导入等桌面功能在移动端不可用"
+    },
     "highlightOpacity": {
       "name": "EPUB 高亮透明度",
       "desc": "控制阅读器内画线/高亮层的透明度"
@@ -368,7 +427,9 @@
       "notoSans": "思源黑体",
       "notoSerif": "思源宋体",
       "lxgwWenKai": "霞鹜文楷",
-      "lxgwWenKaiScreen": "霞鹜文楷屏幕版"
+      "lxgwWenKaiScreen": "霞鹜文楷屏幕版",
+      "literata": "Literata",
+      "firaSans": "Fira Sans"
     },
     "noteTypes": {
       "note": "做笔记",

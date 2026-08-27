@@ -101,7 +101,9 @@ export type BuiltinReadingFontId =
   | "notoSans"
   | "notoSerif"
   | "lxgwWenKai"
-  | "lxgwWenKaiScreen";
+  | "lxgwWenKaiScreen"
+  | "literata"
+  | "firaSans";
 
 /** 内置 ID，或 `custom:${CustomReadingFont.id}` */
 export type ReadingFontId = BuiltinReadingFontId | `custom:${string}`;
@@ -163,6 +165,14 @@ const READING_FONT_DEFS: Omit<ReadingFontDef, "label">[] = [
   {
     id: "lxgwWenKaiScreen",
     cssFamily: '"LXGW WenKai Screen", "霞鹜文楷屏幕版", "LXGW WenKai", serif',
+  },
+  {
+    id: "literata",
+    cssFamily: '"Literata", "Noto Serif SC", serif',
+  },
+  {
+    id: "firaSans",
+    cssFamily: '"Fira Sans", "Noto Sans SC", sans-serif',
   },
 ];
 
@@ -446,6 +456,20 @@ export function normalizeUiLocale(raw: unknown): PluginUiLocale {
   return "auto";
 }
 
+export interface EpubBookmark {
+  id: string;
+  cfi: string;
+  label: string;
+  chapter: string;
+  createdAt: string;
+}
+
+export interface DailyReadingSnapshot {
+  date: string;
+  seconds: number;
+  percent: number;
+}
+
 export interface EpubPluginSettings {
   excerptFolder: string;
   excerptFilename: string;
@@ -457,6 +481,12 @@ export interface EpubPluginSettings {
   /** 用户导入的本地字体（文件在插件 fonts/custom/） */
   customFonts: CustomReadingFont[];
   readingSidePadding: number;
+  /** 行高倍数 1.0–3.0 */
+  lineHeight: number;
+  /** 段落下间距 px 0–32 */
+  paragraphSpacing: number;
+  /** 字间距 px -2–8 */
+  letterSpacing: number;
   readingTheme: ReadingThemeId;
   noteIconSize: number;
   noteIconOffsetX: number;
@@ -472,6 +502,39 @@ export interface EpubPluginSettings {
   uiLocale: PluginUiLocale;
 }
 
+export const LINE_HEIGHT_MIN = 1;
+export const LINE_HEIGHT_MAX = 3;
+export const LINE_HEIGHT_STEP = 0.1;
+export const LINE_HEIGHT_DEFAULT = 1.8;
+
+export const PARAGRAPH_SPACING_MIN = 0;
+export const PARAGRAPH_SPACING_MAX = 32;
+export const PARAGRAPH_SPACING_STEP = 2;
+export const PARAGRAPH_SPACING_DEFAULT = 0;
+
+export const LETTER_SPACING_MIN = -2;
+export const LETTER_SPACING_MAX = 8;
+export const LETTER_SPACING_STEP = 0.5;
+export const LETTER_SPACING_DEFAULT = 0;
+
+export function clampLineHeight(value: number): number {
+  const stepped = Math.round(value / LINE_HEIGHT_STEP) * LINE_HEIGHT_STEP;
+  const clamped = Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, stepped));
+  return Number(clamped.toFixed(1));
+}
+
+export function clampParagraphSpacing(value: number): number {
+  const stepped = Math.round(value / PARAGRAPH_SPACING_STEP) * PARAGRAPH_SPACING_STEP;
+  const clamped = Math.min(PARAGRAPH_SPACING_MAX, Math.max(PARAGRAPH_SPACING_MIN, stepped));
+  return Math.round(clamped);
+}
+
+export function clampLetterSpacing(value: number): number {
+  const stepped = Math.round(value / LETTER_SPACING_STEP) * LETTER_SPACING_STEP;
+  const clamped = Math.min(LETTER_SPACING_MAX, Math.max(LETTER_SPACING_MIN, stepped));
+  return Number(clamped.toFixed(1));
+}
+
 export function getDefaultSettings(): EpubPluginSettings {
   return {
     excerptFolder: "epub-books/anno",
@@ -483,6 +546,9 @@ export function getDefaultSettings(): EpubPluginSettings {
     readingFont: "obsidian",
     customFonts: [],
     readingSidePadding: 12,
+    lineHeight: LINE_HEIGHT_DEFAULT,
+    paragraphSpacing: PARAGRAPH_SPACING_DEFAULT,
+    letterSpacing: LETTER_SPACING_DEFAULT,
     readingTheme: "obsidian",
     noteIconSize: 20,
     noteIconOffsetX: 2,

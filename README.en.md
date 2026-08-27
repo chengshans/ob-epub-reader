@@ -4,6 +4,9 @@
 
 Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault excerpts, deep links back to the source, reading themes, split-view co-reading, and multilingual UI.
 
+**Repository**: [Gitee](https://gitee.com/mmlya/ob-epub-reader) | [GitHub](https://github.com/chengshans/ob-epub-reader)  
+**Plugin page**: [Obsidian Community Plugins](https://obsidian.md/plugins?id=ob-epub-reader)
+
 ## Installation
 
 ### From Obsidian Community Plugins

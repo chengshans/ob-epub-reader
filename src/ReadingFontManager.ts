@@ -18,7 +18,9 @@ export type DownloadableFontId =
   | "notoSans"
   | "notoSerif"
   | "lxgwWenKai"
-  | "lxgwWenKaiScreen";
+  | "lxgwWenKaiScreen"
+  | "literata"
+  | "firaSans";
 
 interface FontAsset {
   fileName: string;
@@ -110,6 +112,34 @@ const DOWNLOADABLE: Record<DownloadableFontId, DownloadableFontSpec> = {
           "v1.522",
           "LXGWWenKaiScreen.ttf"
         ),
+      },
+    ],
+  },
+  literata: {
+    id: "literata",
+    family: "Literata",
+    assets: [
+      {
+        fileName: "literata-latin-400-normal.woff2",
+        weight: 400,
+        urls: [
+          "https://cdn.jsdelivr.net/npm/@fontsource/literata@5.2.8/files/literata-latin-400-normal.woff2",
+          "https://unpkg.com/@fontsource/literata@5.2.8/files/literata-latin-400-normal.woff2",
+        ],
+      },
+    ],
+  },
+  firaSans: {
+    id: "firaSans",
+    family: "Fira Sans",
+    assets: [
+      {
+        fileName: "fira-sans-latin-400-normal.woff2",
+        weight: 400,
+        urls: [
+          "https://cdn.jsdelivr.net/npm/@fontsource/fira-sans@5.2.6/files/fira-sans-latin-400-normal.woff2",
+          "https://unpkg.com/@fontsource/fira-sans@5.2.6/files/fira-sans-latin-400-normal.woff2",
+        ],
       },
     ],
   },
