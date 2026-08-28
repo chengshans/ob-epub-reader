@@ -44,7 +44,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: release-notes/${{ github.ref_name }}.md
           files: |
             main.js
             manifest.json
