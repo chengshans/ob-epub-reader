@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TFile, type App } from "obsidian";
 import { AnnotationVaultStore } from "../src/AnnotationVaultStore";
 import { DEFAULT_SETTINGS, type Annotation } from "../src/types";
@@ -10,11 +10,23 @@ function mockTFile(path: string): TFile {
   return Object.assign(Object.create(TFile.prototype), { path }) as TFile;
 }
 
-function createMockVaultStore(sourceLinkFormat = DEFAULT_SETTINGS.sourceLinkFormat) {
+function createMockVaultStore(
+  sourceLinkFormat = DEFAULT_SETTINGS.sourceLinkFormat,
+  options?: { trackMtime?: boolean }
+) {
   const files = new Map<string, string>();
+  let mtime = 1_000;
 
   const app = {
     vault: {
+      adapter: options?.trackMtime
+        ? {
+            stat: async (path: string) => {
+              if (!files.has(path)) return null;
+              return { mtime };
+            },
+          }
+        : undefined,
       getAbstractFileByPath: (path: string) => (files.has(path) ? mockTFile(path) : null),
       getFileByPath: (path: string) => (files.has(path) ? mockTFile(path) : null),
       getMarkdownFiles: () => [],
@@ -22,11 +34,13 @@ function createMockVaultStore(sourceLinkFormat = DEFAULT_SETTINGS.sourceLinkForm
       createFolder: async () => undefined,
       create: async (path: string, content: string) => {
         files.set(path, content);
+        if (options?.trackMtime) mtime += 100;
         return mockTFile(path);
       },
       read: async (file: TFile) => files.get(file.path) ?? "",
       modify: async (file: TFile, content: string) => {
         files.set(file.path, content);
+        if (options?.trackMtime) mtime += 100;
       },
     },
   } as unknown as App;
@@ -95,5 +109,34 @@ describe("AnnotationVaultStore.add", () => {
     expect(content).toContain("句子一");
     expect(content).toContain("句子二");
     expect(parsed).toHaveLength(2);
+  });
+
+  it("does not trigger conflict handler after writeProgress and sequential adds", async () => {
+    const { store, files } = createMockVaultStore("inline-colored", { trackMtime: true });
+    const conflictHandler = vi.fn(async () => "overwrite" as const);
+    store.setConflictHandler(conflictHandler);
+
+    await store.add(
+      EPUB_SOURCE,
+      makeAnn("句子一", "epubcfi(/6/14!/4/2,/1:0,/1:5)", "blue")
+    );
+
+    await store.writeProgress(EPUB_SOURCE, {
+      cfi: "epubcfi(/6/14!/4/2,/1:0,/1:5)",
+      chapter: "第一章",
+      percent: 0.12,
+      lastRead: new Date().toISOString(),
+      readingTimeSeconds: 30,
+    });
+
+    await store.add(
+      EPUB_SOURCE,
+      makeAnn("句子二", "epubcfi(/6/20!/4/2,/1:0,/1:8)", "purple")
+    );
+
+    const parsed = store.parseContent(files.get(MD_PATH) ?? "", EPUB_SOURCE);
+    expect(parsed).toHaveLength(2);
+    expect(parsed.map((a) => a.text).sort()).toEqual(["句子一", "句子二"]);
+    expect(conflictHandler).not.toHaveBeenCalled();
   });
 });

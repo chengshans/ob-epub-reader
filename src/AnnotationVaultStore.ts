@@ -144,6 +144,17 @@ export class AnnotationVaultStore {
     return Date.now() < this.watchPausedUntil;
   }
 
+  /** Record mtime after any plugin write to excerpt markdown (avoids false conflict). */
+  private async recordExcerptMtime(filePath: string): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    const stat = adapter?.stat ? await adapter.stat(filePath) : null;
+    if (stat?.mtime) {
+      this.lastWriteMtime.set(filePath, stat.mtime);
+    } else {
+      this.lastWriteMtime.set(filePath, Date.now());
+    }
+  }
+
   /** Extract CFI from a markdown annotation chunk. */
   private extractCfiFromChunk(text: string): string | null {
     const commentMatch = text.match(/<!--\s*ob-epub-cfi:\s*([\s\S]*?)\s*-->/);
@@ -334,6 +345,7 @@ export class AnnotationVaultStore {
       if (converted !== content) {
         this.pauseWatch();
         await this.app.vault.modify(file, converted);
+        await this.recordExcerptMtime(file.path);
         updated += 1;
       }
     }
@@ -594,16 +606,19 @@ export class AnnotationVaultStore {
 
   async writeProgress(epubFilePath: string, progress: BookProgress): Promise<void> {
     if (!this.annotationsEnabled()) return;
-    const file = await this.ensureFile(epubFilePath);
-    const content = await this.app.vault.read(file);
-    let updated = this.upsertProgressInContent(content, progress);
-    // 历史摘录可能缺 epub-source，写入进度时一并补上，避免书架扫不到
-    if (!this.extractEpubSourceFromFrontmatter(updated)) {
-      updated = this.upsertEpubSourceInContent(updated, epubFilePath);
-    }
-    if (updated === content) return;
-    this.pauseWatch();
-    await this.app.vault.modify(file, updated);
+    return this.runSerializedExcerptWrite(epubFilePath, async () => {
+      const file = await this.ensureFile(epubFilePath);
+      const content = await this.app.vault.read(file);
+      let updated = this.upsertProgressInContent(content, progress);
+      // 历史摘录可能缺 epub-source，写入进度时一并补上，避免书架扫不到
+      if (!this.extractEpubSourceFromFrontmatter(updated)) {
+        updated = this.upsertEpubSourceInContent(updated, epubFilePath);
+      }
+      if (updated === content) return;
+      this.pauseWatch();
+      await this.app.vault.modify(file, updated);
+      await this.recordExcerptMtime(file.path);
+    });
   }
 
   /** 在 frontmatter 中写入 / 覆盖 epub-source */
@@ -641,6 +656,7 @@ export class AnnotationVaultStore {
           if (patched !== content) {
             this.pauseWatch();
             await this.app.vault.modify(file, patched);
+            await this.recordExcerptMtime(file.path);
           }
         } catch (err) {
           console.warn("ob-epub: failed to backfill epub-source for", file.path, err);
@@ -666,6 +682,7 @@ export class AnnotationVaultStore {
       const fixed = this.fixLegacyGotoLinksInContent(content, epubSource);
       if (fixed !== content) {
         await this.app.vault.modify(file, fixed);
+        await this.recordExcerptMtime(file.path);
       }
     }
   }
@@ -680,6 +697,7 @@ export class AnnotationVaultStore {
       if (slimmed !== content) {
         this.pauseWatch();
         await this.app.vault.modify(file, slimmed);
+        await this.recordExcerptMtime(file.path);
       }
     }
   }
@@ -694,6 +712,7 @@ export class AnnotationVaultStore {
       const fixed = this.fixLegacyGotoLinksInContent(content, epubSource);
       if (fixed !== content) {
         await this.app.vault.modify(file, fixed);
+        await this.recordExcerptMtime(file.path);
       }
     }
   }
@@ -787,10 +806,15 @@ export class AnnotationVaultStore {
     return await this.app.vault.read(file);
   }
 
-  private async writeContent(epubFilePath: string, content: string): Promise<void> {
+  private async writeContent(
+    epubFilePath: string,
+    content: string,
+    baseContent?: string
+  ): Promise<void> {
     const file = await this.ensureFile(epubFilePath);
     const intended = content;
     let toWrite = intended;
+    const base = baseContent ?? content;
 
     const adapter = this.app.vault.adapter;
     const stat = adapter?.stat ? await adapter.stat(file.path) : null;
@@ -799,7 +823,7 @@ export class AnnotationVaultStore {
 
     if (prevMtime !== undefined && mtime > prevMtime + 1 && this.conflictHandler) {
       const external = await this.app.vault.read(file);
-      if (external !== intended && this.conflictHandler) {
+      if (external !== base && this.conflictHandler) {
         const choice = await this.conflictHandler(file.path);
         if (choice === "cancel" || choice === "keepExternal") {
           this.lastWriteMtime.set(file.path, mtime);
@@ -821,12 +845,7 @@ export class AnnotationVaultStore {
     }
 
     await this.app.vault.modify(file, toWrite);
-    const afterStat = adapter?.stat ? await adapter.stat(file.path) : null;
-    if (afterStat?.mtime) {
-      this.lastWriteMtime.set(file.path, afterStat.mtime);
-    } else {
-      this.lastWriteMtime.set(file.path, Date.now());
-    }
+    await this.recordExcerptMtime(file.path);
   }
 
   // ── Block serialisation ───────────────────────────────────────────────────
@@ -895,7 +914,7 @@ export class AnnotationVaultStore {
       annotations
     );
     this.pauseWatch();
-    await this.writeContent(epubFilePath, newContent);
+    await this.writeContent(epubFilePath, newContent, originalContent);
   }
 
   // ── Public CRUD ───────────────────────────────────────────────────────────
@@ -991,7 +1010,7 @@ export class AnnotationVaultStore {
       );
       if (newContent === current) return;
       this.pauseWatch();
-      await this.writeContent(epubFilePath, newContent);
+      await this.writeContent(epubFilePath, newContent, current);
     });
   }
 
@@ -1064,6 +1083,7 @@ export class AnnotationVaultStore {
       const newContent = this.recomposeExcerptFromContent(current, epubFilePath, merged);
       this.pauseWatch();
       await this.app.vault.modify(file, newContent);
+      await this.recordExcerptMtime(file.path);
     }
   }
 }
