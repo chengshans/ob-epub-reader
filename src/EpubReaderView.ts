@@ -100,6 +100,11 @@ type EpubView = {
   expand?: (force?: boolean) => void;
 };
 
+/** epub.js 的 d.ts 未声明 resize 的第三个参数，运行时它会透传给重排后的 display() */
+type EpubResizableRendition = {
+  resize: (width: number, height: number, epubcfi?: string) => void;
+};
+
 export class EpubReaderView extends FileView {
   private book: Book | null = null;
   private rendition: Rendition | null = null;
@@ -158,6 +163,13 @@ export class EpubReaderView extends FileView {
   private isRefreshingHighlights = false;
   private isNavigating = false;
   private pendingNavigateCfi: string | null = null;
+  /**
+   * 跳转目标守护：epub.js 的 resize 会用陈旧的 location.start.cfi 重新 display，
+   * 若这次重排发生在跳转之后，就会把视图拉回旧位置（表现为「只回到章节顶部」）。
+   * 跳转后的一小段时间内把目标 CFI 交给 resize，让重排回到目标位置。
+   */
+  private navigateGuardCfi = "";
+  private navigateGuardTimer: ReturnType<typeof setTimeout> | null = null;
   private highlightsInitialLoaded = false;
   private notesPanelRenderGen = 0;
   private notesSearchQuery = "";
@@ -432,6 +444,7 @@ export class EpubReaderView extends FileView {
       return;
     }
     this.isNavigating = true;
+    this.armNavigateGuard(cfi);
     try {
       await this.rendition.display(cfi);
     } catch (err) {
@@ -446,6 +459,16 @@ export class EpubReaderView extends FileView {
         await this.navigateToCfi(next);
       }
     }
+  }
+
+  /** 跳转后短暂记住目标：epub.js 重排时会 display 这个 CFI，避免被拉回旧位置。 */
+  private armNavigateGuard(cfi: string): void {
+    this.navigateGuardCfi = cfi;
+    if (this.navigateGuardTimer) clearTimeout(this.navigateGuardTimer);
+    this.navigateGuardTimer = setTimeout(() => {
+      this.navigateGuardTimer = null;
+      this.navigateGuardCfi = "";
+    }, 1500);
   }
 
   // FileView lifecycle: called when switching away from this file
@@ -540,7 +563,10 @@ export class EpubReaderView extends FileView {
     if (!activeEpub) {
       const visibleLeaf = this.app.workspace
         .getLeavesOfType(EPUB_READER_VIEW_TYPE)
-        .find((leaf) => (leaf.view as EpubReaderView).containerEl.isShown());
+        .find((leaf) => {
+          const view = leaf.view;
+          return view instanceof EpubReaderView && view.containerEl.isShown();
+        });
       return visibleLeaf?.view === this;
     }
 
@@ -639,11 +665,11 @@ export class EpubReaderView extends FileView {
     // Prev / Next
     const prevBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "◀" });
     prevBtn.title = t("reader.toolbar.prevPage");
-    prevBtn.addEventListener("click", () => this.rendition?.prev());
+    prevBtn.addEventListener("click", () => this.turnPage("prev"));
 
     const nextBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "▶" });
     nextBtn.title = t("reader.toolbar.nextPage");
-    nextBtn.addEventListener("click", () => this.rendition?.next());
+    nextBtn.addEventListener("click", () => this.turnPage("next"));
   }
 
   private registerWorkspaceLayoutHandlers(): void {
@@ -674,7 +700,13 @@ export class EpubReaderView extends FileView {
     const r = this.readerEl.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) {
       this.syncPaginatedLayoutGap();
-      this.rendition.resize(r.width, r.height);
+      // epub.js 重排后会 display 传入的 CFI（缺省为陈旧的 location.start.cfi）。
+      // 刚跳转完的重排必须回到跳转目标，否则会被拉回跳转前的位置。
+      (this.rendition as unknown as EpubResizableRendition).resize(
+        r.width,
+        r.height,
+        this.navigateGuardCfi || undefined
+      );
       // epub.js resize 会重写 body 内联 padding，需重新注入主题覆盖
       this.applyThemeToAllContents();
     }
@@ -1381,6 +1413,11 @@ export class EpubReaderView extends FileView {
       clearTimeout(this.highlightSyncTimer);
       this.highlightSyncTimer = null;
     }
+    if (this.navigateGuardTimer) {
+      clearTimeout(this.navigateGuardTimer);
+      this.navigateGuardTimer = null;
+    }
+    this.navigateGuardCfi = "";
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
     this.locationsReady = false;
@@ -1583,6 +1620,8 @@ export class EpubReaderView extends FileView {
 
       // Draw highlights only after epub.js finishes rendering the page iframe.
       this.rendition.on("rendered", () => {
+        // 新视图渲染后旧覆盖层与新 iframe 坐标错位，清理避免残留
+        this.dismissContextMenu();
         if (this.isNavigating) return;
         this.scheduleScrolledContentHeightSync();
         if (this.highlightRedrawTimer) clearTimeout(this.highlightRedrawTimer);
@@ -1828,6 +1867,8 @@ export class EpubReaderView extends FileView {
 
   private turnPage(dir: "next" | "prev") {
     if (!this.rendition) return;
+    // 翻页前清理上一页的选中覆盖层与上下文菜单，避免跨章节残留蓝色高亮
+    this.dismissContextMenu();
     this.blockProgressSave = false;
     this.isBookInitializing = false;
     this.wheelCooldown = true;
@@ -1842,14 +1883,10 @@ export class EpubReaderView extends FileView {
   private handleNavKey(e: KeyboardEvent) {
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       e.preventDefault();
-      this.blockProgressSave = false;
-      this.isBookInitializing = false;
-      this.rendition?.next();
+      this.turnPage("next");
     } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
       e.preventDefault();
-      this.blockProgressSave = false;
-      this.isBookInitializing = false;
-      this.rendition?.prev();
+      this.turnPage("prev");
     }
   }
 
@@ -1963,8 +2000,8 @@ export class EpubReaderView extends FileView {
         "user-select": "text !important",
       },
       // 原生选区透明，高亮由 selection overlay 统一绘制
+      // 注意：不要加 ::-moz-selection，Chromium 的 insertRule 会抛 SyntaxError（每次加载刷屏）
       "::selection": { background: "transparent", color: "inherit" },
-      "::-moz-selection": { background: "transparent", color: "inherit" },
     };
   }
 

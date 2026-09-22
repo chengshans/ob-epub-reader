@@ -201,9 +201,13 @@ export default class ObEpubPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
         const activeView = this.app.workspace.getActiveViewOfType(EpubReaderView);
+        // 后台标签页的 leaf.view 可能是 DeferredView（只有 getViewType 等基础方法），
+        // 直接强转调用会抛异常并中断 Obsidian 的 activeLeafEvents 分发，必须按类型过滤。
         for (const leaf of this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE)) {
-          const view = leaf.view as EpubReaderView;
-          if (view !== activeView) view.syncStatusBarChrome();
+          const view = leaf.view;
+          if (view instanceof EpubReaderView && view !== activeView) {
+            view.syncStatusBarChrome();
+          }
         }
         activeView?.syncStatusBarChrome();
         if (!activeView) {
@@ -339,7 +343,8 @@ export default class ObEpubPlugin extends Plugin {
     }
     this.refreshBookshelfViews();
     for (const leaf of this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE)) {
-      (leaf.view as EpubReaderView).refreshLocaleUi();
+      const view = leaf.view;
+      if (view instanceof EpubReaderView) view.refreshLocaleUi();
     }
     if (this.app.setting.activeTab === this.settingsTab) {
       this.settingsTab.display();
@@ -456,15 +461,19 @@ export default class ObEpubPlugin extends Plugin {
     }
 
     await workspace.revealLeaf(leaf);
-    (leaf.view as BookshelfView).refresh();
+    const shelfView = leaf.view;
+    if (shelfView instanceof BookshelfView) shelfView.refresh();
   }
 
   private refreshBookshelfViews(): void {
     if (!isBookshelfEnabled(this.settings)) return;
     if (!this.app?.workspace) return;
     this.app.workspace.getLeavesOfType(BOOKSHELF_VIEW_TYPE).forEach((leaf) => {
+      // 后台/被延迟的叶子可能不是 BookshelfView，跳过而不是记错误日志
+      const view = leaf.view;
+      if (!(view instanceof BookshelfView)) return;
       try {
-        (leaf.view as BookshelfView).refresh();
+        view.refresh();
       } catch (err) {
         console.error("ob-epub: bookshelf refresh failed", err);
       }
@@ -612,15 +621,34 @@ export default class ObEpubPlugin extends Plugin {
       return;
     }
 
+    // leaf.view 可能是 DeferredView（后台标签被延迟），此时没有 file 属性，
+    // 需回退到 leaf 的视图状态来判断是不是同一本书。
     const existingLeaf = this.app.workspace
       .getLeavesOfType(EPUB_READER_VIEW_TYPE)
-      .find((leaf) => (leaf.view as EpubReaderView).file?.path === file.path);
+      .find((leaf) => {
+        const stateFile = (leaf.getViewState()?.state as { file?: string } | undefined)?.file;
+        const view = leaf.view;
+        return view instanceof EpubReaderView
+          ? view.file?.path === file.path
+          : stateFile === file.path;
+      });
 
     if (existingLeaf) {
-      if (cfi) {
-        await (existingLeaf.view as EpubReaderView).navigateToCfi(cfi);
+      const view = existingLeaf.view;
+      if (view instanceof EpubReaderView) {
+        // 必须先 reveal 再导航：后台标签里的视图尺寸是陈旧的，
+        // 此时 display(cfi) 算出的章节内偏移为 0，只会落在章节顶部。
+        await this.app.workspace.revealLeaf(existingLeaf);
+        if (cfi) await view.navigateToCfi(cfi);
+        return;
       }
+      // 视图被延迟：reveal 会重建 EpubReaderView，用 pending CFI 让新视图加载后自行跳转
+      if (cfi) this.pendingCfiForNextOpen = { filePath: file.path, cfi };
       await this.app.workspace.revealLeaf(existingLeaf);
+      const restored = existingLeaf.view;
+      if (cfi && restored instanceof EpubReaderView) {
+        await restored.navigateToCfi(cfi);
+      }
       return;
     }
 
@@ -632,8 +660,9 @@ export default class ObEpubPlugin extends Plugin {
     await leaf.openFile(file);
     await this.app.workspace.revealLeaf(leaf);
 
-    if (leaf.view.getViewType() === EPUB_READER_VIEW_TYPE && cfi) {
-      await (leaf.view as EpubReaderView).navigateToCfi(cfi);
+    const activeView = leaf.view;
+    if (cfi && activeView instanceof EpubReaderView) {
+      await activeView.navigateToCfi(cfi);
     }
   }
 
@@ -704,7 +733,8 @@ export default class ObEpubPlugin extends Plugin {
 
     if (!options?.skipViewUpdate) {
       this.app.workspace.getLeavesOfType(EPUB_READER_VIEW_TYPE).forEach((leaf) => {
-        (leaf.view as EpubReaderView).updateSettings(this.settings);
+        const view = leaf.view;
+        if (view instanceof EpubReaderView) view.updateSettings(this.settings);
       });
     }
   }

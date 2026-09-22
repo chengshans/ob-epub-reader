@@ -40,11 +40,21 @@ export function patchEpubWikiLinkNavigation(
     if (wiki?.cfi) {
       const existingLeaf = app.workspace
         .getLeavesOfType(EPUB_READER_VIEW_TYPE)
-        .find((leaf) => (leaf.view as EpubReaderView).file?.path === wiki.file);
+        .find((leaf) => {
+          const stateFile = (leaf.getViewState()?.state as { file?: string } | undefined)?.file;
+          const view = leaf.view;
+          return view instanceof EpubReaderView
+            ? view.file?.path === wiki.file
+            : stateFile === wiki.file;
+        });
 
       if (existingLeaf) {
+        const view = existingLeaf.view;
         await app.workspace.revealLeaf(existingLeaf);
-        await (existingLeaf.view as EpubReaderView).navigateToCfi(wiki.cfi);
+        // 视图被 Obsidian 延迟（后台标签）时 reveal 会重建视图，再由它自行加载文件
+        if (view instanceof EpubReaderView) {
+          await view.navigateToCfi(wiki.cfi);
+        }
         return;
       }
 
