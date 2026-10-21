@@ -305,8 +305,8 @@
     "excerptFilename": {
       "name": "摘錄檔案名",
       "placeholder": "《{title}》摘錄.md",
-      "desc": "新建摘錄時使用的 Markdown 檔案名。支持 {title}（EPUB 書名，不含擴展名）與 {filename}（EPUB 完整檔案名，如 demo.epub）。",
-      "examples": "範例：《{title}》摘錄.md、{title}-notes.md、{filename}.md"
+      "desc": "新建摘錄時使用的 Markdown 檔案名。支持 {title}（EPUB 書名，不含擴展名）、{filenameNoExt}（EPUB 檔案名，不含擴展名）與 {filename}（EPUB 完整檔案名，如 demo.epub）。",
+      "examples": "範例：《{title}》摘錄.md、{filenameNoExt}-notes.md、{filename}.md"
     },
     "excerptCalloutOpacity": {
       "name": "摘錄 callout 背景透明度",

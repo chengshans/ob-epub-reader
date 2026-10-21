@@ -3,6 +3,7 @@ import { isI18nInitialized, t } from "./i18n/i18n";
 
 export const EXCERPT_FOLDER_PLACEHOLDER = "{filefolder}";
 export const EXCERPT_TITLE_PLACEHOLDER = "{title}";
+export const EXCERPT_FILENAME_NOEXT_PLACEHOLDER = "{filenameNoExt}";
 export const EXCERPT_FILENAME_PLACEHOLDER = "{filename}";
 /** @deprecated Use getDefaultExcerptFilename() — kept for regex fallbacks and legacy defaults. */
 export const DEFAULT_EXCERPT_FILENAME = "《{title}》摘录.md";
@@ -11,15 +12,48 @@ export function getDefaultExcerptFilename(): string {
   return isI18nInitialized() ? t("defaults.excerptFilename") : DEFAULT_EXCERPT_FILENAME;
 }
 
-const PLACEHOLDER_SPLIT_RE = /(\{title\}|\{filename\})/;
-
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const PLACEHOLDER_SPLIT_RE = /(\{title\}|\{filenameNoExt\}|\{filename\})/;
+
+/** 书名比较时忽略最外层书名号（生成文件名时模板可能已包裹一层） */
+const WRAPPING_TITLE_MARK_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ["《", "》"],
+  ["«", "»"],
+  ["「", "」"],
+];
+
+export function stripWrappingTitleMarks(value: string): string {
+  const trimmed = value.trim();
+  for (const [open, close] of WRAPPING_TITLE_MARK_PAIRS) {
+    if (
+      trimmed.length > open.length + close.length &&
+      trimmed.startsWith(open) &&
+      trimmed.endsWith(close)
+    ) {
+      return trimmed.slice(open.length, trimmed.length - close.length).trim();
+    }
+  }
+  return trimmed;
+}
+
+/** 模板与书名同时自带书名号时会叠成《《…》》，合并为一层 */
+export function collapseDuplicateTitleMarks(value: string): string {
+  let result = value;
+  for (const [open, close] of WRAPPING_TITLE_MARK_PAIRS) {
+    if (result.includes(open + open) && result.includes(close + close)) {
+      result = result.split(open + open).join(open).split(close + close).join(close);
+    }
+  }
+  return result;
 }
 
 interface ExcerptFilenameMatcher {
   regex: RegExp;
   titleGroup: number | null;
+  noExtGroup: number | null;
   filenameGroup: number | null;
 }
 
@@ -29,6 +63,7 @@ function buildExcerptFilenameMatcher(template: string): ExcerptFilenameMatcher {
   let pattern = "^";
   let groupNum = 0;
   let titleGroup: number | null = null;
+  let noExtGroup: number | null = null;
   let filenameGroup: number | null = null;
 
   for (const part of parts) {
@@ -36,6 +71,10 @@ function buildExcerptFilenameMatcher(template: string): ExcerptFilenameMatcher {
     if (part === EXCERPT_TITLE_PLACEHOLDER) {
       groupNum += 1;
       titleGroup = groupNum;
+      pattern += "([\\s\\S]+?)";
+    } else if (part === EXCERPT_FILENAME_NOEXT_PLACEHOLDER) {
+      groupNum += 1;
+      noExtGroup = groupNum;
       pattern += "([\\s\\S]+?)";
     } else if (part === EXCERPT_FILENAME_PLACEHOLDER) {
       groupNum += 1;
@@ -47,7 +86,7 @@ function buildExcerptFilenameMatcher(template: string): ExcerptFilenameMatcher {
   }
 
   pattern += "$";
-  return { regex: new RegExp(pattern), titleGroup, filenameGroup };
+  return { regex: new RegExp(pattern), titleGroup, noExtGroup, filenameGroup };
 }
 
 /** Loose name match for scanning vault excerpt markdown files. */
@@ -57,7 +96,11 @@ export function buildLooseExcerptNameRegex(template: string): RegExp {
   let pattern = "^";
   for (const part of parts) {
     if (!part) continue;
-    if (part === EXCERPT_TITLE_PLACEHOLDER || part === EXCERPT_FILENAME_PLACEHOLDER) {
+    if (
+      part === EXCERPT_TITLE_PLACEHOLDER ||
+      part === EXCERPT_FILENAME_NOEXT_PLACEHOLDER ||
+      part === EXCERPT_FILENAME_PLACEHOLDER
+    ) {
       pattern += "[\\s\\S]+?";
     } else {
       pattern += escapeRegex(part);
@@ -78,15 +121,16 @@ export function resolveExcerptFilename(template: string, epubFilePath: string): 
   const trimmed = (template || DEFAULT_EXCERPT_FILENAME).trim();
   const basename = epubFilePath.split("/").pop() ?? epubFilePath;
   const title = basename.replace(/\.epub$/i, "").trimEnd();
-  const filename = basename;
 
   const resolved = trimmed
+    .split(EXCERPT_FILENAME_NOEXT_PLACEHOLDER)
+    .join(title)
     .split(EXCERPT_FILENAME_PLACEHOLDER)
-    .join(filename)
+    .join(basename)
     .split(EXCERPT_TITLE_PLACEHOLDER)
     .join(title);
 
-  return sanitizeExcerptFilename(resolved);
+  return sanitizeExcerptFilename(collapseDuplicateTitleMarks(resolved));
 }
 
 function extractEpubBasenameFromExcerptName(
@@ -99,6 +143,12 @@ function extractEpubBasenameFromExcerptName(
 
   if (matcher.filenameGroup !== null) {
     const raw = match[matcher.filenameGroup]?.trim();
+    if (!raw) return null;
+    return raw.toLowerCase().endsWith(".epub") ? raw : `${raw}.epub`;
+  }
+
+  if (matcher.noExtGroup !== null) {
+    const raw = match[matcher.noExtGroup]?.trim();
     if (!raw) return null;
     return raw.toLowerCase().endsWith(".epub") ? raw : `${raw}.epub`;
   }
@@ -151,6 +201,10 @@ export function extractTitleFromExcerptName(
     return match[matcher.titleGroup]?.trimEnd() ?? null;
   }
 
+  if (matcher.noExtGroup !== null) {
+    return match[matcher.noExtGroup]?.trimEnd() ?? null;
+  }
+
   if (matcher.filenameGroup !== null) {
     const filename = match[matcher.filenameGroup];
     if (!filename) return null;
@@ -161,7 +215,7 @@ export function extractTitleFromExcerptName(
 }
 
 export function epubTitlesMatch(titleA: string, titleB: string): boolean {
-  return titleA.trimEnd() === titleB.trimEnd();
+  return stripWrappingTitleMarks(titleA) === stripWrappingTitleMarks(titleB);
 }
 
 function resolveFilefolderFromExcerpt(

@@ -2,6 +2,8 @@ import { App, normalizePath, TFile } from "obsidian";
 import { extractEpubCfiLiteral } from "./cfi/cfiString";
 import {
   buildLooseExcerptNameRegex,
+  collapseDuplicateTitleMarks,
+  epubTitlesMatch,
   ExcerptMetadataCheckItem,
   ExcerptMetadataCheckReport,
   extractTitleFromExcerptName,
@@ -362,13 +364,12 @@ export class AnnotationVaultStore {
 
   private findEpubByTitleInFolder(folder: string, title: string): TFile | null {
     const normalizedFolder = normalizePath(folder);
-    const normalizedTitle = title.trimEnd();
     for (const file of this.app.vault.getFiles()) {
       if (file.extension !== "epub") continue;
       const slash = file.path.lastIndexOf("/");
       const parent = slash >= 0 ? file.path.slice(0, slash) : "";
       if (normalizePath(parent) !== normalizedFolder) continue;
-      if (file.basename.trimEnd() === normalizedTitle) return file;
+      if (epubTitlesMatch(file.basename, title)) return file;
     }
     return null;
   }
@@ -766,9 +767,7 @@ export class AnnotationVaultStore {
     const title = extractTitleFromExcerptName(name, this.settings.excerptFilename);
     if (!title) return undefined;
     const epubFiles = this.app.vault.getFiles().filter((f) => f.extension === "epub");
-    const match =
-      epubFiles.find((f) => f.basename === title) ??
-      epubFiles.find((f) => f.basename.trimEnd() === title);
+    const match = epubFiles.find((f) => epubTitlesMatch(f.basename, title));
     return match?.path;
   }
 
@@ -787,13 +786,16 @@ export class AnnotationVaultStore {
     const basename = epubFilePath.split("/").pop() ?? epubFilePath;
     const title = basename.replace(/\.epub$/i, "");
     const now = new Date();
+    const heading = isI18nInitialized()
+      ? t("excerpt.excerptHeading", { title })
+      : `# 《${title}》摘录`;
     const frontmatter = [
       `---`,
       `epub-source: ${epubFilePath}`,
       `created: ${this.formatDate(now).slice(0, 10)}`,
       `---`,
       ``,
-      `# ${isI18nInitialized() ? t("excerpt.excerptHeading", { title }) : `《${title}》摘录`}`,
+      collapseDuplicateTitleMarks(heading),
       ``,
     ].join("\n");
     return await this.app.vault.create(mdPath, frontmatter);

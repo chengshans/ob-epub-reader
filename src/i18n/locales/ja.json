@@ -305,8 +305,8 @@
     "excerptFilename": {
       "name": "抜粋ファイル名",
       "placeholder": "「{title}」抜粋.md",
-      "desc": "新規抜粋の Markdown ファイル名。{title}（拡張子なし書名）と {filename}（EPUB ファイル名、例 demo.epub）に対応。",
-      "examples": "例: 「{title}」抜粋.md、{title}-notes.md、{filename}.md"
+      "desc": "新規抜粋の Markdown ファイル名。{title}（拡張子なし書名）、{filenameNoExt}（拡張子なしEPUBファイル名）、{filename}（EPUBファイル名、例 demo.epub）に対応。",
+      "examples": "例: 「{title}」抜粋.md、{filenameNoExt}-notes.md、{filename}.md"
     },
     "excerptCalloutOpacity": {
       "name": "抜粋 callout 背景の不透明度",

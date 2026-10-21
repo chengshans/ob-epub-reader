@@ -305,8 +305,8 @@
     "excerptFilename": {
       "name": "Excerpt filename",
       "placeholder": "{title} excerpts.md",
-      "desc": "Markdown filename for new excerpts. Supports {title} (book title without extension) and {filename} (full EPUB filename, e.g. demo.epub).",
-      "examples": "Examples: {title} excerpts.md, {title}-notes.md, {filename}.md"
+      "desc": "Markdown filename for new excerpts. Supports {title} (book title without extension), {filenameNoExt} (EPUB filename without extension), and {filename} (full EPUB filename, e.g. demo.epub).",
+      "examples": "Examples: {title} excerpts.md, {filenameNoExt}-notes.md, {filename}.md"
     },
     "excerptCalloutOpacity": {
       "name": "Excerpt callout opacity",

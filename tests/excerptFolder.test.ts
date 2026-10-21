@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import { AnnotationVaultStore } from "../src/AnnotationVaultStore";
 import {
   buildLooseExcerptNameRegex,
+  collapseDuplicateTitleMarks,
   inferEpubPathFromExcerptLocation,
   isDynamicExcerptFolder,
   epubTitlesMatch,
@@ -50,6 +51,12 @@ describe("buildLooseExcerptNameRegex", () => {
     expect(re.test("demo-notes.md")).toBe(true);
     expect(re.test("《demo》摘录.md")).toBe(false);
   });
+
+  it("matches {filenameNoExt} templates", () => {
+    const re = buildLooseExcerptNameRegex("{filenameNoExt}-notes.md");
+    expect(re.test("demo-notes.md")).toBe(true);
+    expect(re.test("demo.epub-notes.md")).toBe(true);
+  });
 });
 
 describe("resolveExcerptFilename", () => {
@@ -64,11 +71,41 @@ describe("resolveExcerptFilename", () => {
       "demo.epub.notes.md"
     );
   });
+
+  it("resolves {filenameNoExt} placeholder", () => {
+    expect(resolveExcerptFilename("{filenameNoExt}.notes.md", "books/demo.epub")).toBe(
+      "demo.notes.md"
+    );
+  });
+
+  it("collapses duplicate title marks when the book title already has them", () => {
+    expect(resolveExcerptFilename("《{title}》摘录.md", "books/《国富论》.epub")).toBe(
+      "《国富论》摘录.md"
+    );
+    expect(resolveExcerptFilename("{title}摘录.md", "books/《国富论》.epub")).toBe(
+      "《国富论》摘录.md"
+    );
+  });
+});
+
+describe("collapseDuplicateTitleMarks", () => {
+  it("collapses 《《…》》 and locale variants to one layer", () => {
+    expect(collapseDuplicateTitleMarks("# 《《国富论》》摘录")).toBe("# 《国富论》摘录");
+    expect(collapseDuplicateTitleMarks("# 「「吾輩は猫である」」抜粋")).toBe(
+      "# 「吾輩は猫である」抜粋"
+    );
+    expect(collapseDuplicateTitleMarks("# 《国富论》摘录")).toBe("# 《国富论》摘录");
+  });
 });
 
 describe("epubTitlesMatch", () => {
   it("ignores trailing space before extension in epub basename", () => {
     expect(epubTitlesMatch("苦论 (E.M.齐奥朗)", "苦论 (E.M.齐奥朗) ")).toBe(true);
+  });
+
+  it("ignores wrapping title marks", () => {
+    expect(epubTitlesMatch("《国富论》", "国富论")).toBe(true);
+    expect(epubTitlesMatch("「吾輩は猫である」", "吾輩は猫である")).toBe(true);
   });
 });
 
@@ -100,6 +137,16 @@ describe("inferEpubPathFromExcerptLocation", () => {
         "epub-books/小说/anno/demo-notes.md",
         "{filefolder}/anno",
         "{title}-notes.md"
+      )
+    ).toBe("epub-books/小说/demo.epub");
+  });
+
+  it("infers epub from {filenameNoExt} template", () => {
+    expect(
+      inferEpubPathFromExcerptLocation(
+        "epub-books/小说/anno/demo-notes.md",
+        "{filefolder}/anno",
+        "{filenameNoExt}-notes.md"
       )
     ).toBe("epub-books/小说/demo.epub");
   });
