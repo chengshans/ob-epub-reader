@@ -143,14 +143,60 @@ export function stripExecutableFromHtml(html: string): string {
   return stripTagsFromHtml(html, /script/i, false);
 }
 
-const SELF_CLOSING_ANCHOR_RE = /<((?:[\w.-]+:)?a)\b((?:[^>"']|"[^"]*"|'[^']*')*?)\s*\/>/gi;
+const VOID_TAGS = new Set([
+  "area",
+  "base",
+  "basefont",
+  "bgsound",
+  "br",
+  "col",
+  "command",
+  "embed",
+  "frame",
+  "hr",
+  "img",
+  "input",
+  "keygen",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+const SELF_CLOSING_TAG_RE = /<([A-Za-z][\w.-]*(?::[A-Za-z][\w.-]*)?)\b((?:[^>"']|"[^"]*"|'[^']*')*?)\s*\/>/g;
+const RAW_TEXT_BLOCK_RE = /<(style|textarea)\b[^>]*>[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi;
+
+function expandSelfClosingSegment(segment: string): string {
+  return segment.replace(
+    SELF_CLOSING_TAG_RE,
+    (match, tag: string, attrs: string) => {
+      const local = (tag.includes(":") ? tag.slice(tag.lastIndexOf(":") + 1) : tag).toLowerCase();
+      if (VOID_TAGS.has(local)) return match;
+      return `<${tag}${attrs}></${tag}>`;
+    }
+  );
+}
 
 /**
- * 无 XHTML 命名空间的章节经 XMLSerializer 序列化后，空 `<a id="..."/>` 会输出为自闭合写法；
- * iframe 按 HTML 解析时会把它当作未闭合 `<a>`，后续整章内容都变成它的子节点（正文被染成链接色）。
+ * 无 XHTML 命名空间的章节经 XMLSerializer 序列化后，空元素会输出为自闭合写法；
+ * iframe 按 HTML 解析时非 void 标签会被当作未闭合标签，吞掉后续节点（如空 `<a/>` 吞掉整章、
+ * 正文被染成链接色，或 `<span/>` 造成 CFI 偏移）。这里把非 void 自闭合标签展开为成对标签。
+ * 跳过 style/textarea 与注释内容，避免改写其中的文本。
  */
-export function expandSelfClosingAnchors(html: string): string {
-  return html.replace(SELF_CLOSING_ANCHOR_RE, "<$1$2></$1>");
+export function expandSelfClosingTags(html: string): string {
+  let result = "";
+  let lastIndex = 0;
+  const block = new RegExp(RAW_TEXT_BLOCK_RE.source, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = block.exec(html)) !== null) {
+    result += expandSelfClosingSegment(html.slice(lastIndex, match.index));
+    result += match[0];
+    lastIndex = match.index + match[0].length;
+  }
+  result += expandSelfClosingSegment(html.slice(lastIndex));
+  return result;
 }
 
 /**
@@ -163,7 +209,7 @@ export function sanitizeIframeHtml(html: string): string {
 
 /** Spine serialize hook: minimal strip + inline blob/data stylesheets (no XMLSerializer). */
 export async function prepareSectionHtmlForSpine(html: string): Promise<string> {
-  return inlineStylesheetLinksInHtml(expandSelfClosingAnchors(stripExecutableFromHtml(html)));
+  return inlineStylesheetLinksInHtml(expandSelfClosingTags(stripExecutableFromHtml(html)));
 }
 
 /** @deprecated Use prepareSectionHtmlForSpine */

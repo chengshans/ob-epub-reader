@@ -91,6 +91,8 @@ export class AnnotationVaultStore {
   private excerptWriteChains = new Map<string, Promise<void>>();
   /** Book TOC order (chapter keys) for excerpt grouping; set while reader is open. */
   private chapterOrderByEpub = new Map<string, string[]>();
+  /** EPUBs already checked for legacy (double book-title-mark) excerpt paths. */
+  private legacyExcerptChecked = new Set<string>();
 
   constructor(app: App, settings: EpubPluginSettings) {
     this.app = app;
@@ -221,6 +223,43 @@ export class AnnotationVaultStore {
     const folder = this.resolveFolder(epubFilePath);
     const filename = resolveExcerptFilename(this.settings.excerptFilename, epubFilePath);
     return normalizePath(`${folder}/${filename}`);
+  }
+
+  /** 书名号去重前的旧文件名路径；路径未变化时返回 null。 */
+  private legacyExcerptFilePath(epubFilePath: string): string | null {
+    const legacyName = resolveExcerptFilename(this.settings.excerptFilename, epubFilePath, {
+      dedupeTitleMarks: false,
+    });
+    if (legacyName === resolveExcerptFilename(this.settings.excerptFilename, epubFilePath)) {
+      return null;
+    }
+    return normalizePath(`${this.resolveFolder(epubFilePath)}/${legacyName}`);
+  }
+
+  /**
+   * 书名号去重会改变摘录文件名；首次访问时把旧文件改名为新路径，
+   * 避免已有标注与阅读进度看起来“丢失”。
+   */
+  private async migrateLegacyExcerptFile(epubFilePath: string): Promise<void> {
+    if (this.legacyExcerptChecked.has(epubFilePath)) return;
+    this.legacyExcerptChecked.add(epubFilePath);
+
+    const legacyPath = this.legacyExcerptFilePath(epubFilePath);
+    if (!legacyPath) return;
+    const currentPath = this.getAnnotationFilePath(epubFilePath);
+    if (this.app.vault.getAbstractFileByPath(currentPath)) return;
+    const legacy = this.app.vault.getAbstractFileByPath(legacyPath);
+    if (!(legacy instanceof TFile)) return;
+
+    try {
+      const parent = currentPath.slice(0, currentPath.lastIndexOf("/"));
+      if (parent && !this.app.vault.getAbstractFileByPath(parent)) {
+        await this.app.vault.createFolder(parent).catch(() => {});
+      }
+      await this.app.vault.rename(legacy, currentPath);
+    } catch (err) {
+      console.warn("ob-epub: migrate legacy excerpt failed", legacyPath, err);
+    }
   }
 
   /** Format as local `YYYY-MM-DD HH:mm:ss` (not UTC). */
@@ -774,6 +813,7 @@ export class AnnotationVaultStore {
   // ── Vault file read/write helpers ─────────────────────────────────────────
 
   private async ensureFile(epubFilePath: string): Promise<TFile> {
+    await this.migrateLegacyExcerptFile(epubFilePath);
     const mdPath = this.getAnnotationFilePath(epubFilePath);
     const existing = this.app.vault.getAbstractFileByPath(mdPath);
     if (existing instanceof TFile) return existing;
@@ -802,6 +842,7 @@ export class AnnotationVaultStore {
   }
 
   private async readContent(epubFilePath: string): Promise<string> {
+    await this.migrateLegacyExcerptFile(epubFilePath);
     const mdPath = this.getAnnotationFilePath(epubFilePath);
     const file = this.app.vault.getAbstractFileByPath(mdPath);
     if (!(file instanceof TFile)) return "";

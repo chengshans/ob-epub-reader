@@ -117,7 +117,11 @@ function sanitizeExcerptFilename(name: string): string {
   return name.replace(/[/\\:*?"<>|]/g, "_");
 }
 
-export function resolveExcerptFilename(template: string, epubFilePath: string): string {
+export function resolveExcerptFilename(
+  template: string,
+  epubFilePath: string,
+  opts?: { dedupeTitleMarks?: boolean }
+): string {
   const trimmed = (template || DEFAULT_EXCERPT_FILENAME).trim();
   const basename = epubFilePath.split("/").pop() ?? epubFilePath;
   const title = basename.replace(/\.epub$/i, "").trimEnd();
@@ -130,7 +134,8 @@ export function resolveExcerptFilename(template: string, epubFilePath: string): 
     .split(EXCERPT_TITLE_PLACEHOLDER)
     .join(title);
 
-  return sanitizeExcerptFilename(collapseDuplicateTitleMarks(resolved));
+  const deduped = opts?.dedupeTitleMarks === false ? resolved : collapseDuplicateTitleMarks(resolved);
+  return sanitizeExcerptFilename(deduped);
 }
 
 function extractEpubBasenameFromExcerptName(

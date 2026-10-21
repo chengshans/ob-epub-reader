@@ -86,6 +86,14 @@ describe("resolveExcerptFilename", () => {
       "《国富论》摘录.md"
     );
   });
+
+  it("can resolve the legacy (pre-dedupe) filename for migration", () => {
+    expect(
+      resolveExcerptFilename("《{title}》摘录.md", "books/《国富论》.epub", {
+        dedupeTitleMarks: false,
+      })
+    ).toBe("《《国富论》》摘录.md");
+  });
 });
 
 describe("collapseDuplicateTitleMarks", () => {
