@@ -1992,7 +1992,7 @@ export class EpubReaderView extends FileView {
         color: `${textColor} !important`,
         "font-family": `${fontFamily} !important`,
       },
-      "body a, body a *": {
+      "body a[href], body a[href] *": {
         color: `${linkColor} !important`,
       },
       "*": {
@@ -2046,7 +2046,8 @@ export class EpubReaderView extends FileView {
       `${root}{background:${background} !important;color:${textColor} !important;font-family:${fontFamily} !important;line-height:${lineHeight};letter-spacing:${letterSpacing}px;padding:${bodyPadding};padding-left:${sidePx} !important;padding-right:${sidePx} !important;box-sizing:border-box}`,
       `${root} *{color:${textColor} !important;font-family:${fontFamily} !important;-webkit-user-select:text !important;user-select:text !important}`,
       `${root} p,${root} li,${root} blockquote{margin-bottom:${paragraphSpacing}px !important}`,
-      `${root} a,${root} a *{color:${linkColor} !important}`,
+      // 仅真实链接（带 href）使用链接色；无 href 的命名锚点不应染色
+      `${root} a[href],${root} a[href] *{color:${linkColor} !important}`,
       // 原生选区透明：拖选与菜单态统一走 epub-selection-overlay，避免颜色跳变
       `${root} ::selection{background:transparent !important;color:inherit !important}`,
       `${root} ::-moz-selection{background:transparent !important;color:inherit !important}`,

@@ -143,6 +143,16 @@ export function stripExecutableFromHtml(html: string): string {
   return stripTagsFromHtml(html, /script/i, false);
 }
 
+const SELF_CLOSING_ANCHOR_RE = /<((?:[\w.-]+:)?a)\b((?:[^>"']|"[^"]*"|'[^']*')*?)\s*\/>/gi;
+
+/**
+ * 无 XHTML 命名空间的章节经 XMLSerializer 序列化后，空 `<a id="..."/>` 会输出为自闭合写法；
+ * iframe 按 HTML 解析时会把它当作未闭合 `<a>`，后续整章内容都变成它的子节点（正文被染成链接色）。
+ */
+export function expandSelfClosingAnchors(html: string): string {
+  return html.replace(SELF_CLOSING_ANCHOR_RE, "<$1$2></$1>");
+}
+
 /**
  * Iframe boundary: full sanitization before srcdoc / document.write.
  * Keep in sync with `sanitizeSrcdocHtml` in patches/epubjs+0.3.93.patch.
@@ -153,7 +163,7 @@ export function sanitizeIframeHtml(html: string): string {
 
 /** Spine serialize hook: minimal strip + inline blob/data stylesheets (no XMLSerializer). */
 export async function prepareSectionHtmlForSpine(html: string): Promise<string> {
-  return inlineStylesheetLinksInHtml(stripExecutableFromHtml(html));
+  return inlineStylesheetLinksInHtml(expandSelfClosingAnchors(stripExecutableFromHtml(html)));
 }
 
 /** @deprecated Use prepareSectionHtmlForSpine */
