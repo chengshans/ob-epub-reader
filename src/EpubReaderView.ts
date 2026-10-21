@@ -47,6 +47,7 @@ import { ReadingSettingsPopover } from "./ReadingSettingsPopover";
 import { ReadingFontManager } from "./ReadingFontManager";
 import { fitHighlightRect } from "./highlightRectInflate";
 import { colorToRgba, boostRgbaAlpha } from "./selectionColor";
+import { classifyTouchGesture } from "./pageTurnGesture";
 import {
   buildTocSpineIndex,
   findTocEntryForNavItem,
@@ -84,6 +85,8 @@ const CFI_IGNORE_CLASSES =
   "epub-user-highlight epub-search-hit epubjs-hl epubjs-ul epub-note-icon";
 const SEARCH_HIGHLIGHT_FILL = "#e8b339";
 const SEARCH_HIGHLIGHT_OPACITY = "0.55";
+/** 触屏边缘轻触等待窗口：期间再次轻触视为双击选词，不翻页 */
+const EDGE_TAP_CONFIRM_MS = 260;
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
 
@@ -223,6 +226,8 @@ export class EpubReaderView extends FileView {
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private wheelAccum: number = 0;
   private wheelCooldown: boolean = false;
+  /** 触屏边缘轻触的延迟翻页定时器（等待可能的双击选词） */
+  private edgeTapTimer: number | null = null;
   private bookGeneration = 0;
 
   constructor(
@@ -1417,6 +1422,7 @@ export class EpubReaderView extends FileView {
       clearTimeout(this.navigateGuardTimer);
       this.navigateGuardTimer = null;
     }
+    this.cancelEdgeTapTurn();
     this.navigateGuardCfi = "";
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
@@ -1816,6 +1822,7 @@ export class EpubReaderView extends FileView {
 
     doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
     this.attachSelectionTracking(contents);
+    this.attachTouchPageNavigation(contents);
 
     if (doc.documentElement.getAttribute("data-ob-epub-settings-dismiss") !== "1") {
       doc.documentElement.setAttribute("data-ob-epub-settings-dismiss", "1");
@@ -1865,8 +1872,114 @@ export class EpubReaderView extends FileView {
     this.paintSelectionOverlay(contents);
   }
 
+  /**
+   * 触屏/手写笔：分页模式下轻触左右边缘或横向滑动翻页。
+   * 鼠标不参与，避免影响桌面端点选文字；拖选文字或点中链接/标注时不翻页。
+   */
+  private attachTouchPageNavigation(contents: {
+    document?: Document;
+    window?: Window;
+  }) {
+    const doc = contents.document;
+    const win = contents.window;
+    if (!doc?.documentElement || !win) return;
+    if (doc.documentElement.getAttribute("data-ob-epub-touch-nav") === "1") return;
+    doc.documentElement.setAttribute("data-ob-epub-touch-nav", "1");
+
+    let start: { x: number; y: number; time: number; pointerId: number } | null = null;
+    const clearStart = () => {
+      start = null;
+    };
+
+    doc.addEventListener(
+      "pointerdown",
+      (e: PointerEvent) => {
+        if (e.pointerType === "mouse" || !e.isPrimary) {
+          clearStart();
+          return;
+        }
+        start = { x: e.clientX, y: e.clientY, time: Date.now(), pointerId: e.pointerId };
+      },
+      { passive: true }
+    );
+
+    doc.addEventListener("pointercancel", clearStart, { passive: true });
+
+    doc.addEventListener(
+      "pointerup",
+      (e: PointerEvent) => {
+        const gestureStart = start;
+        clearStart();
+        if (!gestureStart || gestureStart.pointerId !== e.pointerId) return;
+        if (e.pointerType === "mouse" || !e.isPrimary) return;
+        if (this.flow !== "paginated" || this.contextMenu || this.wheelCooldown) return;
+        if (this.isPageTurnBlockedTarget(e.target)) return;
+
+        const selection = win.getSelection?.();
+        if (selection && selection.rangeCount > 0 && !selection.isCollapsed) return;
+
+        const gesture = classifyTouchGesture({
+          startX: gestureStart.x,
+          startY: gestureStart.y,
+          endX: e.clientX,
+          endY: e.clientY,
+          elapsedMs: Date.now() - gestureStart.time,
+          viewportWidth: win.innerWidth || doc.documentElement.clientWidth,
+          rtl: this.isRtlDirection(),
+        });
+        if (!gesture.direction) return;
+        if (gesture.kind === "swipe") {
+          this.cancelEdgeTapTurn();
+          this.turnPage(gesture.direction);
+        } else {
+          this.scheduleEdgeTapTurn(gesture.direction);
+        }
+      },
+      { passive: true }
+    );
+  }
+
+  /** 延迟 260ms 再翻页；期间再次轻触边缘视为双击选词，取消翻页 */
+  private scheduleEdgeTapTurn(dir: "prev" | "next") {
+    if (this.edgeTapTimer != null) {
+      this.cancelEdgeTapTurn();
+      return;
+    }
+    this.edgeTapTimer = window.setTimeout(() => {
+      this.edgeTapTimer = null;
+      this.turnPage(dir);
+    }, EDGE_TAP_CONFIRM_MS);
+  }
+
+  private cancelEdgeTapTurn() {
+    if (this.edgeTapTimer != null) {
+      window.clearTimeout(this.edgeTapTimer);
+      this.edgeTapTimer = null;
+    }
+  }
+
+  private isRtlDirection(): boolean {
+    const meta = (
+      this.book as unknown as
+        | { package?: { metadata?: { direction?: string } } }
+        | null
+    )?.package?.metadata;
+    return meta?.direction === "rtl";
+  }
+
+  private isPageTurnBlockedTarget(target: EventTarget | null): boolean {
+    const el = target as Element | null;
+    if (!el || typeof el.closest !== "function") return false;
+    return Boolean(
+      el.closest(
+        `a[href], [ref="${HIGHLIGHT_CLASS}"], [ref="${SEARCH_HIGHLIGHT_CLASS}"], .epubjs-hl, .epubjs-ul, .${NOTE_ICON_CLASS}`
+      )
+    );
+  }
+
   private turnPage(dir: "next" | "prev") {
     if (!this.rendition) return;
+    this.cancelEdgeTapTurn();
     // 翻页前清理上一页的选中覆盖层与上下文菜单，避免跨章节残留蓝色高亮
     this.dismissContextMenu();
     this.blockProgressSave = false;
@@ -2061,6 +2174,9 @@ export class EpubReaderView extends FileView {
         `html[${READING_THEME_ATTR}],html[${READING_THEME_ATTR}] body{min-height:0 !important;height:auto !important}`,
         `${root}{margin-bottom:0 !important}`
       );
+    } else {
+      // 分页模式：横向手势交给翻页逻辑，避免触屏横向拖动原生滚动整章
+      blocks.push(`html[${READING_THEME_ATTR}]{touch-action:pan-y pinch-zoom}`);
     }
     return blocks.join("\n");
   }

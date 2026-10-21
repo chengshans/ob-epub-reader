@@ -35,7 +35,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading settings panel** — Toolbar ⚙ popover: font size slider, body font, side margins, six reading themes, highlight opacity, auto-paste toggle
 - **Body fonts** — Heiti / Songti / Kaiti / FangSong / Yuanti, Source Han, LXGW WenKai, and more; downloadable fonts are cached on demand; import local font files from settings
-- **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px)
+- **Reading modes** — Paginated or scroll; adjustable font size and side margins (12–120 px); in paginated mode, touch users can tap the side edges or swipe horizontally to turn pages
 - **Toolbar placement** — Top (inside reader) or bottom (pinned to Obsidian status bar), with progress bar
 - **Reading themes** — Follow Obsidian, White, Yellow, Green, Sepia, Dark (switch in reading settings; set default in settings)
 - **Keyboard and mouse** — Arrow keys, Page Up/Down, and mouse wheel for page turns
