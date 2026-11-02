@@ -438,6 +438,7 @@ export class EpubReaderView extends FileView {
   async navigateToCfi(cfi: string): Promise<void> {
     cfi = normalizeCfi(cfi);
     if (!cfi) return;
+    this.cancelEdgeTapTurn();
     this.blockProgressSave = false;
     this.isBookInitializing = false;
     if (!this.rendition) {
@@ -1381,6 +1382,7 @@ export class EpubReaderView extends FileView {
   }
 
   private toggleFlow() {
+    this.cancelEdgeTapTurn();
     this.flow = this.flow === "paginated" ? "scrolled" : "paginated";
     this.syncFlowLayoutClass();
     const btn = this.toolbarEl?.querySelector("#epub-flow-btn") as HTMLElement | null;
@@ -1869,6 +1871,8 @@ export class EpubReaderView extends FileView {
       if (!this.contextMenu) this.clearSelectionOverlay();
       return;
     }
+    // 双击选词会先产生非折叠选区：撤销待执行的边缘轻触翻页，避免选词时误翻页
+    this.cancelEdgeTapTurn();
     this.paintSelectionOverlay(contents);
   }
 
@@ -1894,11 +1898,19 @@ export class EpubReaderView extends FileView {
     doc.addEventListener(
       "pointerdown",
       (e: PointerEvent) => {
+        // 任何新手势都先撤销上一次轻触的延迟翻页（第二击即双击选词）
+        this.cancelEdgeTapTurn();
         if (e.pointerType === "mouse" || !e.isPrimary) {
           clearStart();
           return;
         }
-        start = { x: e.clientX, y: e.clientY, time: Date.now(), pointerId: e.pointerId };
+        const viewport = this.getTouchViewport(win, doc);
+        start = {
+          x: viewport.left + e.clientX,
+          y: viewport.top + e.clientY,
+          time: Date.now(),
+          pointerId: e.pointerId,
+        };
       },
       { passive: true }
     );
@@ -1918,13 +1930,14 @@ export class EpubReaderView extends FileView {
         const selection = win.getSelection?.();
         if (selection && selection.rangeCount > 0 && !selection.isCollapsed) return;
 
+        const viewport = this.getTouchViewport(win, doc);
         const gesture = classifyTouchGesture({
           startX: gestureStart.x,
           startY: gestureStart.y,
-          endX: e.clientX,
-          endY: e.clientY,
+          endX: viewport.left + e.clientX,
+          endY: viewport.top + e.clientY,
           elapsedMs: Date.now() - gestureStart.time,
-          viewportWidth: win.innerWidth || doc.documentElement.clientWidth,
+          viewportWidth: viewport.width,
           rtl: this.isRtlDirection(),
         });
         if (!gesture.direction) return;
@@ -1939,6 +1952,33 @@ export class EpubReaderView extends FileView {
     );
   }
 
+  /**
+   * 内容 iframe 内的指针坐标 → 阅读区局部坐标。
+   * 分页模式下 epub.js 的章节 iframe 宽度是「可视页宽 × 章节页数」，靠容器
+   * scrollLeft 平移翻页，所以 iframe 内的 clientX 与 win.innerWidth 都不是
+   * 可视页坐标系；必须借 frameElement 的边界换算回阅读区再判定左右边缘。
+   */
+  private getTouchViewport(
+    win: Window,
+    doc: Document
+  ): { left: number; top: number; width: number } {
+    const area = this.readerEl?.getBoundingClientRect();
+    const frame = win.frameElement as HTMLElement | null;
+    const frameRect = frame?.getBoundingClientRect();
+    if (frameRect && area && area.width > 0) {
+      return {
+        left: frameRect.left - area.left,
+        top: frameRect.top - area.top,
+        width: area.width,
+      };
+    }
+    return {
+      left: 0,
+      top: 0,
+      width: win.innerWidth || doc.documentElement.clientWidth,
+    };
+  }
+
   /** 延迟 260ms 再翻页；期间再次轻触边缘视为双击选词，取消翻页 */
   private scheduleEdgeTapTurn(dir: "prev" | "next") {
     if (this.edgeTapTimer != null) {
@@ -1947,6 +1987,7 @@ export class EpubReaderView extends FileView {
     }
     this.edgeTapTimer = window.setTimeout(() => {
       this.edgeTapTimer = null;
+      if (this.isClosing || !this.rendition) return;
       this.turnPage(dir);
     }, EDGE_TAP_CONFIRM_MS);
   }
@@ -2484,6 +2525,7 @@ export class EpubReaderView extends FileView {
 
       const label = li.createEl("span", { cls: "epub-toc-label", text: itemLabel });
       label.addEventListener("click", () => {
+        this.cancelEdgeTapTurn();
         this.blockProgressSave = false;
         this.isBookInitializing = false;
         this.currentChapter = tocKey;

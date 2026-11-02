@@ -7,6 +7,12 @@ export interface TouchGestureResult {
 }
 
 export interface TouchGestureInput {
+  /**
+   * 坐标必须是「可视页坐标系」：原点在可视区域左上角，viewportWidth = 可视页宽。
+   * 分页模式下 epub.js 的章节 iframe 比可视页宽得多（宽 = 页宽 × 页数）并用容器
+   * scrollLeft 平移，若直接传 iframe 内的 clientX / win.innerWidth，左右边缘判定
+   * 会随滚动位置漂移，导致点击忽而翻页、忽而反向。
+   */
   startX: number;
   startY: number;
   endX: number;
