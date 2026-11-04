@@ -1,4 +1,4 @@
-import { FileView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
+import { FileView, Notice, TFile, WorkspaceLeaf, normalizePath, setIcon } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { BookmarkStore } from "./BookmarkStore";
@@ -40,6 +40,7 @@ import {
   ReadingFontId,
 } from "./types";
 import { buildExcerptBlock } from "./excerptBlockFormat";
+import { resolveExcerptFolder, sanitizePathSegment } from "./excerptFolder";
 import { ExcerptInsertResult, ExcerptPasteTarget, noticeExcerptCopy } from "./ExcerptPasteTarget";
 import { NoteInputModal } from "./NoteInputModal";
 import { ConfirmModal } from "./ConfirmModal";
@@ -73,6 +74,7 @@ import {
   readStylesheetHref,
   stripExecutableFromDocument,
 } from "./epubStylesheetInliner";
+import { excerptImageExtension, shortContentHash } from "./excerptImages";
 
 export const EPUB_READER_VIEW_TYPE = "epub-reader";
 
@@ -81,6 +83,8 @@ const SEARCH_HIGHLIGHT_TYPE = "highlight";
 const HIGHLIGHT_CLASS = "epub-user-highlight";
 const SEARCH_HIGHLIGHT_CLASS = "epub-search-hit";
 const NOTE_ICON_CLASS = "epub-note-icon";
+/** 标注覆盖图片时补画的整图覆盖块（位于正文 iframe 文档内） */
+const IMAGE_HIGHLIGHT_MARK = "ob-epub-image-highlight";
 const CFI_IGNORE_CLASSES =
   "epub-user-highlight epub-search-hit epubjs-hl epubjs-ul epub-note-icon";
 const SEARCH_HIGHLIGHT_FILL = "#e8b339";
@@ -89,6 +93,88 @@ const SEARCH_HIGHLIGHT_OPACITY = "0.55";
 const EDGE_TAP_CONFIRM_MS = 260;
 const READING_THEME_STYLE_ID = "ob-epub-reading-theme";
 const READING_THEME_ATTR = "data-ob-epub-theme";
+
+/** 焦点在文本输入区域时不拦截方向键（随视图所在文档，兼容弹出窗口） */
+function isTextEntryTarget(doc: Document = document): boolean {
+  const el = doc.activeElement as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName?.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+}
+
+/** 摘录配图与选区比对的块级容器（段落、图注、图文框等） */
+const BLOCK_CONTAINER_TAGS = new Set([
+  "FIGURE",
+  "FIGCAPTION",
+  "SECTION",
+  "ARTICLE",
+  "P",
+  "LI",
+  "TD",
+  "BLOCKQUOTE",
+  "DIV",
+]);
+
+function nearestBlockElement(node: Node | null, doc: Document): Element | null {
+  let el: Element | null =
+    node == null ? null : node.nodeType === 1 ? (node as Element) : node.parentElement;
+  while (el && el !== doc.body && !BLOCK_CONTAINER_TAGS.has(el.tagName)) {
+    el = el.parentElement;
+  }
+  return el === doc.body ? null : el;
+}
+
+/**
+ * 与选区相关的图片：与选区相交的，以及选区首尾所在“同一块级容器”（段落/图注/图文框）内的。
+ * 后者让"只选中图注文字"也能把同框的图片一并摘录。
+ */
+function relatedSelectionImages(doc: Document, range: Range): HTMLImageElement[] {
+  const anchors = [
+    nearestBlockElement(range.startContainer, doc),
+    nearestBlockElement(range.endContainer, doc),
+  ].filter((el): el is Element => el != null);
+  const viewportHeight = doc.documentElement?.clientHeight ?? 0;
+
+  const images: HTMLImageElement[] = [];
+  doc.querySelectorAll("img").forEach((img) => {
+    let intersects = false;
+    try {
+      intersects = range.intersectsNode(img);
+    } catch {
+      intersects = false;
+    }
+    if (intersects) {
+      images.push(img);
+      return;
+    }
+
+    const block = nearestBlockElement(img, doc);
+    if (!block || !anchors.includes(block)) return;
+    // 整个章节级的容器也匹配时，会退化成“任意位置都带图”，用高度拦住
+    if (viewportHeight > 0 && block.getBoundingClientRect().height > viewportHeight * 1.5) return;
+    const rect = img.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) return; // 跳过图标类小图
+    images.push(img);
+  });
+  return images;
+}
+
+/** 选区 rect 与图片框重叠过半 → 该 rect 来自图片，改由整图外框覆盖 */
+function rectInsideImage(
+  rect: { left: number; top: number; width: number; height: number },
+  images: Array<{ left: number; top: number; width: number; height: number }>
+): boolean {
+  const area = rect.width * rect.height;
+  if (area <= 0) return false;
+  return images.some((image) => {
+    const overlapX =
+      Math.min(rect.left + rect.width, image.left + image.width) - Math.max(rect.left, image.left);
+    const overlapY =
+      Math.min(rect.top + rect.height, image.top + image.height) - Math.max(rect.top, image.top);
+    if (overlapX <= 0 || overlapY <= 0) return false;
+    return (overlapX * overlapY) / area >= 0.5;
+  });
+}
 
 /** epub.js manager 最小访问面，用于分页模式同步 gap / 滚动模式重算 iframe 高度 */
 type EpubLayoutManager = {
@@ -112,6 +198,12 @@ export class EpubReaderView extends FileView {
   private book: Book | null = null;
   private rendition: Rendition | null = null;
   private currentCfi: string = "";
+  /** 后退栈（CFI）：Alt+← 返回跳转前位置，供脚注/目录/笔记跳转后回退 */
+  private locationHistory: string[] = [];
+  /** 前进栈（CFI）：Alt+→ 回到刚才被回退掉的位置（如脚注/注文） */
+  private forwardHistory: string[] = [];
+  /** 正在前进/后退，避免遍历动作本身又被压栈或清空前进栈 */
+  private isHistoryBacking = false;
   private currentChapter: string = "";
   private tocSpineEntries: TocSpineEntry[] = [];
   private tocItems: NavItem[] = [];
@@ -140,6 +232,8 @@ export class EpubReaderView extends FileView {
   private selectionPaintRaf: number | null = null;
   private selectedText: string = "";
   private selectedCfi: string = "";
+  /** 选区覆盖到的图片（在选区还存在时采集，摘录时落盘） */
+  private selectedImages: Array<{ src: string; alt: string }> = [];
   private resizeObserver: ResizeObserver | null = null;
   private workspaceLayoutHandlersRegistered = false;
   private resizeRenditionPending = false;
@@ -224,6 +318,12 @@ export class EpubReaderView extends FileView {
   private bookmarkToolbarBtn: HTMLElement | null = null;
   private isFixedLayout = false;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private keyupHandler: ((e: KeyboardEvent) => void) | null = null;
+  /** 按键监听挂载的窗口文档（可能是弹出窗口，不等于主窗口） */
+  private navKeyDoc: Document | null = null;
+  private navKeyWin: Window | null = null;
+  /** 已被 keydown 消费的按键，keyup 不再重复翻页 */
+  private navKeyDownAt = new Map<string, number>();
   private wheelAccum: number = 0;
   private wheelCooldown: boolean = false;
   /** 触屏边缘轻触的延迟翻页定时器（等待可能的双击选词） */
@@ -449,6 +549,7 @@ export class EpubReaderView extends FileView {
       this.pendingNavigateCfi = cfi;
       return;
     }
+    this.rememberLocationBeforeJump();
     this.isNavigating = true;
     this.armNavigateGuard(cfi);
     try {
@@ -464,6 +565,51 @@ export class EpubReaderView extends FileView {
       if (next && next !== cfi) {
         await this.navigateToCfi(next);
       }
+    }
+  }
+
+  /** 跳转前先把当前位置压栈（最多保留 20 条），并清空前进栈；遍历过程中不再压栈 */
+  private rememberLocationBeforeJump(): void {
+    if (this.isHistoryBacking) return;
+    const current = this.getViewportTopCfi();
+    if (!current) return;
+    this.forwardHistory = [];
+    if (this.locationHistory[this.locationHistory.length - 1] === current) return;
+    this.locationHistory.push(current);
+    if (this.locationHistory.length > 20) this.locationHistory.shift();
+  }
+
+  /** Alt+←：回到上一次跳转前的位置（类似浏览器的返回） */
+  private async goBackInHistory(): Promise<void> {
+    const target = this.locationHistory.pop();
+    if (!target) return;
+    const current = this.getViewportTopCfi();
+    if (current && current !== target) {
+      this.forwardHistory.push(current);
+      if (this.forwardHistory.length > 20) this.forwardHistory.shift();
+    }
+    this.isHistoryBacking = true;
+    try {
+      await this.navigateToCfi(target);
+    } finally {
+      this.isHistoryBacking = false;
+    }
+  }
+
+  /** Alt+→：回到被回退掉的位置（如刚查看过的脚注/注文） */
+  private async goForwardInHistory(): Promise<void> {
+    const target = this.forwardHistory.pop();
+    if (!target) return;
+    const current = this.getViewportTopCfi();
+    if (current && current !== target) {
+      this.locationHistory.push(current);
+      if (this.locationHistory.length > 20) this.locationHistory.shift();
+    }
+    this.isHistoryBacking = true;
+    try {
+      await this.navigateToCfi(target);
+    } finally {
+      this.isHistoryBacking = false;
     }
   }
 
@@ -1426,6 +1572,9 @@ export class EpubReaderView extends FileView {
     }
     this.cancelEdgeTapTurn();
     this.navigateGuardCfi = "";
+    this.locationHistory = [];
+    this.forwardHistory = [];
+    this.isHistoryBacking = false;
     this.cachedHighlights = [];
     this.highlightsInitialLoaded = false;
     this.locationsReady = false;
@@ -1441,10 +1590,21 @@ export class EpubReaderView extends FileView {
       this.resizeObserver = null;
     });
     this.safeCleanup("keydownHandler", () => {
-      if (this.keydownHandler) {
-        document.removeEventListener("keydown", this.keydownHandler);
+      const doc = this.navKeyDoc;
+      const win = this.navKeyWin;
+      if (this.keydownHandler && doc && win) {
+        win.removeEventListener("keydown", this.keydownHandler, { capture: true });
+        doc.removeEventListener("keydown", this.keydownHandler, { capture: true });
       }
       this.keydownHandler = null;
+      if (this.keyupHandler && doc && win) {
+        win.removeEventListener("keyup", this.keyupHandler, { capture: true });
+        doc.removeEventListener("keyup", this.keyupHandler, { capture: true });
+      }
+      this.keyupHandler = null;
+      this.navKeyDoc = null;
+      this.navKeyWin = null;
+      this.navKeyDownAt.clear();
     });
     this.safeCleanup("rendition", () => {
       if (this.rendition) {
@@ -1583,6 +1743,7 @@ export class EpubReaderView extends FileView {
         if (text.trim()) {
           this.selectedText = text.trim();
           this.selectedCfi = cfiRange;
+          this.selectedImages = this.collectSelectionImages(contents);
           this.showContextMenu(contents);
         }
       });
@@ -1823,6 +1984,36 @@ export class EpubReaderView extends FileView {
     );
 
     doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
+
+    // 内容内链接（脚注、章内锚点）由 epub.js 自行 display，捕获阶段先记录当前位置，
+    // 这样才能用 Alt+← 回到点击链接前的那一页。
+    doc.addEventListener(
+      "click",
+      (e: MouseEvent) => {
+        const target = e.target as Element | null;
+        const anchor = target && typeof target.closest === "function" ? target.closest("a[href]") : null;
+        if (!anchor) return;
+        const href = anchor.getAttribute("href") || "";
+        if (!href || href.startsWith("mailto:") || href.includes("://")) return;
+        this.rememberLocationBeforeJump();
+      },
+      { capture: true }
+    );
+
+    // 点击正文后把焦点交回宿主文档：sandbox iframe 内的 keydown 不可靠，
+    // 只靠 iframe 监听会出现「点正文后方向键失效、点目录后才正常」。
+    const win: Window | null = contents?.window ?? doc.defaultView;
+    doc.addEventListener(
+      "pointerup",
+      () => {
+        if (!win) return;
+        const sel = win.getSelection?.();
+        if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return; // 选词时保留 iframe 焦点
+        (win.frameElement as HTMLElement | null)?.blur();
+      },
+      { passive: true }
+    );
+
     this.attachSelectionTracking(contents);
     this.attachTouchPageNavigation(contents);
 
@@ -2034,30 +2225,73 @@ export class EpubReaderView extends FileView {
     });
   }
 
-  private handleNavKey(e: KeyboardEvent) {
-    if (e.key === "ArrowRight" || e.key === "PageDown") {
+  /** 处理翻页与历史按键，返回是否已消费；scope 与 document 两条通道共用，避免重复翻页 */
+  private handleNavKey(e: KeyboardEvent): boolean {
+    const state = e as KeyboardEvent & { __obEpubNavHandled?: boolean };
+    if (state.__obEpubNavHandled) return true;
+    // 同时兼容 code / key / keyCode：部分输入法或布局下 code 会是 "Unidentified"
+    const isLeft = e.code === "ArrowLeft" || e.key === "ArrowLeft" || e.keyCode === 37;
+    const isRight = e.code === "ArrowRight" || e.key === "ArrowRight" || e.keyCode === 39;
+    const isPgUp = e.code === "PageUp" || e.key === "PageUp" || e.keyCode === 33;
+    const isPgDn = e.code === "PageDown" || e.key === "PageDown" || e.keyCode === 34;
+    // Alt+← / Alt+→：在跳转历史中后退/前进（如脚注 → 原文 → 注文）
+    if (e.altKey && isLeft) {
+      if (this.locationHistory.length === 0) return false;
+      state.__obEpubNavHandled = true;
+      e.preventDefault();
+      void this.goBackInHistory();
+      return true;
+    }
+    if (e.altKey && isRight) {
+      if (this.forwardHistory.length === 0) return false;
+      state.__obEpubNavHandled = true;
+      e.preventDefault();
+      void this.goForwardInHistory();
+      return true;
+    }
+    if (isRight || isPgDn) {
+      state.__obEpubNavHandled = true;
       e.preventDefault();
       this.turnPage("next");
-    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      return true;
+    }
+    if (isLeft || isPgUp) {
+      state.__obEpubNavHandled = true;
       e.preventDefault();
       this.turnPage("prev");
+      return true;
     }
+    return false;
   }
 
   private registerKeyboardNavigation() {
     if (this.keydownHandler) return;
-    this.keydownHandler = (e: KeyboardEvent) => {
-      // Host-level: listen on document so keys still work after cross-spine
-      // iframe teardown moves focus to body (outside containerEl).
-      const active = document.activeElement;
-      const tag = active?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
-      if (active instanceof HTMLElement && active.isContentEditable) return;
+    const doc = this.containerEl.ownerDocument;
+    const win = doc.defaultView ?? window;
+    this.navKeyDoc = doc;
+    this.navKeyWin = win;
+    // Obsidian/Electron 会把「裸方向键」用于组件焦点导航，事件在到达 JS 前就被消费
+    // （实测 window/document 捕获与 keyup 均收不到），插件无法截获；因此这里主要
+    // 承接 PageUp/PageDown 与 Alt+方向键，方向键分支只在未被系统拦截的环境生效。
+    const handle = (phase: "keydown" | "keyup") => (e: KeyboardEvent) => {
+      const id = `${e.code || e.key}|${e.altKey ? "alt" : ""}`;
+      if (phase === "keyup") {
+        const at = this.navKeyDownAt.get(id);
+        if (at != null && Date.now() - at < 500) return; // keydown 已处理，避免翻两页
+      }
+      if (isTextEntryTarget(doc)) return;
       if (!this.containerEl.isShown()) return;
       if (this.app.workspace.getActiveViewOfType(EpubReaderView) !== this) return;
-      this.handleNavKey(e);
+      if (!this.handleNavKey(e)) return;
+      if (phase === "keydown") this.navKeyDownAt.set(id, Date.now());
+      e.stopPropagation();
     };
-    document.addEventListener("keydown", this.keydownHandler);
+    this.keydownHandler = handle("keydown");
+    this.keyupHandler = handle("keyup");
+    win.addEventListener("keydown", this.keydownHandler, { capture: true });
+    doc.addEventListener("keydown", this.keydownHandler, { capture: true });
+    win.addEventListener("keyup", this.keyupHandler, { capture: true });
+    doc.addEventListener("keyup", this.keyupHandler, { capture: true });
   }
 
   private cssVar(name: string, fallback: string): string {
@@ -2526,6 +2760,7 @@ export class EpubReaderView extends FileView {
       const label = li.createEl("span", { cls: "epub-toc-label", text: itemLabel });
       label.addEventListener("click", () => {
         this.cancelEdgeTapTurn();
+        this.rememberLocationBeforeJump();
         this.blockProgressSave = false;
         this.isBookInitializing = false;
         this.currentChapter = tocKey;
@@ -2903,8 +3138,11 @@ export class EpubReaderView extends FileView {
     }
 
     const rects = Array.from(range.getClientRects());
+    // 图片的选区 rect 只有一行文字高（视觉上是一条长条），改由整图外框覆盖
+    const imageRects = this.selectionImageRects(contentDoc, range);
     for (const r of rects) {
       if (r.width <= 0 || r.height <= 0) continue;
+      if (rectInsideImage(r, imageRects)) continue;
       // 选中 rect 常为整行高，fit 到与标注相同的行高占比，避免行间重叠
       const boxRect = fitHighlightRect(r, range);
       const box = document.createElement("div");
@@ -2920,6 +3158,20 @@ export class EpubReaderView extends FileView {
       host.appendChild(box);
     }
 
+    for (const imageRect of imageRects) {
+      const box = document.createElement("div");
+      box.className = "epub-selection-overlay-box";
+      box.setCssProps({
+        left: `${iframeRect.left + imageRect.left}px`,
+        top: `${iframeRect.top + imageRect.top}px`,
+        width: `${imageRect.width}px`,
+        height: `${imageRect.height}px`,
+        background: fill,
+        mixBlendMode: blend,
+      });
+      host.appendChild(box);
+    }
+
     if (!host.childElementCount) {
       if (!this.contextMenu) this.clearSelectionOverlay();
       return;
@@ -2927,6 +3179,22 @@ export class EpubReaderView extends FileView {
 
     contentDoc.documentElement.classList.add("epub-has-selection-overlay");
     this.selectionOverlayDoc = contentDoc;
+  }
+
+  /** 与选区相关的图片的完整外框（iframe 视口坐标） */
+  private selectionImageRects(doc: Document, range: Range): Array<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }> {
+    const rects: Array<{ left: number; top: number; width: number; height: number }> = [];
+    for (const img of relatedSelectionImages(doc, range)) {
+      const rect = img.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      rects.push({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    }
+    return rects;
   }
 
   private clearSelectionOverlay() {
@@ -3079,10 +3347,59 @@ export class EpubReaderView extends FileView {
   private syncAllDisplayedHighlights() {
     for (const view of this.getDisplayedViews()) {
       this.syncViewHighlights(view);
+      this.paintImageHighlightsForView(view);
     }
     requestAnimationFrame(() => {
       this.syncAllNoteIcons();
     });
+  }
+
+  /**
+   * 保存后的标注：epub.js 只按选区矩形绘制，图片处仅一条线高。
+   * 这里按图片完整外框在正文文档内补一层覆盖块（随正文滚动/翻页自然对齐）。
+   */
+  private paintImageHighlightsForView(view: any) {
+    const contents = view?.contents;
+    const doc: Document | undefined = contents?.document;
+    if (!doc?.body) return;
+
+    doc.querySelectorAll(`[data-${IMAGE_HIGHLIGHT_MARK}]`).forEach((el) => el.remove());
+    if (!this.annotationsEnabled()) return;
+
+    const opacity = clampHighlightOpacity(this.settings.epubHighlightOpacity);
+    const blend = this.highlightBlendMode();
+    const scrollX = contents?.window?.scrollX ?? 0;
+    const scrollY = contents?.window?.scrollY ?? 0;
+
+    for (const ann of this.cachedHighlights) {
+      let range: Range | null = null;
+      try {
+        range = contents.range?.(ann.cfiRange) ?? null;
+      } catch {
+        range = null;
+      }
+      if (!range) continue;
+
+      const color = colorHex(ann.color);
+      for (const rect of this.selectionImageRects(doc, range)) {
+        const box = doc.createElement("div");
+        box.setAttribute(`data-${IMAGE_HIGHLIGHT_MARK}`, ann.cfiRange);
+        box.setCssProps({
+          position: "absolute",
+          left: `${rect.left + scrollX}px`,
+          top: `${rect.top + scrollY}px`,
+          width: `${rect.width}px`,
+          height: `${rect.height}px`,
+          backgroundColor: color,
+          opacity: `${opacity}`,
+          mixBlendMode: blend,
+          borderRadius: "3px",
+          pointerEvents: "none",
+          zIndex: "1",
+        });
+        doc.body.appendChild(box);
+      }
+    }
   }
 
   private scheduleHighlightSync() {
@@ -3303,6 +3620,7 @@ export class EpubReaderView extends FileView {
     } catch {
       /* ignore */
     }
+    this.scheduleHighlightSync();
   }
 
   /** Clear orphaned marks-pane SVG layers not tracked in epub.js store. */
@@ -3447,11 +3765,13 @@ export class EpubReaderView extends FileView {
   private async copySelectionAsExcerpt(color: HighlightColor = "yellow") {
     if (!this.selectedCfi || !this.selectedText) return;
 
+    const images = await this.saveSelectionImagesToVault(this.selectedImages);
     const ann: Annotation = {
       id: "copy-preview",
       cfiRange: this.selectedCfi,
       text: this.selectedText,
       color,
+      images: images.length > 0 ? images : undefined,
       chapter: this.resolveChapterForCfi(this.selectedCfi),
       created: new Date().toISOString(),
     };
@@ -3474,11 +3794,13 @@ export class EpubReaderView extends FileView {
       annToCopy = { ...existing, color };
       await this.refreshHighlightsAfterMutation();
     } else {
+      const images = await this.saveSelectionImagesToVault(this.selectedImages);
       const ann: Annotation = {
         id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
         cfiRange: this.selectedCfi,
         text: this.selectedText,
         color,
+        images: images.length > 0 ? images : undefined,
         chapter: this.resolveChapterForCfi(this.selectedCfi),
         created: new Date().toISOString(),
       };
@@ -3510,6 +3832,7 @@ export class EpubReaderView extends FileView {
     const cfiRange = this.selectedCfi;
     const text = this.selectedText;
     const chapter = this.resolveChapterForCfi(cfiRange);
+    const capturedImages = [...this.selectedImages];
 
     new NoteInputModal(
       this.app,
@@ -3517,6 +3840,7 @@ export class EpubReaderView extends FileView {
       this.resolvedNoteTypes,
       { color: "yellow" },
       async ({ note, color, noteType }) => {
+        const images = await this.saveSelectionImagesToVault(capturedImages);
         const ann: Annotation = {
           id: `ann-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
           cfiRange,
@@ -3524,6 +3848,7 @@ export class EpubReaderView extends FileView {
           color,
           note: note || undefined,
           noteType: note ? noteType : undefined,
+          images: images.length > 0 ? images : undefined,
           chapter,
           created: new Date().toISOString(),
         };
@@ -3546,6 +3871,81 @@ export class EpubReaderView extends FileView {
     }
     this.selectedText = "";
     this.selectedCfi = "";
+    this.selectedImages = [];
+  }
+
+  /** 选区相关的图片（采集与覆盖层共用同一套判定） */
+  private collectSelectionImages(contents: {
+    window?: Window;
+    document?: Document;
+  } | null): Array<{ src: string; alt: string }> {
+    const win = contents?.window;
+    const doc = contents?.document;
+    if (!win || !doc) return [];
+    const sel = win.getSelection?.();
+    if (!sel || sel.rangeCount === 0) return [];
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) return [];
+
+    const images: Array<{ src: string; alt: string }> = [];
+    const seen = new Set<string>();
+    for (const img of relatedSelectionImages(doc, range)) {
+      const src = img.currentSrc || img.src;
+      if (!src || seen.has(src)) continue;
+      seen.add(src);
+      images.push({ src, alt: img.getAttribute("alt") ?? "" });
+    }
+    return images;
+  }
+
+  /**
+   * 把选区图片写入 `{摘录文件夹}/images/{书名}/`，返回库内相对路径（供 `![[...]]`）。
+   * 文件名取内容哈希，同一图片重复摘录不会重复落盘。
+   */
+  private async saveSelectionImagesToVault(
+    images: Array<{ src: string; alt: string }>
+  ): Promise<string[]> {
+    if (!this.file || images.length === 0) return [];
+    const folder = resolveExcerptFolder(this.settings.excerptFolder, this.file.path);
+    const basename = this.file.path.split("/").pop() ?? "";
+    const bookTitle = sanitizePathSegment(basename.replace(/\.epub$/i, "").trim()) || "book";
+    const dir = normalizePath(`${folder}/images/${bookTitle}`);
+
+    const saved: string[] = [];
+    for (const image of images) {
+      try {
+        const response = await fetch(image.src);
+        const blob = await response.blob();
+        if (!blob.size) continue;
+        const buffer = await blob.arrayBuffer();
+        const ext = excerptImageExtension(blob.type, image.src);
+        const name = `img-${await shortContentHash(buffer)}.${ext}`;
+        const path = normalizePath(`${dir}/${name}`);
+        if (!this.app.vault.getAbstractFileByPath(path)) {
+          await this.ensureFolder(dir);
+          await this.app.vault.createBinary(path, buffer);
+        }
+        if (!saved.includes(path)) saved.push(path);
+      } catch (err) {
+        console.warn("ob-epub: 保存摘录图片失败", err);
+      }
+    }
+    return saved;
+  }
+
+  /** 逐级创建目录（vault.createFolder 不保证递归） */
+  private async ensureFolder(folder: string): Promise<void> {
+    const segments = normalizePath(folder).split("/").filter(Boolean);
+    let current = "";
+    for (const segment of segments) {
+      current = current ? `${current}/${segment}` : segment;
+      if (this.app.vault.getAbstractFileByPath(current)) continue;
+      try {
+        await this.app.vault.createFolder(current);
+      } catch {
+        /* 并发创建或已存在，忽略 */
+      }
+    }
   }
 
   private showAnnotationMenu(ann: Annotation) {

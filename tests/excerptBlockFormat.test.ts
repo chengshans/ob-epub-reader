@@ -190,4 +190,30 @@ describe("excerptBlockFormat English aliases", () => {
     const parsed = parseExcerptChunk(zhChunk, EPUB_SOURCE, noteTypes());
     expect(parsed?.text).toBe("正文");
   });
+
+  it("appends image embeds and keeps them out of excerpt text", () => {
+    const images = ["epub-books/anno/images/苦论/img-0123456789abcdef.png"];
+    const ann = sampleAnn({ images });
+
+    for (const format of ["callout-title", "plain-text"] as SourceLinkFormat[]) {
+      const built = buildExcerptBlock(ann, EPUB_SOURCE, format, formatDate);
+      expect(built).toContain(`![[${images[0]}]]`);
+
+      const parsed = parseExcerptChunk(built, EPUB_SOURCE, noteTypes());
+      expect(parsed?.images).toEqual(images);
+      expect(parsed?.text).toBe(TEXT);
+      expect(parsed?.note).toBeUndefined();
+    }
+  });
+
+  it("keeps image embeds separate from the note body", () => {
+    const images = ["epub-books/anno/images/苦论/img-0123456789abcdef.png"];
+    const ann = sampleAnn({ images, note: "自己的批注", noteType: "question" });
+    const built = buildExcerptBlock(ann, EPUB_SOURCE, "callout-title", formatDate);
+
+    const parsed = parseExcerptChunk(built, EPUB_SOURCE, noteTypes());
+    expect(parsed?.images).toEqual(images);
+    expect(parsed?.note).toBe("自己的批注");
+    expect(parsed?.noteType).toBe("question");
+  });
 });

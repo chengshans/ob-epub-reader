@@ -32,6 +32,7 @@ Read EPUB ebooks inside Obsidian with a built-in reader, margin notes, vault exc
 - **Copy and highlight** — Color dots copy excerpts; with annotations off, dots copy only (optional color); split-view co-reading can auto-insert into the recently edited Markdown note
 - **Five note types** — Note, Inspiration, Practice, Revisit, Question; labels and icons are configurable in settings
 - **Excerpt export** — Annotations sync to Markdown excerpt files with five configurable excerpt link formats (including **plain text** — selected passage only, ideal for copying elsewhere); excerpt folder and filename support `{filefolder}`, `{title}`, `{filenameNoExt}`, and `{filename}` placeholders
+- **Excerpt images** — Images covered by the selection, plus images inside the same paragraph/`figure` as the selection, are saved to `{excerpt folder}/images/{book title}/` and embedded at the end of the excerpt block via `![[...]]`; files are named by content hash, so re-excerpting the same image never duplicates it, and highlights covering an image tint the whole image
 - **Deep links** — Wiki links `#cfi=...` jump from excerpts to the EPUB passage; legacy `obsidian://ob-epub-goto` URLs and old block-ref formats are auto-migrated
 - **Reading settings panel** — Toolbar ⚙ popover: font size slider, body font, side margins, six reading themes, highlight opacity, auto-paste toggle
 - **Body fonts** — Heiti / Songti / Kaiti / FangSong / Yuanti, Source Han, LXGW WenKai, and more; downloadable fonts are cached on demand; import local font files from settings

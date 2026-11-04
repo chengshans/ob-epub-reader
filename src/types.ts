@@ -746,6 +746,8 @@ export interface Annotation {
   color: HighlightColor;
   note?: string;
   noteType?: NoteType;
+  /** 摘录时随文保存到库内的图片路径（相对库根，用于 `![[...]]` 引用） */
+  images?: string[];
   chapter: string;
   created: string;
 }

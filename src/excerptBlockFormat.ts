@@ -207,26 +207,60 @@ function buildPlainTextBlock(ann: Annotation): string {
   return parts.join("\n");
 }
 
+/** 摘录块末尾的图片嵌入行（`![[路径]]`，callout 内可能带 `> ` 前缀） */
+const IMAGE_EMBED_LINE_RE = /^>?\s*!\[\[([^\]\n]+)\]\]$/;
+
+export function extractImageEmbedPaths(text: string): string[] {
+  const paths: string[] = [];
+  for (const line of text.split("\n")) {
+    const match = line.trim().match(IMAGE_EMBED_LINE_RE);
+    const path = match?.[1]?.trim();
+    if (path && !paths.includes(path)) paths.push(path);
+  }
+  return paths;
+}
+
+function stripImageEmbedLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !IMAGE_EMBED_LINE_RE.test(line.trim()))
+    .join("\n")
+    .trim();
+}
+
+function appendImageSection(block: string, ann: Annotation): string {
+  const images = ann.images ?? [];
+  if (images.length === 0) return block;
+  return `${block}\n\n${images.map((path) => `![[${path}]]`).join("\n")}`;
+}
+
 export function buildExcerptBlock(
   ann: Annotation,
   epubPath: string,
   format: SourceLinkFormat,
   formatDate: (date: Date) => string
 ): string {
+  let block: string;
   switch (format) {
     case "callout-title":
-      return buildCalloutBlock(ann, epubPath, formatDate);
+      block = buildCalloutBlock(ann, epubPath, formatDate);
+      break;
     case "inline-suffix":
-      return buildInlineSuffixBlock(ann, epubPath);
+      block = buildInlineSuffixBlock(ann, epubPath);
+      break;
     case "inline-colored":
-      return buildInlineColoredBlock(ann, epubPath);
+      block = buildInlineColoredBlock(ann, epubPath);
+      break;
     case "wiki-text-alias":
-      return buildWikiTextAliasBlock(ann, epubPath);
+      block = buildWikiTextAliasBlock(ann, epubPath);
+      break;
     case "plain-text":
-      return buildPlainTextBlock(ann);
+      block = buildPlainTextBlock(ann);
+      break;
     default:
-      return buildCalloutBlock(ann, epubPath, formatDate);
+      block = buildCalloutBlock(ann, epubPath, formatDate);
   }
+  return appendImageSection(block, ann);
 }
 
 interface ParsedNote {
@@ -540,21 +574,26 @@ export function parseExcerptChunk(
   const defaultColor = options?.defaultColor ?? DEFAULT_EXCERPT_HIGHLIGHT_COLOR;
 
   const callout = parseCalloutChunk(trimmed, noteTypes);
-  if (callout) return callout;
-
   const wikiAlias = parseWikiTextAliasChunk(trimmed, noteTypes, defaultColor);
-  if (wikiAlias) return wikiAlias;
-
   const colored = parseInlineColoredChunk(trimmed, noteTypes, defaultColor);
-  if (colored) return colored;
-
   const inline = parseInlineSuffixChunk(trimmed, noteTypes, defaultColor);
-  if (inline) return inline;
-
   const plain = parsePlainTextChunk(trimmed, noteTypes, defaultColor);
-  if (plain) return plain;
+  const ann = callout ?? wikiAlias ?? colored ?? inline ?? plain;
+  if (!ann) return null;
 
-  return null;
+  const images = extractImageEmbedPaths(trimmed);
+  if (images.length > 0) {
+    ann.images = images;
+    const cleanedText = stripImageEmbedLines(ann.text);
+    ann.text = cleanedText;
+    if (ann.note) {
+      const cleanedNote = stripImageEmbedLines(ann.note);
+      ann.note = cleanedNote || undefined;
+      if (!ann.note) ann.noteType = undefined;
+    }
+  }
+
+  return ann;
 }
 
 export function isChunkInCurrentFormat(

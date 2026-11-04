@@ -113,8 +113,13 @@ export function buildLooseExcerptNameRegex(template: string): RegExp {
 /** Default excerpt filename pattern (`《{title}》摘录.md`). */
 export const EXCERPT_MD_NAME_RE = buildLooseExcerptNameRegex(DEFAULT_EXCERPT_FILENAME);
 
-function sanitizeExcerptFilename(name: string): string {
+/** 替换文件名/目录名中的非法字符（Windows 与 Obsidian 均不接受） */
+export function sanitizePathSegment(name: string): string {
   return name.replace(/[/\\:*?"<>|]/g, "_");
+}
+
+function sanitizeExcerptFilename(name: string): string {
+  return sanitizePathSegment(name);
 }
 
 export function resolveExcerptFilename(
