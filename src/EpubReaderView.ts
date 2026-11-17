@@ -1,4 +1,4 @@
-import { FileView, Notice, TFile, WorkspaceLeaf, normalizePath, setIcon } from "obsidian";
+import { FileView, Notice, Platform, TFile, WorkspaceLeaf, normalizePath, setIcon } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
 import { BookmarkStore } from "./BookmarkStore";
@@ -822,6 +822,23 @@ export class EpubReaderView extends FileView {
     const nextBtn = toolbar.createEl("button", { cls: "epub-toolbar-btn", text: "▶" });
     nextBtn.title = t("reader.toolbar.nextPage");
     nextBtn.addEventListener("click", () => this.turnPage("next"));
+
+    // 跳转历史后退/前进（桌面快捷键 Alt+←/→ 的可视化入口，触屏无键盘时的替代）
+    const historyBackBtn = toolbar.createEl("button", {
+      cls: "epub-toolbar-btn",
+      attr: { type: "button", "aria-label": t("reader.toolbar.historyBack") },
+    });
+    setIcon(historyBackBtn, "undo-2");
+    historyBackBtn.title = t("reader.toolbar.historyBack");
+    historyBackBtn.addEventListener("click", () => void this.goBackInHistory());
+
+    const historyForwardBtn = toolbar.createEl("button", {
+      cls: "epub-toolbar-btn",
+      attr: { type: "button", "aria-label": t("reader.toolbar.historyForward") },
+    });
+    setIcon(historyForwardBtn, "redo-2");
+    historyForwardBtn.title = t("reader.toolbar.historyForward");
+    historyForwardBtn.addEventListener("click", () => void this.goForwardInHistory());
   }
 
   private registerWorkspaceLayoutHandlers(): void {
@@ -1651,6 +1668,11 @@ export class EpubReaderView extends FileView {
     try {
       const arrayBuffer = await this.app.vault.adapter.readBinary(file.path);
       if (this.isBookSessionStale(generation)) return;
+      // 移动端 WKWebView 有 jetsam 内存上限，EPUB 会整本解压进内存，
+      // 超大文件（如漫画/扫描版）可能被系统回收，提前提示用户
+      if (Platform.isMobile && file.stat.size > 100 * 1024 * 1024) {
+        new Notice(t("notice.largeFileMobile"), 8000);
+      }
       this.book = ePub(arrayBuffer as ArrayBuffer);
 
       await this.book.ready;
@@ -1984,6 +2006,12 @@ export class EpubReaderView extends FileView {
     );
 
     doc.addEventListener("keydown", (e: KeyboardEvent) => this.handleNavKey(e));
+
+    // iOS WKWebView：长按/选词会同时弹出原生菜单与自绘选区菜单，移动端拦截
+    // contextmenu 抑制原生菜单；桌面右键行为不变
+    if (Platform.isMobile) {
+      doc.addEventListener("contextmenu", (e: MouseEvent) => e.preventDefault());
+    }
 
     // 内容内链接（脚注、章内锚点）由 epub.js 自行 display，捕获阶段先记录当前位置，
     // 这样才能用 Alt+← 回到点击链接前的那一页。
@@ -2386,6 +2414,10 @@ export class EpubReaderView extends FileView {
       "*": {
         "-webkit-user-select": "text !important",
         "user-select": "text !important",
+        // 触屏（iOS WKWebView）：禁用长按链接/图片时弹出的原生 callout 与点击高亮，
+        // 避免与自绘选区菜单/标注覆盖层双重呼出（issue #16 移动端适配）
+        "-webkit-touch-callout": "none !important",
+        "-webkit-tap-highlight-color": "transparent !important",
       },
       // 原生选区透明，高亮由 selection overlay 统一绘制
       // 注意：不要加 ::-moz-selection，Chromium 的 insertRule 会抛 SyntaxError（每次加载刷屏）

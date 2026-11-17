@@ -67,6 +67,9 @@ a.ob-epub-goto-link {
   overflow: hidden;
   background: var(--background-primary);
   color: var(--text-normal);
+  /* 刘海屏/圆角屏（如 iPhone 横屏）左右安全区；无刘海环境 env() 求值为 0，无影响 */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 .ob-epub-container.is-toolbar-bottom > .epub-toolbar,

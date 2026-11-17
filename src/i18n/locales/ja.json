@@ -42,7 +42,8 @@
     "insertedAndCopied": "「{{name}}」に挿入し、抜粋をコピーしました",
     "readingModeCopied": "対象ノートは閲覧モードです。クリップボードにコピーしました",
     "copiedExcerpt": "抜粋をコピーしました",
-    "exportDone": "抜粋のエクスポートを保存しました"
+    "exportDone": "抜粋のエクスポートを保存しました",
+    "largeFileMobile": "このEPUBは非常に大きいため、モバイルではメモリ制限により開けない場合があります。"
   },
   "bookshelf": {
     "title": "EPUB 本棚",
@@ -81,6 +82,8 @@
       "toggleFlow": "閲覧モードの切替",
       "prevPage": "前のページ",
       "nextPage": "次のページ",
+      "historyBack": "ジャンプ履歴に戻る",
+      "historyForward": "ジャンプ履歴へ進む",
       "highlight": "ハイライト",
       "highlightOpacity": "ハイライトの不透明度",
       "highlightOpacityPercent": "ハイライトの不透明度 {{percent}}%",

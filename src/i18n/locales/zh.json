@@ -42,7 +42,8 @@
     "insertedAndCopied": "已插入《{{name}}》并复制摘录",
     "readingModeCopied": "目标笔记处于阅读模式，已复制到剪贴板",
     "copiedExcerpt": "已复制摘录",
-    "exportDone": "摘录导出已保存"
+    "exportDone": "摘录导出已保存",
+    "largeFileMobile": "EPUB 文件过大，移动端可能因内存限制而打开失败。"
   },
   "bookshelf": {
     "title": "EPUB 书架",
@@ -81,6 +82,8 @@
       "toggleFlow": "切换阅读模式",
       "prevPage": "上一页",
       "nextPage": "下一页",
+      "historyBack": "后退到上一个跳转位置",
+      "historyForward": "前进到下一个跳转位置",
       "highlight": "高亮",
       "highlightOpacity": "高亮透明度",
       "highlightOpacityPercent": "高亮透明度 {{percent}}%",

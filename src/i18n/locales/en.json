@@ -42,7 +42,8 @@
     "insertedAndCopied": "Inserted into «{{name}}» and copied excerpt",
     "readingModeCopied": "Target note is in reading mode; copied to clipboard",
     "copiedExcerpt": "Excerpt copied",
-    "exportDone": "Excerpt export saved"
+    "exportDone": "Excerpt export saved",
+    "largeFileMobile": "This EPUB is very large and may fail to open on mobile due to memory limits."
   },
   "bookshelf": {
     "title": "EPUB bookshelf",
@@ -81,6 +82,8 @@
       "toggleFlow": "Toggle reading mode",
       "prevPage": "Previous page",
       "nextPage": "Next page",
+      "historyBack": "Go back in jump history",
+      "historyForward": "Go forward in jump history",
       "highlight": "Highlight",
       "highlightOpacity": "Highlight opacity",
       "highlightOpacityPercent": "Highlight opacity {{percent}}%",

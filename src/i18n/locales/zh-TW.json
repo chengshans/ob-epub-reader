@@ -42,7 +42,8 @@
     "insertedAndCopied": "已插入《{{name}}》並複製摘錄",
     "readingModeCopied": "目標筆記處於閱讀模式，已複製到剪貼簿",
     "copiedExcerpt": "已複製摘錄",
-    "exportDone": "摘錄匯出已儲存"
+    "exportDone": "摘錄匯出已儲存",
+    "largeFileMobile": "EPUB 檔案過大，行動裝置可能因記憶體限制而開啟失敗。"
   },
   "bookshelf": {
     "title": "EPUB 書架",
@@ -81,6 +82,8 @@
       "toggleFlow": "切換閱讀模式",
       "prevPage": "上一頁",
       "nextPage": "下一頁",
+      "historyBack": "後退到上一個跳轉位置",
+      "historyForward": "前進到下一個跳轉位置",
       "highlight": "高亮",
       "highlightOpacity": "高亮透明度",
       "highlightOpacityPercent": "高亮透明度 {{percent}}%",
