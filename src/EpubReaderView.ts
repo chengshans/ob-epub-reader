@@ -2409,7 +2409,11 @@ export class EpubReaderView extends FileView {
       `${root} [class]{max-width:none !important;margin-left:0 !important;margin-right:0 !important;width:100% !important;box-sizing:border-box !important}`,
       `${root} [style*="max-width"]{max-width:none !important}`,
       `${root} table{max-width:100% !important;width:100% !important}`,
-      `${root} img,${root} svg,${root} video{max-width:100% !important;width:auto !important;height:auto !important}`
+      `${root} img,${root} svg,${root} video{max-width:100% !important;width:auto !important;height:auto !important}`,
+      // 上面 [class] 的 width:100% 特异性 (0,2,2) 高于媒体自保规则 (0,1,3)，会把带
+      // class 的 img/svg 拉满列宽，小图与装饰图被拉伸（issue #15）。追加同属性
+      // 选择器 (0,2,3) 恢复固有尺寸；超大图仍由 max-width:100% 钳制到列宽。
+      `${root} img[class],${root} svg[class],${root} video[class],${root} canvas[class]{max-width:100% !important;width:auto !important;height:auto !important}`
     );
   }
 
