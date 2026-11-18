@@ -207,9 +207,38 @@ export function sanitizeIframeHtml(html: string): string {
   return stripTagsFromHtml(html, /script|iframe|object|embed/i, true);
 }
 
+/**
+ * iOS WKWebView（WebKit bug 218086）：sandbox iframe 必须携带 allow-scripts 才能接收
+ * 宿主页面注入的事件监听回调（epub.js 的 selectionchange → selected 事件、链接
+ * onclick 全依赖于此），打开 allow-scripts 后用此 CSP meta 在章节文档内部禁掉一切
+ * 脚本执行（内联事件属性、javascript: URL、外部脚本），补齐 sandbox 原本承担的防线。
+ */
+const SCRIPT_BLOCKING_CSP_META =
+  '<meta http-equiv="Content-Security-Policy" content="script-src \'none\'">';
+
+/** Spine serialize: inject script-blocking CSP meta as the first head child. */
+export function injectScriptBlockingCsp(html: string): string {
+  if (html.includes(SCRIPT_BLOCKING_CSP_META)) return html;
+  const head = /<head\b[^>]*>/i.exec(html);
+  if (head) {
+    const at = head.index + head[0].length;
+    return `${html.slice(0, at)}${SCRIPT_BLOCKING_CSP_META}${html.slice(at)}`;
+  }
+  const htmlTag = /<html\b[^>]*>/i.exec(html);
+  if (htmlTag) {
+    const at = htmlTag.index + htmlTag[0].length;
+    return `${html.slice(0, at)}<head>${SCRIPT_BLOCKING_CSP_META}</head>${html.slice(at)}`;
+  }
+  // 无 html/head 的片段：HTML 解析器会自动把 meta 归入隐式 head，CSP 依然生效
+  return `${SCRIPT_BLOCKING_CSP_META}${html}`;
+}
+
 /** Spine serialize hook: minimal strip + inline blob/data stylesheets (no XMLSerializer). */
 export async function prepareSectionHtmlForSpine(html: string): Promise<string> {
-  return inlineStylesheetLinksInHtml(expandSelfClosingTags(stripExecutableFromHtml(html)));
+  const prepared = await inlineStylesheetLinksInHtml(
+    expandSelfClosingTags(stripExecutableFromHtml(html))
+  );
+  return injectScriptBlockingCsp(prepared);
 }
 
 /** @deprecated Use prepareSectionHtmlForSpine */

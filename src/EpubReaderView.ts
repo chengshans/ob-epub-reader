@@ -1734,7 +1734,11 @@ export class EpubReaderView extends FileView {
         flow: this.flow === "scrolled" ? "scrolled-doc" : "paginated",
         width: w,
         height: h,
-        allowScriptedContent: false,
+        // iOS WKWebView（WebKit bug 218086）会拦截宿主注入 sandbox（无 allow-scripts）
+        // iframe 的事件监听回调，导致移动端选区菜单、链接点击、触摸翻页全部失效；
+        // 桌面 Chromium 按规范放行所以无感。打开 allow-scripts 规避，章节内脚本安全
+        // 由 prepareSectionHtmlForSpine 注入的 CSP meta（script-src 'none'）兜底。
+        allowScriptedContent: true,
         ignoreClass: CFI_IGNORE_CLASSES,
       };
       if (this.isFixedLayout) {
