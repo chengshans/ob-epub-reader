@@ -1,5 +1,5 @@
 export type PageTurnGesture = "prev" | "next" | null;
-export type TouchGestureKind = "swipe" | "tap" | null;
+export type TouchGestureKind = "swipe" | "tap" | "menu" | null;
 
 export interface TouchGestureResult {
   direction: PageTurnGesture;
@@ -33,7 +33,8 @@ const SWIPE_AXIS_RATIO = 1.2;
 
 /**
  * 触屏手势 → 翻页方向。
- * 横向滑动优先；其次判定轻触左右边缘。垂直滑动、拖选、长按均返回 null。
+ * 横向滑动优先；其次判定轻触：左右边缘翻页，页面中间返回 kind="menu"
+ * （由宿主呼出/收起目录侧栏，issue #16）。垂直滑动、拖选、长按均返回 null。
  */
 export function resolveTouchPageTurn(input: TouchGestureInput): PageTurnGesture {
   return classifyTouchGesture(input).direction;
@@ -66,7 +67,8 @@ export function classifyTouchGesture(input: TouchGestureInput): TouchGestureResu
   if (ratio >= 1 - PAGE_TAP_EDGE_RATIO) {
     return { direction: input.rtl ? "prev" : "next", kind: "tap" };
   }
-  return { direction: null, kind: null };
+  // 轻触页面中间：呼出/收起目录（menu tap），不翻页
+  return { direction: null, kind: "menu" };
 }
 
 function flip(dir: Exclude<PageTurnGesture, null>): Exclude<PageTurnGesture, null> {

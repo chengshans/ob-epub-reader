@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PAGE_TAP_EDGE_RATIO, resolveTouchPageTurn } from "../src/pageTurnGesture";
+import {
+  PAGE_TAP_EDGE_RATIO,
+  resolveTouchPageTurn,
+  classifyTouchGesture,
+} from "../src/pageTurnGesture";
 
 const width = 1000;
 
@@ -23,6 +27,30 @@ describe("resolveTouchPageTurn tap zones", () => {
   it("ignores taps in the middle of the page", () => {
     expect(tap(width / 2)).toBeNull();
     expect(tap(width * PAGE_TAP_EDGE_RATIO + 1)).toBeNull();
+  });
+
+  it("menu tap：轻触页面中间返回 kind=menu（呼出目录，不翻页）", () => {
+    const input = {
+      startX: width / 2,
+      startY: 500,
+      endX: width / 2,
+      endY: 500,
+      elapsedMs: 80,
+      viewportWidth: width,
+    };
+    expect(classifyTouchGesture(input).kind).toBe("menu");
+    expect(classifyTouchGesture(input).direction).toBeNull();
+    // 边缘仍是翻页 tap
+    expect(
+      classifyTouchGesture({ ...input, startX: 5, endX: 5 }).kind
+    ).toBe("tap");
+    // 拖动/长按不会误触 menu
+    expect(
+      classifyTouchGesture({ ...input, endX: width / 2 + 30 }).kind
+    ).toBeNull();
+    expect(
+      classifyTouchGesture({ ...input, elapsedMs: 900 }).kind
+    ).toBeNull();
   });
 
   it("ignores long presses and drags", () => {

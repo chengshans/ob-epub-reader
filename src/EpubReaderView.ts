@@ -2209,6 +2209,7 @@ export class EpubReaderView extends FileView {
   /**
    * 触屏/手写笔：分页模式下轻触左右边缘或横向滑动翻页。
    * 鼠标不参与，避免影响桌面端点选文字；拖选文字或点中链接/标注时不翻页。
+   * 轻触页面中间（非边缘非链接/标注）→ 呼出/收起目录侧栏（issue #16）。
    */
   private attachTouchPageNavigation(contents: {
     document?: Document;
@@ -2270,11 +2271,15 @@ export class EpubReaderView extends FileView {
           viewportWidth: viewport.width,
           rtl: this.isRtlDirection(),
         });
-        if (!gesture.direction) return;
-        if (gesture.kind === "swipe") {
+        if (!gesture.direction && gesture.kind !== "menu") return;
+        if (gesture.kind === "swipe" && gesture.direction) {
           this.cancelEdgeTapTurn();
           this.turnPage(gesture.direction);
-        } else {
+        } else if (gesture.kind === "menu") {
+          // 轻触页面中间：呼出/收起目录侧栏（issue #16）
+          this.cancelEdgeTapTurn();
+          this.toggleToc();
+        } else if (gesture.direction) {
           this.scheduleEdgeTapTurn(gesture.direction);
         }
       },
