@@ -1521,12 +1521,25 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
-  opacity: 0.92;
+  /* 默认半透明减少对正文的遮挡感，按下/悬停变实 */
+  opacity: 0.55;
   cursor: pointer;
+  touch-action: none;
+  transition: opacity 0.15s ease;
 }
 
-.epub-mobile-toc-fab:hover {
+.epub-mobile-toc-fab:hover,
+.epub-mobile-toc-fab:active {
   opacity: 1;
+}
+
+/* 拖动换位后不再跟随底栏偏移，位置由内联 left/top 全权控制 */
+.epub-mobile-toc-fab.is-dragged {
+  opacity: 0.85;
+}
+
+.epub-mobile-toc-fab.is-hidden {
+  display: none;
 }
 
 .epub-mobile-toc-fab svg {
