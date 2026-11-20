@@ -1,4 +1,4 @@
-/* global window: readonly, document: readonly */
+/* global window: readonly, document: readonly -- eslint 配置未开 browser globals，浮球/拖拽依赖 window 尺寸与 document 坐标 */
 import { App, Modal, Setting } from "obsidian";
 import { t } from "./i18n/i18n";
 import {

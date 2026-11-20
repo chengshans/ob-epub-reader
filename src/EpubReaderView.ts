@@ -1,4 +1,4 @@
-/* global window: readonly, document: readonly */
+/* global window: readonly, document: readonly -- eslint 配置未开 browser globals，本文件直接操作 window/document（iframe 宿主、resize 监听等） */
 import { FileView, Notice, Platform, TFile, WorkspaceLeaf, normalizePath, setIcon } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";

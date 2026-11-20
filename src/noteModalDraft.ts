@@ -5,7 +5,7 @@
  * 会暂存到这里；下次打开同一批注（新建按 CFI、编辑按注释 id 作 key）
  * 时可恢复。直接用 localStorage 而非内存 Map，插件重载后草稿仍在。
  */
-/* global window: readonly */
+/* global window: readonly -- eslint 配置未开 browser globals，草稿存 localStorage 需要显式声明 window */
 
 export interface NoteDraftSnapshot {
   note: string;
