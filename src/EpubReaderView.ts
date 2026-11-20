@@ -318,8 +318,6 @@ export class EpubReaderView extends FileView {
   private searchRunning = false;
   private searchHighlightCfi: string | null = null;
   private pageBookmarkBadgeEl: HTMLElement | null = null;
-  /** 移动端悬浮目录按钮（FAB）：底栏入口在触屏上不好按，点按呼出/收起侧栏 */
-  private mobileTocFabEl: HTMLElement | null = null;
   private bookmarkToolbarBtn: HTMLElement | null = null;
   private isFixedLayout = false;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -954,13 +952,7 @@ export class EpubReaderView extends FileView {
     this.tocVisible = !this.tocVisible;
     // 用 CSS 类收起侧边栏，避免 toggleVisibility 在 flex 布局中仍占位
     this.sidebarEl?.toggleClass("is-collapsed", !this.tocVisible);
-    this.syncMobileTocFab();
     this.scheduleResizeRendition();
-  }
-
-  /** 侧栏展开时隐藏悬浮目录按钮（此时不需要呼出目录，也避免遮挡正文） */
-  private syncMobileTocFab() {
-    this.mobileTocFabEl?.toggleClass("is-hidden", this.tocVisible);
   }
 
   private setSidebarMode(mode: "toc" | "search" | "notes" | "bookmarks") {
@@ -1499,102 +1491,6 @@ export class EpubReaderView extends FileView {
       e.preventDefault();
       e.stopPropagation();
       void this.toggleBookmarkAtCurrentLocation();
-    });
-    this.ensureMobileTocFab();
-  }
-
-  /**
-   * 移动端悬浮目录按钮（issue #16）：底栏按钮小且贴边，触屏不易点中；
-   * 在阅读区右下角放一个大号 FAB，点按呼出/收起侧栏（目录）。
-   */
-  private ensureMobileTocFab(): void {
-    if (!Platform.isMobile) return;
-    if (!this.readerEl || this.mobileTocFabEl?.isConnected) return;
-    const fab = this.readerEl.createDiv({
-      cls: "epub-mobile-toc-fab",
-      attr: {
-        "aria-label": t("reader.toolbar.toggleToc"),
-      },
-    });
-    setIcon(fab, "list");
-    fab.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.toggleToc();
-    });
-    this.mobileTocFabEl = fab;
-    // FAB 可拖动：默认位置压住右下角文字时，用户可拖到不碍事的位置
-    this.enableFabDrag(fab);
-    this.syncMobileTocFab();
-  }
-
-  /** 拖动 FAB 换位；位移极小视为点击（点击由 click 事件处理，此处只管拖） */
-  private enableFabDrag(fab: HTMLElement) {
-    let startX = 0;
-    let startY = 0;
-    let baseLeft = 0;
-    let baseTop = 0;
-    let moved = false;
-    let dragging = false;
-    let pointerId = -1;
-    const FAB_SIZE = 44;
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (!e.isPrimary) return;
-      const rect = fab.getBoundingClientRect();
-      baseLeft = rect.left;
-      baseTop = rect.top;
-      startX = e.clientX;
-      startY = e.clientY;
-      moved = false;
-      dragging = true;
-      pointerId = e.pointerId;
-      try {
-        fab.setPointerCapture(e.pointerId);
-      } catch {
-        /* 部分环境不支持 capture，忽略 */
-      }
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!dragging || e.pointerId !== pointerId) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (Math.abs(dx) + Math.abs(dy) < 8) return;
-      moved = true;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const nextLeft = Math.min(Math.max(baseLeft + dx, 0), vw - FAB_SIZE);
-      const nextTop = Math.min(Math.max(baseTop + dy, 0), vh - FAB_SIZE);
-      fab.addClass("is-dragged");
-      fab.setCssProps({
-        left: `${nextLeft}px`,
-        top: `${nextTop}px`,
-        right: "auto",
-        bottom: "auto",
-      });
-    };
-
-    const onPointerUp = (e: PointerEvent) => {
-      if (e.pointerId !== pointerId) return;
-      dragging = false;
-      try {
-        fab.releasePointerCapture(e.pointerId);
-      } catch {
-        /* 已释放时忽略 */
-      }
-    };
-
-    fab.addEventListener("pointerdown", onPointerDown);
-    fab.addEventListener("pointermove", onPointerMove);
-    fab.addEventListener("pointerup", onPointerUp);
-    fab.addEventListener("pointercancel", onPointerUp);
-    // 拖动过的手势不触发 click（避免拖完顺手翻页/呼出目录）
-    fab.addEventListener("click", (e) => {
-      if (moved) {
-        e.stopImmediatePropagation();
-        moved = false;
-      }
     });
   }
 
