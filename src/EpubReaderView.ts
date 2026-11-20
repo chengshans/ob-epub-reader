@@ -4496,6 +4496,9 @@ export class EpubReaderView extends FileView {
 
   private renderNotesList(allList: Annotation[], filtered: Annotation[]) {
     if (!this.notesListEl) return;
+    // 保存/折叠等操作会整表重建 DOM，先记住滚动位置，重建后恢复，
+    // 避免编辑标注后列表跳回顶部、又要翻找刚才的位置（issue #17 反馈）
+    const savedScrollTop = this.notesListEl.scrollTop;
     this.notesListEl.empty();
 
     if (allList.length === 0) {
@@ -4517,6 +4520,7 @@ export class EpubReaderView extends FileView {
     const ul = this.notesListEl.createEl("ul", { cls: "epub-notes-list" });
     const tree = buildNotesChapterTree(this.tocItems, this.tocSpineEntries, filtered);
     this.renderNotesTreeNodes(ul, tree, 0);
+    this.notesListEl.scrollTop = savedScrollTop;
   }
 
   private renderNotesTreeNodes(container: HTMLElement, nodes: NotesTreeNode[], depth: number) {

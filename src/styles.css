@@ -843,11 +843,6 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
   list-style: none;
 }
 
-.epub-notes-chapter.is-current .epub-notes-chapter-head {
-  border-left: 3px solid var(--interactive-accent);
-  padding-left: 6px;
-}
-
 .epub-notes-chapter-head {
   display: flex;
   align-items: center;
@@ -856,6 +851,17 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
   cursor: pointer;
   border-radius: 6px;
   user-select: none;
+  /* 章节标题吸顶：向下滚动长列表时始终可见当前章节，可随时折叠
+     （issue #17 反馈；PC 与移动端统一生效） */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--background-primary);
+}
+
+.epub-notes-chapter.is-current .epub-notes-chapter-head {
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 6px;
 }
 
 .epub-notes-chapter-head:hover {
@@ -1401,7 +1407,7 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
 .epub-note-textarea {
   width: 100%;
   resize: vertical;
-  min-height: 120px;
+  min-height: 88px;
   font-size: 14px;
   line-height: 1.6;
   padding: 10px;
@@ -1409,6 +1415,11 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
   background: var(--background-primary);
   color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
+}
+
+/* 批注框整体紧凑化：限制宽度，避免默认 Modal 过宽显得空旷 */
+.epub-note-modal {
+  width: min(440px, 92vw);
 }
 
 /* ---- Note modal: drag handle & draft banner (issue #17) ---- */
