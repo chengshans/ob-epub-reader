@@ -32,12 +32,20 @@ export class Notice {
 
 export class Modal {
   app: App;
+  // 模拟真实 Obsidian 结构：modalEl 是卡片容器，contentEl 是其内容区
+  modalEl = document.createElement("div");
   contentEl = document.createElement("div");
   constructor(app: App) {
     this.app = app;
+    this.modalEl.appendChild(this.contentEl);
+    document.body.appendChild(this.modalEl);
   }
-  open() {}
-  close() {}
+  open() {
+    (this as unknown as { onOpen?: () => void }).onOpen?.();
+  }
+  close() {
+    (this as unknown as { onClose?: () => void }).onClose?.();
+  }
 }
 
 export class Plugin {

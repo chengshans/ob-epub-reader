@@ -179,7 +179,11 @@
       "editTitle": "編輯想法",
       "highlightColor": "畫線顏色",
       "noteType": "想法類型",
-      "placeholder": "在這裡寫下你的想法、疑問或聯想…"
+      "placeholder": "在這裡寫下你的想法、疑問或聯想…",
+      "draftFound": "發現未儲存的草稿",
+      "draftRecover": "恢復草稿",
+      "draftRestored": "已恢復上次未提交的內容",
+      "floatTip": "批註已最小化，點擊繼續寫"
     },
     "excerptCheck": {
       "title": "摘錄元數據檢查",

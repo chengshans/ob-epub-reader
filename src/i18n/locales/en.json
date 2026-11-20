@@ -179,7 +179,11 @@
       "editTitle": "Edit thought",
       "highlightColor": "Highlight color",
       "noteType": "Note type",
-      "placeholder": "Write your thoughts, questions, or associations here…"
+      "placeholder": "Write your thoughts, questions, or associations here…",
+      "draftFound": "Unsaved draft found",
+      "draftRecover": "Recover draft",
+      "draftRestored": "Draft restored from last time",
+      "floatTip": "Note minimized — click to continue writing"
     },
     "excerptCheck": {
       "title": "Excerpt metadata check",

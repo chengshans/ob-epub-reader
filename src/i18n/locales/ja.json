@@ -179,7 +179,11 @@
       "editTitle": "考えを編集",
       "highlightColor": "ハイライト色",
       "noteType": "考えのタイプ",
-      "placeholder": "ここに考え、疑問、連想を書いてください…"
+      "placeholder": "ここに考え、疑問、連想を書いてください…",
+      "draftFound": "未保存の下書きがあります",
+      "draftRecover": "下書きを復元",
+      "draftRestored": "前回未送信の内容を復元しました",
+      "floatTip": "最小化中 — クリックで続きを書く"
     },
     "excerptCheck": {
       "title": "抜粋メタデータの確認",

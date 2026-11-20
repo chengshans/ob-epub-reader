@@ -83,6 +83,8 @@ const SEARCH_HIGHLIGHT_TYPE = "highlight";
 const HIGHLIGHT_CLASS = "epub-user-highlight";
 const SEARCH_HIGHLIGHT_CLASS = "epub-search-hit";
 const NOTE_ICON_CLASS = "epub-note-icon";
+/** 批注编辑期间的临时高亮 id（issue #17：标示正在批注的位置） */
+const PENDING_NOTE_ID = "ob-epub-pending-note";
 /** 标注覆盖图片时补画的整图覆盖块（位于正文 iframe 文档内） */
 const IMAGE_HIGHLIGHT_MARK = "ob-epub-image-highlight";
 const CFI_IGNORE_CLASSES =
@@ -3577,7 +3579,7 @@ export class EpubReaderView extends FileView {
       this.app,
       ann.text,
       this.resolvedNoteTypes,
-      { note: ann.note, color: ann.color, noteType: ann.noteType },
+      { note: ann.note, color: ann.color, noteType: ann.noteType, draftKey: ann.id },
       async ({ note, color, noteType }) => {
         await this.annotationVaultStore.update(filePath, ann.id, {
           note: note || undefined,
@@ -3873,12 +3875,21 @@ export class EpubReaderView extends FileView {
     const text = this.selectedText;
     const chapter = this.resolveChapterForCfi(cfiRange);
     const capturedImages = [...this.selectedImages];
+    // 批注期间用默认高亮色画一条临时高亮，标示正在写批注的位置；
+    // 提交后会被正式颜色的画线覆盖，取消/放弃时移除
+    this.paintPendingNoteHighlight(cfiRange);
 
     new NoteInputModal(
       this.app,
       text,
       this.resolvedNoteTypes,
-      { color: "yellow" },
+      {
+        color: "yellow",
+        draftKey: cfiRange,
+        anchorPoint: this.getSelectionAnchorPoint(),
+        getAnchorPoint: () => this.getSelectionAnchorPoint(),
+        onDismiss: () => this.clearPendingNoteHighlight(),
+      },
       async ({ note, color, noteType }) => {
         const images = await this.saveSelectionImagesToVault(capturedImages);
         const ann: Annotation = {
@@ -3900,6 +3911,71 @@ export class EpubReaderView extends FileView {
       }
     ).open();
     this.clearSelection();
+  }
+
+  /** 选区在窗口中的位置，作为批注浮球的初始锚点；取不到时返回 null（吸附右缘） */
+  private getSelectionAnchorPoint(): { x: number; y: number } | null {
+    try {
+      // 优先取临时高亮元素的位置（批注期间始终存在，且随窗口变化自动重排）
+      const hlRect = this.getHighlightClientRect(this.pendingNoteCfi);
+      if (hlRect) {
+        return { x: hlRect.left + hlRect.width / 2, y: hlRect.top };
+      }
+      const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
+      const sel = iframe?.contentWindow?.getSelection?.();
+      if (sel && sel.rangeCount > 0) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        if (rect && (rect.width > 0 || rect.height > 0) && iframe) {
+          const frameRect = iframe.getBoundingClientRect();
+          return { x: frameRect.left + rect.left + rect.width / 2, y: frameRect.top + rect.top };
+        }
+      }
+    } catch (e) {
+      /* 跨域或选区失效时忽略 */
+    }
+    return null;
+  }
+
+  private pendingNoteCfi: string = "";
+
+  /** 批注编辑期间在划线处画默认色临时高亮（标示正在批注的位置） */
+  private paintPendingNoteHighlight(cfiRange: string) {
+    if (!this.rendition) return;
+    this.clearPendingNoteHighlight();
+    this.pendingNoteCfi = cfiRange;
+    try {
+      this.rendition.annotations.add(
+        ANNOTATION_TYPE,
+        cfiRange,
+        { id: PENDING_NOTE_ID },
+        undefined,
+        HIGHLIGHT_CLASS,
+        {
+          fill: colorHex("yellow"),
+          "fill-opacity": String(clampHighlightOpacity(this.settings.epubHighlightOpacity)),
+          "mix-blend-mode": this.highlightBlendMode(),
+        }
+      );
+    } catch (e) {
+      /* 画临时高亮失败不影响批注流程 */
+    }
+  }
+
+  /** 移除批注期间的临时高亮（提交后由正式画线覆盖，取消时直接移除） */
+  private clearPendingNoteHighlight() {
+    if (!this.pendingNoteCfi) return;
+    const cfi = this.pendingNoteCfi;
+    this.pendingNoteCfi = "";
+    if (!this.rendition) return;
+    try {
+      this.rendition.annotations.remove(cfi, ANNOTATION_TYPE);
+    } catch (e) {
+      /* ignore */
+    }
+    this.purgeViewHighlight(cfi);
+    // 该位置若已有正式标注（临时高亮与其同 CFI，会被一并移除），恢复其画线
+    const existing = this.cachedHighlights.find((a) => a.cfiRange === cfi);
+    if (existing) this.drawLine(existing);
   }
 
   private clearSelection() {
