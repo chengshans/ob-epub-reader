@@ -157,7 +157,8 @@
       "delete": "刪除",
       "empty": "暫無標註。選中文字後點擊顏色畫線或寫想法。",
       "noMatch": "沒有匹配的標註。",
-      "loadFailed": "標註加載失敗，請稍後重試。"
+      "loadFailed": "標註加載失敗，請稍後重試。",
+      "inlineEditPlaceholder": "直接編輯批註…"
     },
     "modal": {
       "editAnnotation": "編輯標註",

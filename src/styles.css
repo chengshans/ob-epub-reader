@@ -973,6 +973,49 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
   opacity: 1;
 }
 
+/* 侧栏内联批注编辑器：点击批注文字就地展开，不弹窗 */
+.epub-note-inline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.epub-note-inline-edit textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--interactive-accent);
+}
+
+.epub-note-inline-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.epub-note-inline-btn {
+  padding: 3px 12px;
+  font-size: 12px;
+  border-radius: 5px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.epub-note-inline-btn.is-primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
 .epub-note-action {
   background: var(--interactive-normal);
   color: var(--text-muted);

@@ -157,7 +157,8 @@
       "delete": "Delete",
       "empty": "No annotations yet. Select text and highlight or add a thought.",
       "noMatch": "No matching annotations.",
-      "loadFailed": "Failed to load annotations. Try again later."
+      "loadFailed": "Failed to load annotations. Try again later.",
+      "inlineEditPlaceholder": "Edit note inline…"
     },
     "modal": {
       "editAnnotation": "Edit annotation",

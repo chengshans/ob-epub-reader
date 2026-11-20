@@ -157,7 +157,8 @@
       "delete": "删除",
       "empty": "暂无标注。选中文字后点击颜色画线或写想法。",
       "noMatch": "没有匹配的标注。",
-      "loadFailed": "标注加载失败，请稍后重试。"
+      "loadFailed": "标注加载失败，请稍后重试。",
+      "inlineEditPlaceholder": "直接编辑批注…"
     },
     "modal": {
       "editAnnotation": "编辑标注",

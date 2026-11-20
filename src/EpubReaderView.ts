@@ -280,6 +280,8 @@ export class EpubReaderView extends FileView {
   private notesSearchInputEl: HTMLInputElement | null = null;
   private notesCollapseAllBtn: HTMLElement | null = null;
   private notesChapterCollapsed = new Set<string>();
+  /** 当前在侧栏内联编辑批注文字的标注 id（null = 无） */
+  private inlineNoteEditId: string | null = null;
   private isClosing = false;
 
   // Reading time tracking
@@ -4463,12 +4465,13 @@ export class EpubReaderView extends FileView {
   private renderNoteItem(parent: HTMLElement, ann: Annotation, query: string) {
     const li = parent.createEl("li", { cls: "epub-note-item is-clickable" });
     li.setAttr("data-ann-id", ann.id);
-    // 点击条目主体直接打开编辑器（issue #17 反馈：侧栏批注点击即编辑），
-    // 跳转正文改为独立按钮，避免想改批注时误触跳页
+    const jump = () => void this.navigateToCfi(ann.cfiRange);
+    // 点击批注文字 → 侧栏内联编辑（不弹窗）；点「编辑」按钮才走弹窗
+    //（可改颜色/想法类型）；点击章节行/原文 → 跳转正文位置
     const edit = () => this.openNoteEditor(ann, t("reader.modal.editAnnotation"), false);
 
     const head = li.createDiv({ cls: "epub-note-item-head" });
-    head.addEventListener("click", edit);
+    head.addEventListener("click", jump);
     const dot = head.createDiv({ cls: "epub-color-dot is-static" });
     dot.setAttribute("data-color", ann.color);
     head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
@@ -4482,12 +4485,16 @@ export class EpubReaderView extends FileView {
     const quoteText =
       ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text;
     const quote = li.createDiv({ cls: "epub-note-item-text" });
-    quote.addEventListener("click", edit);
+    quote.addEventListener("click", jump);
     this.appendHighlightedQuery(quote, quoteText, query);
 
-    if (ann.note) {
+    if (this.inlineNoteEditId === ann.id) {
+      this.renderInlineNoteEditor(li, ann);
+    } else if (ann.note) {
       const note = li.createDiv({ cls: "epub-note-item-note" });
-      note.addEventListener("click", edit);
+      note.addEventListener("click", () => {
+        this.startInlineNoteEdit(ann.id);
+      });
       this.appendHighlightedQuery(note, ann.note, query);
     }
 
@@ -4510,6 +4517,80 @@ export class EpubReaderView extends FileView {
       e.stopPropagation();
       this.confirmDeleteAnnotation(ann);
     });
+  }
+
+  /** 进入侧栏内联编辑批注文字（同一时刻只允许一条） */
+  private startInlineNoteEdit(annotationId: string) {
+    this.inlineNoteEditId = annotationId;
+    this.refreshNotesListView(this.cachedHighlights);
+  }
+
+  private cancelInlineNoteEdit() {
+    if (!this.inlineNoteEditId) return;
+    this.inlineNoteEditId = null;
+    this.refreshNotesListView(this.cachedHighlights);
+  }
+
+  private async saveInlineNoteEdit(ann: Annotation, text: string) {
+    if (!this.file) return;
+    const filePath = this.file.path;
+    const note = text.trim();
+    if (note === (ann.note ?? "").trim()) {
+      this.cancelInlineNoteEdit();
+      return;
+    }
+    await this.annotationVaultStore.update(filePath, ann.id, {
+      note: note || undefined,
+      noteType: note ? ann.noteType : undefined,
+      color: ann.color,
+    });
+    const updated = await this.annotationVaultStore.getById(filePath, ann.id);
+    if (updated) {
+      this.upsertCachedHighlight(updated);
+      this.redrawLine(updated);
+      if (!updated.note) this.removeNoteIcon(updated.cfiRange);
+    }
+    this.inlineNoteEditId = null;
+    void this.renderNotesPanel();
+    this.scrollNotesItemIntoView(ann.id);
+  }
+
+  /** 侧栏内联编辑器：textarea + 保存/取消，Esc 取消、Ctrl/Cmd+Enter 保存 */
+  private renderInlineNoteEditor(li: HTMLElement, ann: Annotation) {
+    const box = li.createDiv({ cls: "epub-note-inline-edit" });
+    const ta = box.createEl("textarea");
+    ta.value = ann.note ?? "";
+    ta.placeholder = t("reader.notes.inlineEditPlaceholder");
+    const actions = box.createDiv({ cls: "epub-note-inline-edit-actions" });
+    const cancelBtn = actions.createEl("button", {
+      cls: "epub-note-inline-btn",
+      text: t("modal.common.cancel"),
+    });
+    cancelBtn.addEventListener("click", () => this.cancelInlineNoteEdit());
+    const saveBtn = actions.createEl("button", {
+      cls: "epub-note-inline-btn is-primary",
+      text: t("modal.common.save"),
+    });
+    saveBtn.addEventListener("click", () => void this.saveInlineNoteEdit(ann, ta.value));
+
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.cancelInlineNoteEdit();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.saveInlineNoteEdit(ann, ta.value);
+      }
+      // 阻止按键冒泡到侧栏搜索等全局监听
+      e.stopPropagation();
+    });
+
+    window.setTimeout(() => {
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 30);
   }
 
   private renderNotesList(allList: Annotation[], filtered: Annotation[]) {
