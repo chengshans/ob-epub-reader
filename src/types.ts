@@ -551,7 +551,7 @@ export function getDefaultSettings(): EpubPluginSettings {
     letterSpacing: LETTER_SPACING_DEFAULT,
     readingTheme: "obsidian",
     noteIconSize: 20,
-    noteIconOffsetX: 2,
+    noteIconOffsetX: 14,
     noteIconOffsetY: 0,
     epubHighlightOpacity: 0.28,
     excerptCalloutOpacity: 0.2,
