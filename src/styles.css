@@ -72,6 +72,12 @@ a.ob-epub-goto-link {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* 移动端底部模式：工具栏/进度条挂在悬浮状态栏上，会盖住正文最后一行
+   （issue #16）。给阅读容器预留底栏高度 + iOS 底部安全区。 */
+body.is-mobile .ob-epub-container.is-toolbar-bottom {
+  padding-bottom: calc(var(--status-bar-height, 22px) + env(safe-area-inset-bottom, 0px));
+}
+
 .ob-epub-container.is-toolbar-bottom > .epub-toolbar,
 .ob-epub-container.is-toolbar-bottom > .epub-progress-bar-wrap {
   display: none;
@@ -1495,6 +1501,42 @@ a.ob-epub-goto-link {
   margin: 0 !important;
   /* 移动端窄屏保护：拖开后最宽不超过屏宽 */
   max-width: 100vw;
+}
+
+/* ---- Mobile: floating TOC button (FAB) & safe-area padding (issue #16) ---- */
+
+/* 阅读区右下角悬浮目录按钮：底栏在触屏上小且贴边，点按呼出/收起侧栏 */
+.epub-mobile-toc-fab {
+  position: absolute;
+  right: 14px;
+  /* 底部模式工具栏挂在悬浮状态栏上，避开底栏高度与 iOS 底部安全区 */
+  bottom: calc(var(--status-bar-height, 22px) + env(safe-area-inset-bottom, 0px) + 14px);
+  z-index: 30;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  opacity: 0.92;
+  cursor: pointer;
+}
+
+.epub-mobile-toc-fab:hover {
+  opacity: 1;
+}
+
+.epub-mobile-toc-fab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* 桌面端不显示（元素仅在移动端创建，这里兜底） */
+body:not(.is-mobile) .epub-mobile-toc-fab {
+  display: none;
 }
 
 /* ---- Bookshelf Sidebar (cover grid) ---- */

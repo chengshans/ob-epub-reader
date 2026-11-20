@@ -1,3 +1,4 @@
+/* global window: readonly, document: readonly */
 import { FileView, Notice, Platform, TFile, WorkspaceLeaf, normalizePath, setIcon } from "obsidian";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
 import { AnnotationVaultStore } from "./AnnotationVaultStore";
@@ -317,6 +318,8 @@ export class EpubReaderView extends FileView {
   private searchRunning = false;
   private searchHighlightCfi: string | null = null;
   private pageBookmarkBadgeEl: HTMLElement | null = null;
+  /** 移动端悬浮目录按钮（FAB）：底栏入口在触屏上不好按，点按呼出/收起侧栏 */
+  private mobileTocFabEl: HTMLElement | null = null;
   private bookmarkToolbarBtn: HTMLElement | null = null;
   private isFixedLayout = false;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -1491,6 +1494,29 @@ export class EpubReaderView extends FileView {
       e.stopPropagation();
       void this.toggleBookmarkAtCurrentLocation();
     });
+    this.ensureMobileTocFab();
+  }
+
+  /**
+   * 移动端悬浮目录按钮（issue #16）：底栏按钮小且贴边，触屏不易点中；
+   * 在阅读区右下角放一个大号 FAB，点按呼出/收起侧栏（目录）。
+   */
+  private ensureMobileTocFab(): void {
+    if (!Platform.isMobile) return;
+    if (!this.readerEl || this.mobileTocFabEl?.isConnected) return;
+    const fab = this.readerEl.createDiv({
+      cls: "epub-mobile-toc-fab",
+      attr: {
+        "aria-label": t("reader.toolbar.toggleToc"),
+      },
+    });
+    setIcon(fab, "list");
+    fab.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleToc();
+    });
+    this.mobileTocFabEl = fab;
   }
 
   private syncPageBookmarkIndicator(): void {
@@ -3259,12 +3285,28 @@ export class EpubReaderView extends FileView {
   private positionMenu(menu: HTMLElement, contents: any) {
     const iframe = this.readerEl?.querySelector("iframe") as HTMLIFrameElement | null;
     const sel = contents?.window?.getSelection?.();
+    const menuRect = menu.getBoundingClientRect();
+
+    // 移动端：iOS 系统长按菜单（拷贝/查询等）固定出现在选区旁，自绘菜单
+    // 贴着选区弹出必然与其重叠（issue #16）。统一钉到屏幕底部居中、
+    // 悬浮底栏上方，与原生菜单物理错开。
+    if (Platform.isMobile) {
+      menu.removeClass("is-centered");
+      const left = Math.max(8, (window.innerWidth - menuRect.width) / 2);
+      const top = Math.max(8, window.innerHeight - menuRect.height - 52);
+      menu.setCssProps({
+        top: `${top}px`,
+        left: `${left}px`,
+        transform: "",
+      });
+      return;
+    }
+
     if (sel && sel.rangeCount > 0 && iframe) {
       menu.removeClass("is-centered");
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const iframeRect = iframe.getBoundingClientRect();
-      const menuRect = menu.getBoundingClientRect();
       let top = iframeRect.top + rect.bottom + 6;
       let left = iframeRect.left + rect.left;
       const maxLeft = window.innerWidth - menuRect.width - 8;
