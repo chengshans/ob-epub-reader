@@ -3616,11 +3616,26 @@ export class EpubReaderView extends FileView {
             this.removeNoteIcon(updated.cfiRange);
           }
         }
-        if (this.sidebarMode === "notes") this.renderNotesPanel();
+        if (this.sidebarMode === "notes") {
+          this.renderNotesPanel();
+          // 保存后把刚编辑的标注滚回可视区：列表整表重建后 scrollTop 恢复
+          // 可能因章节展开/内容高度变化而失准，直接定位更可靠（issue #17 反馈）
+          this.scrollNotesItemIntoView(ann.id);
+        }
         if (noticeOnSave) new Notice(t("notice.updated"));
       },
       title
     ).open();
+  }
+
+  /** 标注列表重建后，把指定标注条目滚回可视区（找不到时保持原样） */
+  private scrollNotesItemIntoView(annotationId: string) {
+    window.setTimeout(() => {
+      const item = this.notesListEl?.querySelector<HTMLElement>(
+        `.epub-note-item[data-ann-id="${CSS.escape(annotationId)}"]`
+      );
+      item?.scrollIntoView({ block: "nearest" });
+    }, 60);
   }
 
   private drawLine(annotation: Annotation) {
@@ -4447,10 +4462,13 @@ export class EpubReaderView extends FileView {
 
   private renderNoteItem(parent: HTMLElement, ann: Annotation, query: string) {
     const li = parent.createEl("li", { cls: "epub-note-item is-clickable" });
-    const jump = () => void this.navigateToCfi(ann.cfiRange);
+    li.setAttr("data-ann-id", ann.id);
+    // 点击条目主体直接打开编辑器（issue #17 反馈：侧栏批注点击即编辑），
+    // 跳转正文改为独立按钮，避免想改批注时误触跳页
+    const edit = () => this.openNoteEditor(ann, t("reader.modal.editAnnotation"), false);
 
     const head = li.createDiv({ cls: "epub-note-item-head" });
-    head.addEventListener("click", jump);
+    head.addEventListener("click", edit);
     const dot = head.createDiv({ cls: "epub-color-dot is-static" });
     dot.setAttribute("data-color", ann.color);
     head.createSpan({ cls: "epub-note-item-chapter", text: ann.chapter });
@@ -4464,12 +4482,12 @@ export class EpubReaderView extends FileView {
     const quoteText =
       ann.text.length > 90 ? ann.text.slice(0, 90) + "…" : ann.text;
     const quote = li.createDiv({ cls: "epub-note-item-text" });
-    quote.addEventListener("click", jump);
+    quote.addEventListener("click", edit);
     this.appendHighlightedQuery(quote, quoteText, query);
 
     if (ann.note) {
       const note = li.createDiv({ cls: "epub-note-item-note" });
-      note.addEventListener("click", jump);
+      note.addEventListener("click", edit);
       this.appendHighlightedQuery(note, ann.note, query);
     }
 
@@ -4482,7 +4500,7 @@ export class EpubReaderView extends FileView {
     const editBtn = actions.createEl("button", { cls: "epub-note-action", text: t("reader.notes.edit") });
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      this.openNoteEditor(ann, t("reader.modal.editAnnotation"), false);
+      edit();
     });
     const delBtn = actions.createEl("button", {
       cls: "epub-note-action is-danger",

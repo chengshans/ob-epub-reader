@@ -670,10 +670,9 @@ body.is-mobile .ob-epub-container.is-toolbar-bottom {
   flex-direction: column;
 }
 
+/* 工具栏不吸顶：固定在面板顶部（flex 布局)，列表单独滚动，
+   吸顶的章节头贴着工具栏下缘，两者不重叠 */
 .epub-notes-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   flex-shrink: 0;
   padding: 6px 6px 8px;
   background: var(--background-primary);
