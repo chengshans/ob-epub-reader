@@ -2000,6 +2000,8 @@ export class EpubReaderView extends FileView {
       (e: WheelEvent) => {
         if (this.flow !== "paginated" || !this.rendition) return;
         e.preventDefault();
+        // 批注浮球/最小化批注框存在期间封锁翻页，防止划线锚点失效与上下文错位
+        if (this.pendingNoteCfi) return;
         if (this.wheelCooldown) return;
         this.wheelAccum += e.deltaY;
         const threshold = 30;
@@ -2154,6 +2156,8 @@ export class EpubReaderView extends FileView {
         if (!gestureStart || gestureStart.pointerId !== e.pointerId) return;
         if (e.pointerType === "mouse" || !e.isPrimary) return;
         if (this.flow !== "paginated" || this.contextMenu || this.wheelCooldown) return;
+        // 批注浮球/最小化批注框存在期间封锁触屏翻页与中间呼出目录
+        if (this.pendingNoteCfi) return;
         if (this.isPageTurnBlockedTarget(e.target)) return;
 
         const selection = win.getSelection?.();
@@ -2271,6 +2275,20 @@ export class EpubReaderView extends FileView {
   private handleNavKey(e: KeyboardEvent): boolean {
     const state = e as KeyboardEvent & { __obEpubNavHandled?: boolean };
     if (state.__obEpubNavHandled) return true;
+    // 批注浮球/最小化批注框存在期间封锁键盘翻页，防止锚点失效与上下文错位
+    if (this.pendingNoteCfi) {
+      const navKey =
+        e.code === "ArrowLeft" || e.key === "ArrowLeft" ||
+        e.code === "ArrowRight" || e.key === "ArrowRight" ||
+        e.code === "PageUp" || e.key === "PageUp" ||
+        e.code === "PageDown" || e.key === "PageDown";
+      if (navKey) {
+        state.__obEpubNavHandled = true;
+        e.preventDefault();
+        return true;
+      }
+      return false;
+    }
     // 同时兼容 code / key / keyCode：部分输入法或布局下 code 会是 "Unidentified"
     const isLeft = e.code === "ArrowLeft" || e.key === "ArrowLeft" || e.keyCode === 37;
     const isRight = e.code === "ArrowRight" || e.key === "ArrowRight" || e.keyCode === 39;
@@ -3599,11 +3617,22 @@ export class EpubReaderView extends FileView {
   ) {
     if (!this.file) return;
     const filePath = this.file.path;
+    // 编辑模式同样画 PENDING 临时高亮并传入实时锚点：浮球跟随划线位置
+    // 依赖这两者，编辑路径此前漏传导致浮球不跟随划线（用户反馈）
+    this.paintPendingNoteHighlight(ann.cfiRange);
     new NoteInputModal(
       this.app,
       ann.text,
       this.resolvedNoteTypes,
-      { note: ann.note, color: ann.color, noteType: ann.noteType, draftKey: ann.id },
+      {
+        note: ann.note,
+        color: ann.color,
+        noteType: ann.noteType,
+        draftKey: ann.id,
+        anchorPoint: this.getSelectionAnchorPoint(),
+        getAnchorPoint: () => this.getSelectionAnchorPoint(),
+        onDismiss: () => this.clearPendingNoteHighlight(),
+      },
       async ({ note, color, noteType }) => {
         await this.annotationVaultStore.update(filePath, ann.id, {
           note: note || undefined,
