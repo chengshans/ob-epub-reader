@@ -361,7 +361,7 @@
       "offsetX": "水平位置",
       "offsetXDesc": "ハイライト右端からのオフセット（{{min}} ~ +{{max}} px、正で右）",
       "offsetY": "垂直位置",
-      "offsetYDesc": "ハイライト垂直中央からのオフセット（{{min}} ~ +{{max}} px、正で下）"
+      "offsetYDesc": "ハイライトの垂直中央からのオフセット（{{min}}〜+{{max}} px、正の値で下へ）"
     },
     "formats": {
       "callout-title": {

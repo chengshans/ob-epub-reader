@@ -694,8 +694,8 @@ export const NOTE_ICON_SIZE_MIN = 14;
 export const NOTE_ICON_SIZE_MAX = 100;
 export const NOTE_ICON_OFFSET_X_MIN = -8;
 export const NOTE_ICON_OFFSET_X_MAX = 100;
-export const NOTE_ICON_OFFSET_Y_MIN = -8;
-export const NOTE_ICON_OFFSET_Y_MAX = 10;
+export const NOTE_ICON_OFFSET_Y_MIN = -20;
+export const NOTE_ICON_OFFSET_Y_MAX = 20;
 
 export const HIGHLIGHT_OPACITY_MIN = 0.12;
 export const HIGHLIGHT_OPACITY_MAX = 0.5;

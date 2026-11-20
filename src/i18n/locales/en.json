@@ -361,7 +361,7 @@
       "offsetX": "Horizontal position",
       "offsetXDesc": "Offset from highlight right edge ({{min}} ~ +{{max}} px, positive = right)",
       "offsetY": "Vertical position",
-      "offsetYDesc": "Offset from highlight vertical center ({{min}} ~ +{{max}} px, positive = down)"
+      "offsetYDesc": "Offset from the highlight's vertical center ({{min}} to +{{max}} px, positive moves down)"
     },
     "formats": {
       "callout-title": {
