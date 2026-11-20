@@ -2000,8 +2000,8 @@ export class EpubReaderView extends FileView {
       (e: WheelEvent) => {
         if (this.flow !== "paginated" || !this.rendition) return;
         e.preventDefault();
-        // 批注浮球/最小化批注框存在期间封锁翻页，防止划线锚点失效与上下文错位
-        if (this.pendingNoteCfi) return;
+        // 批注框/浮球存在时翻页：先把未提交的批注自动保存，再正常翻页
+        this.commitPendingNoteBeforePageTurn();
         if (this.wheelCooldown) return;
         this.wheelAccum += e.deltaY;
         const threshold = 30;
@@ -2156,8 +2156,8 @@ export class EpubReaderView extends FileView {
         if (!gestureStart || gestureStart.pointerId !== e.pointerId) return;
         if (e.pointerType === "mouse" || !e.isPrimary) return;
         if (this.flow !== "paginated" || this.contextMenu || this.wheelCooldown) return;
-        // 批注浮球/最小化批注框存在期间封锁触屏翻页与中间呼出目录
-        if (this.pendingNoteCfi) return;
+        // 批注框/浮球存在时触屏翻页/呼出目录：先自动保存未提交批注
+        this.commitPendingNoteBeforePageTurn();
         if (this.isPageTurnBlockedTarget(e.target)) return;
 
         const selection = win.getSelection?.();
@@ -2275,25 +2275,15 @@ export class EpubReaderView extends FileView {
   private handleNavKey(e: KeyboardEvent): boolean {
     const state = e as KeyboardEvent & { __obEpubNavHandled?: boolean };
     if (state.__obEpubNavHandled) return true;
-    // 批注浮球/最小化批注框存在期间封锁键盘翻页，防止锚点失效与上下文错位
-    if (this.pendingNoteCfi) {
-      const navKey =
-        e.code === "ArrowLeft" || e.key === "ArrowLeft" ||
-        e.code === "ArrowRight" || e.key === "ArrowRight" ||
-        e.code === "PageUp" || e.key === "PageUp" ||
-        e.code === "PageDown" || e.key === "PageDown";
-      if (navKey) {
-        state.__obEpubNavHandled = true;
-        e.preventDefault();
-        return true;
-      }
-      return false;
-    }
     // 同时兼容 code / key / keyCode：部分输入法或布局下 code 会是 "Unidentified"
     const isLeft = e.code === "ArrowLeft" || e.key === "ArrowLeft" || e.keyCode === 37;
     const isRight = e.code === "ArrowRight" || e.key === "ArrowRight" || e.keyCode === 39;
     const isPgUp = e.code === "PageUp" || e.key === "PageUp" || e.keyCode === 33;
     const isPgDn = e.code === "PageDown" || e.key === "PageDown" || e.keyCode === 34;
+    // 批注框/浮球存在时键盘翻页：先自动保存未提交批注，再正常处理
+    if ((isLeft || isRight || isPgUp || isPgDn) && this.pendingNoteCfi) {
+      this.commitPendingNoteBeforePageTurn();
+    }
     // Alt+← / Alt+→：在跳转历史中后退/前进（如脚注 → 原文 → 注文）
     if (e.altKey && isLeft) {
       if (this.locationHistory.length === 0) return false;
@@ -3620,7 +3610,7 @@ export class EpubReaderView extends FileView {
     // 编辑模式同样画 PENDING 临时高亮并传入实时锚点：浮球跟随划线位置
     // 依赖这两者，编辑路径此前漏传导致浮球不跟随划线（用户反馈）
     this.paintPendingNoteHighlight(ann.cfiRange);
-    new NoteInputModal(
+    const modal = new NoteInputModal(
       this.app,
       ann.text,
       this.resolvedNoteTypes,
@@ -3631,7 +3621,10 @@ export class EpubReaderView extends FileView {
         draftKey: ann.id,
         anchorPoint: this.getSelectionAnchorPoint(),
         getAnchorPoint: () => this.getSelectionAnchorPoint(),
-        onDismiss: () => this.clearPendingNoteHighlight(),
+        onDismiss: () => {
+          if (this.activeNoteModal) this.activeNoteModal = null;
+          this.clearPendingNoteHighlight();
+        },
       },
       async ({ note, color, noteType }) => {
         await this.annotationVaultStore.update(filePath, ann.id, {
@@ -3656,7 +3649,9 @@ export class EpubReaderView extends FileView {
         if (noticeOnSave) new Notice(t("notice.updated"));
       },
       title
-    ).open();
+    );
+    modal.open();
+    this.activeNoteModal = modal;
   }
 
   /** 标注列表重建后，把指定标注条目滚回可视区（找不到时保持原样） */
@@ -3947,7 +3942,7 @@ export class EpubReaderView extends FileView {
     // 提交后会被正式颜色的画线覆盖，取消/放弃时移除
     this.paintPendingNoteHighlight(cfiRange);
 
-    new NoteInputModal(
+    const modal = new NoteInputModal(
       this.app,
       text,
       this.resolvedNoteTypes,
@@ -3956,7 +3951,10 @@ export class EpubReaderView extends FileView {
         draftKey: cfiRange,
         anchorPoint: this.getSelectionAnchorPoint(),
         getAnchorPoint: () => this.getSelectionAnchorPoint(),
-        onDismiss: () => this.clearPendingNoteHighlight(),
+        onDismiss: () => {
+          if (this.activeNoteModal) this.activeNoteModal = null;
+          this.clearPendingNoteHighlight();
+        },
       },
       async ({ note, color, noteType }) => {
         const images = await this.saveSelectionImagesToVault(capturedImages);
@@ -3977,7 +3975,9 @@ export class EpubReaderView extends FileView {
         if (this.sidebarMode === "notes") this.renderNotesPanel();
         new Notice(note ? t("notice.annotationSaved") : t("notice.highlighted"));
       }
-    ).open();
+    );
+    modal.open();
+    this.activeNoteModal = modal;
     this.clearSelection();
   }
 
@@ -4005,6 +4005,18 @@ export class EpubReaderView extends FileView {
   }
 
   private pendingNoteCfi: string = "";
+  /** 当前存活的批注框（新建或编辑）：翻页前用它触发自动保存 */
+  private activeNoteModal: NoteInputModal | null = null;
+
+  /**
+   * 翻页前的批注自动保存：批注框/浮球存在且有未提交内容时，
+   * 按用户当前输入提交（相当于点了「保存」），随后正常翻页。
+   */
+  private commitPendingNoteBeforePageTurn(): void {
+    const modal = this.activeNoteModal;
+    this.activeNoteModal = null;
+    modal?.submitIfPending();
+  }
 
   /** 批注编辑期间在划线处画默认色临时高亮（标示正在批注的位置） */
   private paintPendingNoteHighlight(cfiRange: string) {

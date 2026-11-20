@@ -127,6 +127,23 @@ export class NoteInputModal extends Modal {
     });
   }
 
+  /**
+   * 外部请求提交（如翻页前自动保存）：有未提交内容则按「保存」处理，
+   * 内容为空则静默真关闭。浮球（最小化）态同样适用。
+   */
+  submitIfPending() {
+    if (this.forceClose) return;
+    const ta = this.textareaEl();
+    if (ta) {
+      this.submit(ta);
+      return;
+    }
+    // 取不到输入框（异常态）：直接真关闭，交给 onClose 的草稿兜底
+    this.persistDraftOnClose = false;
+    this.forceClose = true;
+    this.close();
+  }
+
   /** 取消按钮：明确放弃本次编辑，真关闭且不保留草稿 */
   private discardAndClose() {
     if (this.draftKey) clearNoteDraft(this.draftKey);
